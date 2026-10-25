@@ -53,3 +53,117 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Xcode / Objective-C
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad/
+*.xcscmblueprint
+*.xccheckout
+*.moved-aside
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+*.hmap
+*.ipa
+*.dSYM.zip
+timeline.xctimeline
+playground.xcworkspace
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# CocoaPods / Carthage / SwiftPM (host IDE tooling)
+Pods/
+Carthage/Build/
+.build/
+.swiftpm/
+Dependencies/
+.accio/
+
+# C / C++ build trees
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+.cache/
+.ccache/
+*.gcno
+*.gcda
+*.gcov
+*.profraw
+*.profdata
+core
+core.*
+*~
+*.bak
+*.orig
+*.rej
+.clangd/
+.idea/
+
+# ARM GCC / Tiva TM4C129 firmware images
+*.axf
+*.bin
+*.dis
+*.dnm
+*.crf
+*.lnp
+*.lst
+*.srec
+*.s19
+*.mot
+*.cyclo
+*.opt
+*.pbi
+*.pbd
+*.browse
+*.pp
+*.build_log.htm
+
+# Code Composer Studio / Eclipse
+.metadata/
+RemoteSystemsTempFiles/
+.launches/
+Debug/
+Release/
+*.dnx
+
+# Debug probes
+JLinkLog.txt
+JLinkSettings.ini
+openocd.log
+openocd_log.txt
