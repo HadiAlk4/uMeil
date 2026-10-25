@@ -100,13 +100,42 @@ playground.xcworkspace
 *.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
 *.xcodeproj/project.xcworkspace/xcuserdata/
 
-# CocoaPods / Carthage / SwiftPM (host IDE tooling)
-Pods/
-Carthage/Build/
+# Swift
+*.swiftmodule
+*.swiftdoc
+*.swiftsourceinfo
+*.abi.json
+*.pcm
+*.xcresult
+*.trace
+*.xcarchive
+Packages/
+Package.pins
 .build/
 .swiftpm/
+iOSInjectionProject/
+SourcePackages/
+Index.noindex/
+ModuleCache.noindex/
+CompilationCache.noindex/
+SDKStatCaches.noindex/
+Tuist/.build/
+Tuist/Dependencies/
+
+# CocoaPods / Carthage / Accio
+Pods/
+Carthage/Build/
+Carthage/Checkouts
 Dependencies/
 .accio/
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+.bundle/
+vendor/bundle/
 
 # C / C++ build trees
 cmake-build-*/
