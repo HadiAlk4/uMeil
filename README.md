@@ -13,18 +13,20 @@ uMeil is an embedded IDE for macOS, built specifically for the **Texas Instrumen
 
 Early development. Only the Tiva TM4C129 is supported for now. The reference board is the **EK-TM4C1294XL LaunchPad**.
 
+uMeil runs on **Apple Silicon Macs only**. Intel Macs are not supported.
+
 ## Tech stack at a glance
 
 | Area | What we use |
 |---|---|
-| App | Swift + SwiftUI (AppKit where SwiftUI falls short), Xcode |
-| Compiler | [Arm GNU Toolchain](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) (`arm-none-eabi-gcc`, `-mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard`) |
-| Build system | Generated Makefiles (or CMake + Ninja) driven by the app |
-| Chip support | TI TivaWare (`driverlib`, headers, startup code, linker script) |
-| Flashing | OpenOCD (`ti_icdi` adapter) with `lm4flash` as a fallback |
+| App | Swift + AppKit (`NSTextView`, `NSOutlineView`, `NSTableView`), with SwiftUI only for settings and simple panels. Xcode, Apple Silicon only |
+| Compiler | [Arm GNU Toolchain](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) (`arm-none-eabi-gcc`, `-mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard`), trimmed to the Cortex-M4 hard-float libraries. Downloaded on first launch, or the user's own install |
+| Build system | Built into the app: it runs `arm-none-eabi-gcc` directly and uses `-MMD` dependency files for incremental builds. No Make, CMake, or Ninja |
+| Chip support | A trimmed TI TivaWare: TM4C129 headers, a prebuilt `driverlib`, startup code, and linker script only |
+| Flashing | OpenOCD (`ti_icdi` adapter) |
 | Debugging | `arm-none-eabi-gdb` over the GDB Machine Interface (MI), connected to OpenOCD's GDB server |
 | Peripheral registers | CMSIS-SVD file for the TM4C129 (from the Keil TM4C device pack) |
-| Code intelligence | `clangd` over the Language Server Protocol (LSP) |
+| Code intelligence | `clangd` over the Language Server Protocol (LSP), using the copy from Xcode or the Command Line Tools when present, downloaded on demand otherwise |
 | Distribution | Signed and notarized `.app` in a DMG, plus a Homebrew cask |
 | Tests | Swift Testing / XCTest, XCUITest, hardware-in-the-loop on a real LaunchPad, GitHub Actions (macOS runners) |
 
@@ -43,9 +45,9 @@ Set up the Xcode project, folder layout, CI, and coding conventions.
 
 ### M1: Toolchain manager
 
-Find, download, and check the compiler and tools (`arm-none-eabi-gcc`, `gdb`, OpenOCD). Support both bundled tools and ones the user already installed (for example, through Homebrew).
+Find, download, and check the compiler and tools (`arm-none-eabi-gcc`, `gdb`, OpenOCD). Tools are not bundled in the app: uMeil uses ones the user already installed (for example, through Homebrew), or downloads a trimmed toolchain on first launch that contains only the Cortex-M4 hard-float libraries.
 
-- **What we use:** Swift `Process` to run tools, `URLSession` for downloads, SHA-256 checks with CryptoKit, Apple Silicon and Intel builds of each tool.
+- **What we use:** Swift `Process` to run tools, `URLSession` for downloads, SHA-256 checks with CryptoKit, Apple Silicon builds of each tool.
 - **How we test it:**
   - Unit tests (Swift Testing) for path discovery and version parsing, using fake tool folders.
   - Integration test that runs `arm-none-eabi-gcc --version` and `openocd --version` from the app's tool path.
@@ -55,7 +57,7 @@ Find, download, and check the compiler and tools (`arm-none-eabi-gcc`, `gdb`, Op
 
 Define what a uMeil project is: source files, include paths, compiler flags, chip and board settings. Ship a "Blinky" template for the EK-TM4C1294XL.
 
-- **What we use:** A `Codable` project file (JSON), TivaWare startup file, linker script, and `driverlib`.
+- **What we use:** A `Codable` project file (JSON) and a trimmed TivaWare: TM4C129 headers, a prebuilt `driverlib`, the startup file, and the linker script. The rest of the SDK (examples and support for other boards) is not shipped.
 - **How we test it:**
   - Unit tests for reading and writing the project file, including older versions of the format.
   - Snapshot tests: a new project from the template must match the expected files.
@@ -64,7 +66,7 @@ Define what a uMeil project is: source files, include paths, compiler flags, chi
 
 Turn a project into a firmware image (`.elf` and `.bin`). Show compiler errors and warnings in the app and link them to the line of code.
 
-- **What we use:** Generated Makefiles (or CMake + Ninja), `arm-none-eabi-gcc`, `arm-none-eabi-objcopy`, `arm-none-eabi-size`, and a parser for GCC's diagnostic output.
+- **What we use:** A build engine inside the app that runs `arm-none-eabi-gcc` directly, with `-MMD` dependency files to decide what to recompile. No Make, CMake, or Ninja. Also `arm-none-eabi-objcopy`, `arm-none-eabi-size`, and a parser for GCC's diagnostic output. The same engine writes `compile_commands.json` for `clangd`.
 - **How we test it:**
   - Unit tests for the diagnostic parser, using saved GCC output.
   - Integration tests that build the Blinky template and some intentionally broken projects in CI, then check the output files and reported errors.
@@ -74,7 +76,7 @@ Turn a project into a firmware image (`.elf` and `.bin`). Show compiler errors a
 
 An editor with syntax highlighting, line numbers, error markers, find and replace, and a file navigator.
 
-- **What we use:** AppKit `NSTextView` wrapped in SwiftUI (or a package like CodeEditSourceEditor), tree-sitter for C syntax highlighting.
+- **What we use:** A plain AppKit `NSTextView` for the editor and `NSOutlineView` for the file navigator, with tree-sitter for C syntax highlighting. No web views and no third-party editor package.
 - **How we test it:**
   - Unit tests for highlighting and error marker positions.
   - XCUITest for opening, editing, and saving files.
@@ -84,7 +86,7 @@ An editor with syntax highlighting, line numbers, error markers, find and replac
 
 One button to build and flash the board, with a progress bar and clear errors (board not connected, wrong chip, flash failed).
 
-- **What we use:** OpenOCD with `interface/ti-icdi.cfg` and `target/ti_tm4c.cfg`, or `lm4flash`, run with `Process`. IOKit to detect when a board is plugged in over USB.
+- **What we use:** OpenOCD with `interface/ti-icdi.cfg` and `target/ti_tm4c.cfg`, run with `Process`. IOKit to detect when a board is plugged in over USB.
 - **How we test it:**
   - Unit tests for parsing OpenOCD output, using saved logs (including failures).
   - **Hardware-in-the-loop (HIL):** a LaunchPad connected to a Mac (a self-hosted CI runner). It flashes a test firmware that prints a known message over UART, and the test reads that message to confirm the flash worked.
@@ -94,7 +96,7 @@ One button to build and flash the board, with a progress bar and clear errors (b
 
 Start a debug session: breakpoints, step over, step into, step out, continue, pause, call stack, local variables, and a CPU register view.
 
-- **What we use:** OpenOCD as the GDB server, `arm-none-eabi-gdb` controlled through GDB/MI. A Swift parser for MI output.
+- **What we use:** OpenOCD as the GDB server, `arm-none-eabi-gdb` controlled through GDB/MI. A Swift parser for MI output. AppKit `NSTableView` and `NSOutlineView` for the call stack, variables, and register views.
 - **How we test it:**
   - Unit tests for the GDB/MI parser, using saved GDB output.
   - HIL tests on the LaunchPad: set a breakpoint in Blinky, run to it, check the line, a variable value, and the program counter.
@@ -113,7 +115,7 @@ A memory viewer (hex view) and a peripheral register view that shows named regis
 
 A built-in UART console for the LaunchPad's virtual COM port.
 
-- **What we use:** POSIX `termios` APIs (or a package like ORSSerialPort), IOKit to list serial ports.
+- **What we use:** POSIX `termios` APIs directly (no serial port package), IOKit to list serial ports.
 - **How we test it:**
   - Unit tests with a pseudo-terminal (`openpty`) in place of a real port.
   - HIL test: an echo firmware on the board must return what the app sends.
@@ -122,7 +124,7 @@ A built-in UART console for the LaunchPad's virtual COM port.
 
 Autocomplete, go to definition, and inline errors while typing.
 
-- **What we use:** `clangd` over LSP, with a `compile_commands.json` file generated by the build system.
+- **What we use:** `clangd` over LSP, with a `compile_commands.json` file generated by the build system. uMeil uses the `clangd` from Xcode or the Command Line Tools when present, and downloads it on demand otherwise.
 - **How we test it:**
   - Integration tests that start `clangd` on the Blinky project and check that completion and go-to-definition work for `driverlib` functions.
 
@@ -130,10 +132,10 @@ Autocomplete, go to definition, and inline errors while typing.
 
 Make uMeil easy to download and install.
 
-- **What we use:** Developer ID signing, Apple notarization (`notarytool`), a DMG, Sparkle for automatic updates, and a Homebrew cask. Toolchains are bundled or downloaded on first launch.
+- **What we use:** Developer ID signing, Apple notarization (`notarytool`), a DMG, Sparkle for automatic updates, and a Homebrew cask. The app is Apple Silicon only. Toolchains are not bundled; they are downloaded on first launch.
 - **How we test it:**
   - CI builds, signs, and notarizes every release, then checks the result with `spctl --assess` and `stapler validate`.
-  - Manual install test on a clean Mac (or a fresh macOS VM, for example with Tart or UTM) on both Apple Silicon and Intel.
+  - Manual install test on a clean Mac (or a fresh macOS VM, for example with Tart or UTM) on Apple Silicon.
   - Test that updating from the previous version works.
 
 ### M11: Beta and v1.0
