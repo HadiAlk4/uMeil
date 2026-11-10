@@ -39,7 +39,7 @@ Code style is checked with [SwiftLint](https://github.com/realm/SwiftLint) (`bre
 | Debugging | `arm-none-eabi-gdb` over the GDB Machine Interface (MI), connected to OpenOCD's GDB server |
 | Peripheral registers | CMSIS-SVD file for the TM4C129 (from the Keil TM4C device pack) |
 | Code intelligence | `clangd` over the Language Server Protocol (LSP), using the copy from Xcode or the Command Line Tools when present, downloaded on demand otherwise |
-| Distribution | Signed and notarized `.app` in a DMG, plus a Homebrew cask |
+| Distribution | Signed and notarized `.app` in a DMG on GitHub Releases, a download website on GitHub Pages, plus a Homebrew cask |
 | Tests | Swift Testing / XCTest, XCUITest, hardware-in-the-loop on a real LaunchPad, GitHub Actions (macOS runners) |
 
 ---
@@ -144,11 +144,13 @@ Autocomplete, go to definition, and inline errors while typing.
 
 Make uMeil easy to download and install.
 
-- **What we use:** Developer ID signing, Apple notarization (`notarytool`), a DMG, Sparkle for automatic updates, and a Homebrew cask. The app is Apple Silicon only. Toolchains are not bundled; they are downloaded on first launch.
+- **What we use:** Developer ID signing, Apple notarization (`notarytool`), a DMG, Sparkle for automatic updates, and a Homebrew cask. The app is Apple Silicon only. Toolchains are not bundled; they are downloaded on first launch. Signing and notarization need an Apple Developer Program membership.
+- **Website:** A one-page static site (plain HTML and CSS, no framework) on GitHub Pages, deployed from this repo with GitHub Actions. It says what uMeil is, shows a screenshot and the system requirements, and has a download button that links to the latest DMG on GitHub Releases. It also hosts Sparkle's `appcast.xml` update feed.
 - **How we test it:**
   - CI builds, signs, and notarizes every release, then checks the result with `spctl --assess` and `stapler validate`.
   - Manual install test on a clean Mac (or a fresh macOS VM, for example with Tart or UTM) on Apple Silicon.
   - Test that updating from the previous version works.
+  - Check that the website's download button points at the latest release and that `appcast.xml` is valid.
 
 ### M11: Beta and v1.0
 
