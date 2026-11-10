@@ -15,6 +15,18 @@ Early development. Only the Tiva TM4C129 is supported for now. The reference boa
 
 uMeil runs on **Apple Silicon Macs only**. Intel Macs are not supported.
 
+## Building
+
+You need an Apple Silicon Mac with Xcode 16 or later. The app targets macOS 14 and up.
+
+Open `uMeil.xcodeproj` in Xcode and press Run, or build and test from the terminal:
+
+```sh
+xcodebuild test -project uMeil.xcodeproj -scheme uMeil -destination 'platform=macOS,arch=arm64'
+```
+
+Code style is checked with [SwiftLint](https://github.com/realm/SwiftLint) (`brew install swiftlint`, then `swiftlint lint --strict`). CI runs the tests and the linter on every push and pull request.
+
 ## Tech stack at a glance
 
 | Area | What we use |
