@@ -1,0 +1,8 @@
+included:
+  - uMeil
+  - uMeilTests
+
+line_length:
+  warning: 120
+  error: 160
+  ignores_urls: true
