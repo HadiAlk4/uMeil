@@ -14,25 +14,43 @@ struct ProcessOutput: Equatable, Sendable {
 
 /// Runs external tools. A protocol so tests can substitute canned output.
 protocol ProcessRunning: Sendable {
-    func run(_ executable: URL, arguments: [String]) async throws -> ProcessOutput
+    /// Runs `executable` and waits for it to exit. `currentDirectory` is the
+    /// folder relative paths in `arguments` are resolved against; `nil`
+    /// keeps the app's own.
+    func run(_ executable: URL, arguments: [String], currentDirectory: URL?) async throws -> ProcessOutput
+}
+
+extension ProcessRunning {
+    func run(_ executable: URL, arguments: [String]) async throws -> ProcessOutput {
+        try await run(executable, arguments: arguments, currentDirectory: nil)
+    }
 }
 
 /// Runs a real process and collects everything it prints.
 struct ProcessRunner: ProcessRunning {
-    func run(_ executable: URL, arguments: [String]) async throws -> ProcessOutput {
+    func run(_ executable: URL, arguments: [String], currentDirectory: URL?) async throws -> ProcessOutput {
         try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                continuation.resume(with: Result { try Self.runBlocking(executable, arguments: arguments) })
+                continuation.resume(with: Result {
+                    try Self.runBlocking(executable, arguments: arguments, currentDirectory: currentDirectory)
+                })
             }
         }
     }
 
-    private static func runBlocking(_ executable: URL, arguments: [String]) throws -> ProcessOutput {
+    private static func runBlocking(
+        _ executable: URL,
+        arguments: [String],
+        currentDirectory: URL?
+    ) throws -> ProcessOutput {
         let process = Process()
         let outputPipe = Pipe()
         let errorPipe = Pipe()
         process.executableURL = executable
         process.arguments = arguments
+        if let currentDirectory {
+            process.currentDirectoryURL = currentDirectory
+        }
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = outputPipe
         process.standardError = errorPipe
