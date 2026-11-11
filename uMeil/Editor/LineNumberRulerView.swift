@@ -10,6 +10,11 @@ final class LineNumberRulerView: NSRulerView {
         }
     }
 
+    /// Lines to flag with an error or warning marker, from the last build.
+    var lineMarkers: [Int: Diagnostic.Severity] = [:] {
+        didSet { needsDisplay = true }
+    }
+
     private static let padding: CGFloat = 8
 
     private var numberAttributes: [NSAttributedString.Key: Any] {
@@ -66,12 +71,21 @@ final class LineNumberRulerView: NSRulerView {
             guard lineRect.height > 0 else { continue }
 
             let label = String(line) as NSString
-            let size = label.size(withAttributes: numberAttributes)
             let topInTextView = NSPoint(x: 0, y: lineRect.minY + textView.textContainerOrigin.y)
             let top = convert(topInTextView, from: textView).y
+
+            // A line with a build message gets a colored badge behind its number.
+            var attributes = numberAttributes
+            if let severity = lineMarkers[line] {
+                let badge = NSRect(x: 3, y: top + 1, width: ruleThickness - 6, height: lineRect.height - 2)
+                IssuesViewController.color(for: severity).setFill()
+                NSBezierPath(roundedRect: badge, xRadius: 3, yRadius: 3).fill()
+                attributes[.foregroundColor] = severity == .warning ? NSColor.black : NSColor.white
+            }
+            let size = label.size(withAttributes: attributes)
             label.draw(
                 at: NSPoint(x: ruleThickness - Self.padding - size.width, y: top + (lineRect.height - size.height) / 2),
-                withAttributes: numberAttributes
+                withAttributes: attributes
             )
         }
     }

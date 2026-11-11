@@ -40,6 +40,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
     /// Counts edits, so that highlights computed for older text are dropped.
     private var textVersion = 0
 
+    /// Line positions for the current text, shared with the gutter.
+    private var lineIndex = LineIndex("") {
+        didSet { ruler?.lineIndex = lineIndex }
+    }
+
     init() {
         textView = Self.makeTextView()
         super.init(nibName: nil, bundle: nil)
@@ -180,7 +185,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
 
         document = loaded
         isModified = false
-        ruler?.lineIndex = LineIndex(loaded.text)
+        lineIndex = LineIndex(loaded.text)
+        setMarkers([:])
         scrollView.isHidden = false
         placeholder.isHidden = true
         scheduleHighlighting(delay: .zero)
@@ -205,7 +211,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
 
         document = nil
         isModified = false
-        ruler?.lineIndex = LineIndex("")
+        lineIndex = LineIndex("")
+        setMarkers([:])
         showPlaceholder(hasFolder: hasFolder)
         scheduleHighlighting(delay: .zero)
     }
@@ -221,10 +228,36 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
 
     func textDidChange(_ notification: Notification) {
         guard !isLoading else { return }
-        ruler?.lineIndex = LineIndex(textView.string)
+        let lineCount = lineIndex.lineCount
+        lineIndex = LineIndex(textView.string)
+        if lineIndex.lineCount != lineCount {
+            // Lines moved, so the markers from the last build no longer line up.
+            setMarkers([:])
+        }
         isModified = true
         // Wait for a short pause in typing before parsing again.
         scheduleHighlighting(delay: .milliseconds(40))
+    }
+
+    // MARK: - Build messages
+
+    /// The lines currently flagged in the gutter.
+    private(set) var markers: [Int: Diagnostic.Severity] = [:]
+
+    /// Flags lines in the gutter with the errors and warnings from a build.
+    func setMarkers(_ markers: [Int: Diagnostic.Severity]) {
+        self.markers = markers
+        ruler?.lineMarkers = markers
+    }
+
+    /// Moves the cursor to a line and column (both 1-based, as the compiler
+    /// reports them) and scrolls it into view.
+    func goTo(line: Int, column: Int?) {
+        guard let offset = lineIndex.offset(line: line, column: column ?? 1) else { return }
+        let range = NSRange(location: min(offset, lineIndex.length), length: 0)
+        textView.setSelectedRange(range)
+        textView.scrollRangeToVisible(range)
+        textView.window?.makeFirstResponder(textView)
     }
 
     // MARK: - Syntax highlighting
