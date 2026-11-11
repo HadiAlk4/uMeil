@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "name": "Blinky",
+  "target": {
+    "chip": "TM4C1294NCPDT",
+    "board": "EK-TM4C1294XL"
+  },
+  "sources": [
+    "src/main.c",
+    "startup/startup.c"
+  ],
+  "includePaths": [
+    "src"
+  ],
+  "build": {
+    "cStandard": "gnu11",
+    "optimization": "Og",
+    "defines": [],
+    "compilerFlags": [
+      "-Wall",
+      "-Wextra"
+    ],
+    "linkerFlags": [],
+    "linkerScript": "tm4c1294ncpdt.ld",
+    "useDriverLib": true
+  }
+}

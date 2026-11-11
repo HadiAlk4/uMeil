@@ -1,0 +1,4 @@
+{
+  "name": "Blinky",
+  "summary": "Blinks user LED D1 on the EK-TM4C1294XL LaunchPad using the TivaWare driver library."
+}
