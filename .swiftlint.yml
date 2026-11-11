@@ -6,3 +6,7 @@ line_length:
   warning: 120
   error: 160
   ignores_urls: true
+
+identifier_name:
+  excluded:
+    - c # SourceLanguage.c, the C language

@@ -112,7 +112,10 @@ struct BuildPlan: Equatable, Sendable {
             "-ffunction-sections",
             "-fdata-sections",
             // Color codes would end up in the parsed messages.
-            "-fdiagnostics-color=never"
+            "-fdiagnostics-color=never",
+            // Report columns as positions in the line, not as screen columns
+            // with tabs expanded, so the editor can put the cursor there.
+            "-fdiagnostics-column-unit=byte"
         ]
         arguments += (chip.defines + settings.defines).map { "-D\($0)" }
         arguments += project.includePaths.map { "-I\($0)" }

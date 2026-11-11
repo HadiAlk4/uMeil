@@ -6,7 +6,9 @@ enum MainMenu {
     static func make(appName: String) -> NSMenu {
         let mainMenu = NSMenu()
         mainMenu.addItem(submenuItem(appMenu(appName: appName)))
+        mainMenu.addItem(submenuItem(fileMenu()))
         mainMenu.addItem(submenuItem(editMenu()))
+        mainMenu.addItem(submenuItem(productMenu()))
 
         let window = windowMenu()
         mainMenu.addItem(submenuItem(window))
@@ -48,6 +50,64 @@ enum MainMenu {
         return menu
     }
 
+    private static func fileMenu() -> NSMenu {
+        let menu = NSMenu(title: "File")
+        let newProject = menu.addItem(
+            withTitle: "New Project…",
+            action: #selector(MainWindowController.newProject(_:)),
+            keyEquivalent: "n"
+        )
+        newProject.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(
+            withTitle: "Open Folder…",
+            action: #selector(MainWindowController.chooseFolder(_:)),
+            keyEquivalent: "o"
+        )
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Save", action: #selector(MainWindowController.saveDocument(_:)), keyEquivalent: "s")
+        return menu
+    }
+
+    private static func productMenu() -> NSMenu {
+        let menu = NSMenu(title: "Product")
+        menu.addItem(withTitle: "Build", action: #selector(MainWindowController.buildProject(_:)), keyEquivalent: "b")
+        return menu
+    }
+
+    /// Edit > Find. The items drive the text view's built-in find bar; the
+    /// tag on each item says which find action it performs.
+    private static func findMenu() -> NSMenu {
+        let menu = NSMenu(title: "Find")
+        struct FindItem {
+            let title: String
+            let action: NSTextFinder.Action
+            let key: String
+            let modifiers: NSEvent.ModifierFlags
+        }
+        let items = [
+            FindItem(title: "Find…", action: .showFindInterface, key: "f", modifiers: [.command]),
+            FindItem(
+                title: "Find and Replace…",
+                action: .showReplaceInterface,
+                key: "f",
+                modifiers: [.command, .option]
+            ),
+            FindItem(title: "Find Next", action: .nextMatch, key: "g", modifiers: [.command]),
+            FindItem(title: "Find Previous", action: .previousMatch, key: "g", modifiers: [.command, .shift]),
+            FindItem(title: "Use Selection for Find", action: .setSearchString, key: "e", modifiers: [.command])
+        ]
+        for findItem in items {
+            let item = menu.addItem(
+                withTitle: findItem.title,
+                action: #selector(NSResponder.performTextFinderAction(_:)),
+                keyEquivalent: findItem.key
+            )
+            item.keyEquivalentModifierMask = findItem.modifiers
+            item.tag = findItem.action.rawValue
+        }
+        return menu
+    }
+
     private static func editMenu() -> NSMenu {
         let menu = NSMenu(title: "Edit")
         menu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
@@ -60,6 +120,10 @@ enum MainMenu {
         menu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         menu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         menu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        menu.addItem(.separator())
+
+        let find = menu.addItem(withTitle: "Find", action: nil, keyEquivalent: "")
+        find.submenu = findMenu()
         return menu
     }
 
@@ -67,6 +131,12 @@ enum MainMenu {
         let menu = NSMenu(title: "Window")
         menu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         menu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(
+            withTitle: "Toolchain Status",
+            action: #selector(AppDelegate.showToolchainStatus(_:)),
+            keyEquivalent: ""
+        )
         menu.addItem(.separator())
         menu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         return menu
