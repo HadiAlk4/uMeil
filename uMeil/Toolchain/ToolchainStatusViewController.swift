@@ -43,6 +43,7 @@ final class ToolchainStatusViewController: NSViewController, NSTableViewDataSour
 
     private let tableView = NSTableView()
     private let spinner = NSProgressIndicator()
+    private let progressBar = NSProgressIndicator()
     private let summaryLabel = NSTextField(labelWithString: "Checking tools…")
     private lazy var checkButton = NSButton(title: "Check Again", target: self, action: #selector(checkAgain(_:)))
     private lazy var installButton = NSButton(
@@ -91,10 +92,19 @@ final class ToolchainStatusViewController: NSViewController, NSTableViewDataSour
         spinner.controlSize = .small
         spinner.isDisplayedWhenStopped = false
 
+        progressBar.style = .bar
+        progressBar.controlSize = .small
+        progressBar.minValue = 0
+        progressBar.maxValue = 1
+        progressBar.isHidden = true
+        progressBar.widthAnchor.constraint(equalToConstant: 160).isActive = true
+
         installButton.isHidden = true
         installButton.keyEquivalent = "\r"
 
-        let bottomBar = NSStackView(views: [spinner, summaryLabel, NSView(), checkButton, installButton])
+        let bottomBar = NSStackView(
+            views: [spinner, summaryLabel, progressBar, NSView(), checkButton, installButton]
+        )
         bottomBar.orientation = .horizontal
         bottomBar.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
 
@@ -122,12 +132,15 @@ final class ToolchainStatusViewController: NSViewController, NSTableViewDataSour
         Task {
             do {
                 for entry in needed {
-                    summaryLabel.stringValue = "Downloading and installing \(entry.displayNameWithSize)…"
-                    try await installer.install(entry.package)
+                    show(.downloading(fraction: 0), for: entry)
+                    try await installer.install(entry.package) { [weak self] progress in
+                        Task { @MainActor in self?.show(progress, for: entry) }
+                    }
                 }
             } catch {
                 presentInstallError(error)
             }
+            progressBar.isHidden = true
             refresh()
         }
     }
@@ -144,6 +157,21 @@ final class ToolchainStatusViewController: NSViewController, NSTableViewDataSour
             installButton.isHidden = ToolchainCatalog.entriesNeeded(for: statuses).isEmpty
             tableView.reloadData()
             setBusy(false)
+        }
+    }
+
+    /// Updates the status line and progress bar for one step of an install.
+    private func show(_ progress: ToolchainInstallProgress, for entry: ToolchainCatalogEntry) {
+        summaryLabel.stringValue = ToolStatusRow.installMessage(for: entry, progress: progress)
+        progressBar.isHidden = false
+
+        if case .downloading(let fraction) = progress {
+            progressBar.isIndeterminate = false
+            progressBar.doubleValue = fraction
+        } else {
+            // Verifying and unpacking have no measurable progress.
+            progressBar.isIndeterminate = true
+            progressBar.startAnimation(nil)
         }
     }
 

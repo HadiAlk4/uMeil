@@ -51,6 +51,16 @@ struct ToolStatusRowTests {
         #expect(rows.map(\.state) == ["Installed", "Not found", "Not found"])
     }
 
+    @Test func describesEachStageOfAnInstall() {
+        let entry = ToolchainCatalog.armGNUToolchain
+        let halfway = ToolStatusRow.installMessage(for: entry, progress: .downloading(fraction: 0.5))
+
+        #expect(halfway.hasPrefix("Downloading Arm GNU Toolchain: 7"))
+        #expect(halfway.hasSuffix("MB of 142 MB"))
+        #expect(ToolStatusRow.installMessage(for: entry, progress: .verifying) == "Verifying Arm GNU Toolchain…")
+        #expect(ToolStatusRow.installMessage(for: entry, progress: .unpacking) == "Unpacking Arm GNU Toolchain…")
+    }
+
     @Test func summarizesHowManyToolsWereFound() {
         #expect(ToolStatusRow.summary(for: [:]) == "0 of 3 tools found")
         #expect(ToolStatusRow.summary(for: [.compiler: .installed(gcc)]) == "1 of 3 tools found")

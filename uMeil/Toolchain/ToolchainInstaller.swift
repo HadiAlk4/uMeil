@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import os
 
 /// A downloadable archive of tools, with the checksum it must match.
 struct ToolchainPackage: Codable, Equatable, Sendable {
@@ -32,6 +33,14 @@ enum ToolchainInstallError: Error, Equatable, LocalizedError {
     }
 }
 
+/// How far an install has got, for showing progress to the user.
+enum ToolchainInstallProgress: Equatable, Sendable {
+    /// Downloading; `fraction` runs from 0 to 1.
+    case downloading(fraction: Double)
+    case verifying
+    case unpacking
+}
+
 /// Downloads a toolchain package, verifies it, and unpacks it where
 /// `ToolLocator` will find it.
 struct ToolchainInstaller: Sendable {
@@ -44,17 +53,26 @@ struct ToolchainInstaller: Sendable {
     /// Nothing is left behind in the toolchains directory if any step fails,
     /// and an existing install of the same version is only replaced once the
     /// new one has been verified and unpacked.
+    ///
+    /// `progress` is called as the install advances. It may be called from
+    /// any thread.
     @discardableResult
-    func install(_ package: ToolchainPackage) async throws -> URL {
+    func install(
+        _ package: ToolchainPackage,
+        progress: @escaping @Sendable (ToolchainInstallProgress) -> Void = { _ in }
+    ) async throws -> URL {
         let fileManager = FileManager.default
 
-        let (archive, response) = try await session.download(from: package.url)
+        let (archive, response) = try await download(package.url) { fraction in
+            progress(.downloading(fraction: fraction))
+        }
         defer { try? fileManager.removeItem(at: archive) }
 
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw ToolchainInstallError.downloadFailed(statusCode: http.statusCode)
         }
 
+        progress(.verifying)
         let expected = package.sha256.lowercased()
         let actual = try Self.sha256(ofFileAt: archive)
         guard actual == expected else {
@@ -69,6 +87,7 @@ struct ToolchainInstaller: Sendable {
         try fileManager.createDirectory(at: staging, withIntermediateDirectories: false)
         defer { try? fileManager.removeItem(at: staging) }
 
+        progress(.unpacking)
         try await extract(archive, into: staging)
 
         let destination = toolchainsDirectory.appending(path: package.installDirectoryName, directoryHint: .isDirectory)
@@ -77,6 +96,49 @@ struct ToolchainInstaller: Sendable {
         }
         try fileManager.moveItem(at: Self.contentRoot(of: staging), to: destination)
         return destination
+    }
+
+    /// Downloads `url` to a temporary file, reporting the fraction completed
+    /// each time it advances by at least one percent.
+    private func download(
+        _ url: URL,
+        reportFraction: @escaping @Sendable (Double) -> Void
+    ) async throws -> (URL, URLResponse) {
+        let observation = OSAllocatedUnfairLock<NSKeyValueObservation?>(uncheckedState: nil)
+        defer { observation.withLockUnchecked { $0 = nil } }
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let task = session.downloadTask(with: url) { location, response, error in
+                guard let location, let response else {
+                    continuation.resume(throwing: error ?? URLError(.unknown))
+                    return
+                }
+                // The system deletes the downloaded file as soon as this
+                // handler returns, so move it somewhere of our own first.
+                let kept = FileManager.default.temporaryDirectory
+                    .appending(path: "uMeil-download-\(UUID().uuidString)", directoryHint: .notDirectory)
+                continuation.resume(with: Result {
+                    try FileManager.default.moveItem(at: location, to: kept)
+                    return (kept, response)
+                })
+            }
+
+            let lastPercent = OSAllocatedUnfairLock(initialState: -1)
+            let token = task.progress.observe(\.fractionCompleted, options: [.initial]) { taskProgress, _ in
+                let fraction = min(max(taskProgress.fractionCompleted, 0), 1)
+                let percent = Int(fraction * 100)
+                let advanced = lastPercent.withLock { last in
+                    guard percent > last else { return false }
+                    last = percent
+                    return true
+                }
+                if advanced {
+                    reportFraction(fraction)
+                }
+            }
+            observation.withLockUnchecked { $0 = token }
+            task.resume()
+        }
     }
 
     private func extract(_ archive: URL, into directory: URL) async throws {
