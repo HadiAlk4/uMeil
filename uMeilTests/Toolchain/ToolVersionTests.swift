@@ -10,6 +10,8 @@ struct ToolVersionTests {
             "arm-none-eabi-gcc (GNU Arm Embedded Toolchain 10.3-2021.10) 10.3.1 20210824 (release)",
             ToolVersion(10, 3, 1)
         ),
+        // The exact release in ToolchainCatalog.
+        ("arm-none-eabi-gcc (Arm GNU Toolchain 15.2.Rel1 (Build arm-15.86)) 15.2.1 20251203", ToolVersion(15, 2, 1)),
         // Homebrew.
         ("arm-none-eabi-gcc (GCC) 14.2.0", ToolVersion(14, 2, 0)),
         ("arm-none-eabi-gcc (Homebrew GCC 16.2.0) 16.2.0", ToolVersion(16, 2, 0))
@@ -21,6 +23,8 @@ struct ToolVersionTests {
 
     @Test(arguments: [
         ("GNU gdb (Arm GNU Toolchain 13.2.Rel1 (Build arm-13.7)) 13.2.90.20231008-git", ToolVersion(13, 2, 90)),
+        // The exact release in ToolchainCatalog.
+        ("GNU gdb (Arm GNU Toolchain 15.2.Rel1 (Build arm-15.86)) 16.3.90.20250906-git", ToolVersion(16, 3, 90)),
         ("GNU gdb (GDB) 15.2", ToolVersion(15, 2, 0))
     ])
     func parsesDebuggerVersions(line: String, expected: ToolVersion) {
@@ -31,6 +35,8 @@ struct ToolVersionTests {
     @Test(arguments: [
         ("Open On-Chip Debugger 0.12.0", ToolVersion(0, 12, 0)),
         ("xPack Open On-Chip Debugger 0.12.0+dev-01685-gb9224c0c0 (2024-08-02-19:51)", ToolVersion(0, 12, 0)),
+        // The exact release in ToolchainCatalog.
+        ("xPack Open On-Chip Debugger 0.12.0+dev-02228-ge5888bda3-dirty (2025-10-04-22:45)", ToolVersion(0, 12, 0)),
         // A stray line before the banner must not be mistaken for the version.
         ("Info 1.2.3 ready\nOpen On-Chip Debugger 0.11.0", ToolVersion(0, 11, 0))
     ])
