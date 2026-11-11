@@ -89,7 +89,8 @@ struct BuildPlanTests {
         #expect(plan.compileSteps[0].dependencyFile == "build/obj/src/main.c.o.d")
         #expect(plan.compileSteps[0].arguments == [
             "-mcpu=cortex-m4", "-mthumb", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard",
-            "-std=gnu11", "-Og", "-g", "-ffunction-sections", "-fdata-sections", "-fdiagnostics-color=never",
+            "-std=gnu11", "-Og", "-g", "-ffunction-sections", "-fdata-sections",
+            "-fdiagnostics-color=never", "-fdiagnostics-column-unit=byte",
             "-DPART_TM4C1294NCPDT", "-DDEBUG=1",
             "-Isrc", "-I/app/TivaWare.bundle/",
             "-Wall", "-Wextra",
