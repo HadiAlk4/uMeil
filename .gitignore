@@ -19,6 +19,8 @@
 # Libraries
 *.lib
 *.a
+# The prebuilt TivaWare driverlib ships inside the app.
+!uMeil/Resources/TivaWare.bundle/driverlib/libdriver.a
 *.la
 *.lo
 

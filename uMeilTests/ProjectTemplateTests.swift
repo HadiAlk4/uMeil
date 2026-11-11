@@ -113,6 +113,28 @@ struct ProjectTemplateTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: output.path).isEmpty)
     }
 
+    // MARK: TivaWare
+
+    @Test func appShipsTheTivaWareFilesBlinkyNeeds() throws {
+        let blinky = try blinky()
+        let main = try String(contentsOf: blinky.directory.appending(path: "files/src/main.c"), encoding: .utf8)
+        let includes = main.matches(of: /#include "(.+)"/).map { String($0.output.1) }
+        #expect(includes == ["inc/hw_memmap.h", "driverlib/gpio.h", "driverlib/sysctl.h"])
+
+        for header in includes + ["inc/tm4c1294ncpdt.h", "TI-BSD-EULA.txt"] {
+            let url = TivaWare.includeDirectory().appending(path: header)
+            #expect(FileManager.default.fileExists(atPath: url.path), "\(header)")
+        }
+    }
+
+    @Test func prebuiltDriverLibIsAnArchiveOfTheRightVersion() throws {
+        let library = try Data(contentsOf: TivaWare.library())
+        #expect(library.starts(with: Data("!<arch>\n".utf8)))
+
+        let header = TivaWare.includeDirectory().appending(path: "driverlib/gpio.h")
+        #expect(try String(contentsOf: header, encoding: .utf8).contains("revision \(TivaWare.version) "))
+    }
+
     // MARK: Chips and boards
 
     @Test func chipDescribesTheTM4C1294() {
