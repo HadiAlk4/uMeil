@@ -42,6 +42,22 @@ struct ToolStatusRow: Equatable {
         return installed == total ? "All \(total) tools found" : "\(installed) of \(total) tools found"
     }
 
+    /// The status line shown while a package is being installed, such as
+    /// "Downloading Arm GNU Toolchain: 64 MB of 142 MB".
+    static func installMessage(for entry: ToolchainCatalogEntry, progress: ToolchainInstallProgress) -> String {
+        switch progress {
+        case .downloading(let fraction):
+            let done = Int64(Double(entry.downloadSize) * min(max(fraction, 0), 1))
+            let doneText = ByteCountFormatter.string(fromByteCount: done, countStyle: .file)
+            let totalText = ByteCountFormatter.string(fromByteCount: entry.downloadSize, countStyle: .file)
+            return "Downloading \(entry.displayName): \(doneText) of \(totalText)"
+        case .verifying:
+            return "Verifying \(entry.displayName)…"
+        case .unpacking:
+            return "Unpacking \(entry.displayName)…"
+        }
+    }
+
     /// The path with the home folder shortened to `~`.
     private static func displayPath(_ url: URL) -> String {
         (url.path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath

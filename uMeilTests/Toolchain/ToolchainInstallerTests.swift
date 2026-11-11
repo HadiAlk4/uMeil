@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import os
 import Testing
 @testable import uMeil
 
@@ -116,6 +117,30 @@ struct ToolchainInstallerTests {
         let installed = try await ToolchainInstaller(toolchainsDirectory: toolchains).install(package)
 
         #expect(try visibleItems(in: installed) == ["bin"])
+    }
+
+    @Test func reportsProgressThroughEachStage() async throws {
+        let temp = try TemporaryDirectory()
+        let toolchains = temp.url.appending(path: "Toolchains", directoryHint: .isDirectory)
+        let bin = try temp.directory("source/toolchain/bin")
+        try FakeTool.install(.compiler, in: bin, script: gccScript)
+        let package = try makePackage(archiving: "toolchain", in: temp)
+        let reported = OSAllocatedUnfairLock(initialState: [ToolchainInstallProgress]())
+
+        try await ToolchainInstaller(toolchainsDirectory: toolchains).install(package) { progress in
+            reported.withLock { $0.append(progress) }
+        }
+
+        let events = reported.withLock { $0 }
+        let fractions = events.compactMap { event -> Double? in
+            if case .downloading(let fraction) = event { fraction } else { nil }
+        }
+        // Downloading comes first and only ever moves forward, within 0...1.
+        #expect(!fractions.isEmpty)
+        #expect(fractions == fractions.sorted())
+        #expect(fractions.allSatisfy { (0...1).contains($0) })
+        // Then verifying, then unpacking, once each and in that order.
+        #expect(Array(events.dropFirst(fractions.count)) == [.verifying, .unpacking])
     }
 
     @Test func hashesFilesTheSameWayAsHashingTheirData() throws {
