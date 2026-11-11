@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		B10000000000000000000005 /* SwiftTreeSitter in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000003 /* SwiftTreeSitter */; };
+		B10000000000000000000006 /* TreeSitterC in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000004 /* TreeSitterC */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		A10000000000000000000010 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -39,6 +44,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B10000000000000000000005 /* SwiftTreeSitter in Frameworks */,
+				B10000000000000000000006 /* TreeSitterC in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -90,6 +97,8 @@
 			);
 			name = uMeil;
 			packageProductDependencies = (
+				B10000000000000000000003 /* SwiftTreeSitter */,
+				B10000000000000000000004 /* TreeSitterC */,
 			);
 			productName = uMeil;
 			productReference = A10000000000000000000006 /* uMeil.app */;
@@ -146,6 +155,10 @@
 			);
 			mainGroup = A10000000000000000000002;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				B10000000000000000000001 /* XCRemoteSwiftPackageReference "swift-tree-sitter" */,
+				B10000000000000000000002 /* XCRemoteSwiftPackageReference "tree-sitter-c" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A10000000000000000000003 /* Products */;
 			projectDirPath = "";
@@ -347,6 +360,38 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B10000000000000000000001 /* XCRemoteSwiftPackageReference "swift-tree-sitter" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/tree-sitter/swift-tree-sitter";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.25.0;
+			};
+		};
+		B10000000000000000000002 /* XCRemoteSwiftPackageReference "tree-sitter-c" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/tree-sitter/tree-sitter-c";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.24.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B10000000000000000000003 /* SwiftTreeSitter */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B10000000000000000000001 /* XCRemoteSwiftPackageReference "swift-tree-sitter" */;
+			productName = SwiftTreeSitter;
+		};
+		B10000000000000000000004 /* TreeSitterC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B10000000000000000000002 /* XCRemoteSwiftPackageReference "tree-sitter-c" */;
+			productName = TreeSitterC;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A10000000000000000000001 /* Project object */;
 }
