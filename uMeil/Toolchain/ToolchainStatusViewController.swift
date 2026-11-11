@@ -1,6 +1,7 @@
 import AppKit
 
-/// Shows whether each tool uMeil needs is installed, with its version and location.
+/// Shows whether each tool uMeil needs is installed, with its version and
+/// location, and offers to download the ones that are missing.
 final class ToolchainStatusViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     private enum Column: String, CaseIterable {
         case name, state, version, location
@@ -33,15 +34,29 @@ final class ToolchainStatusViewController: NSViewController, NSTableViewDataSour
         }
     }
 
-    private let checker: ToolchainChecker
+    /// Builds a fresh checker for every check, because installing a
+    /// toolchain adds a new folder to the list of places to search.
+    private let makeChecker: () -> ToolchainChecker
+    private let installer: ToolchainInstaller
+    private var statuses: [Tool: ToolStatus] = [:]
     private var rows: [ToolStatusRow] = ToolStatusRow.rows(for: [:])
 
     private let tableView = NSTableView()
+    private let spinner = NSProgressIndicator()
     private let summaryLabel = NSTextField(labelWithString: "Checking tools…")
     private lazy var checkButton = NSButton(title: "Check Again", target: self, action: #selector(checkAgain(_:)))
+    private lazy var installButton = NSButton(
+        title: "Install Missing Tools",
+        target: self,
+        action: #selector(installMissingTools(_:))
+    )
 
-    init(checker: ToolchainChecker = ToolchainChecker(locator: .standard())) {
-        self.checker = checker
+    init(
+        makeChecker: @escaping () -> ToolchainChecker = { ToolchainChecker(locator: .standard()) },
+        installer: ToolchainInstaller = ToolchainInstaller()
+    ) {
+        self.makeChecker = makeChecker
+        self.installer = installer
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -72,7 +87,14 @@ final class ToolchainStatusViewController: NSViewController, NSTableViewDataSour
         summaryLabel.lineBreakMode = .byTruncatingTail
         summaryLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let bottomBar = NSStackView(views: [summaryLabel, NSView(), checkButton])
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isDisplayedWhenStopped = false
+
+        installButton.isHidden = true
+        installButton.keyEquivalent = "\r"
+
+        let bottomBar = NSStackView(views: [spinner, summaryLabel, NSView(), checkButton, installButton])
         bottomBar.orientation = .horizontal
         bottomBar.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
 
@@ -91,17 +113,59 @@ final class ToolchainStatusViewController: NSViewController, NSTableViewDataSour
         refresh()
     }
 
+    /// Downloads and installs the packages for every tool that is not working.
+    @objc private func installMissingTools(_ sender: Any?) {
+        let needed = ToolchainCatalog.entriesNeeded(for: statuses)
+        guard !needed.isEmpty else { return }
+        setBusy(true)
+
+        Task {
+            do {
+                for entry in needed {
+                    summaryLabel.stringValue = "Downloading and installing \(entry.displayNameWithSize)…"
+                    try await installer.install(entry.package)
+                }
+            } catch {
+                presentInstallError(error)
+            }
+            refresh()
+        }
+    }
+
     /// Looks for every tool again and updates the table when done.
     private func refresh() {
-        checkButton.isEnabled = false
+        setBusy(true)
         summaryLabel.stringValue = "Checking tools…"
 
         Task {
-            let statuses = await checker.checkAll()
+            statuses = await makeChecker().checkAll()
             rows = ToolStatusRow.rows(for: statuses)
             summaryLabel.stringValue = ToolStatusRow.summary(for: statuses)
-            checkButton.isEnabled = true
+            installButton.isHidden = ToolchainCatalog.entriesNeeded(for: statuses).isEmpty
             tableView.reloadData()
+            setBusy(false)
+        }
+    }
+
+    private func setBusy(_ busy: Bool) {
+        checkButton.isEnabled = !busy
+        installButton.isEnabled = !busy
+        if busy {
+            spinner.startAnimation(nil)
+        } else {
+            spinner.stopAnimation(nil)
+        }
+    }
+
+    private func presentInstallError(_ error: Error) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "The tools could not be installed"
+        alert.informativeText = error.localizedDescription
+        if let window = view.window {
+            alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
         }
     }
 
