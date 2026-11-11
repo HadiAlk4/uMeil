@@ -33,6 +33,13 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
     /// file is not mistaken for the user editing it.
     private var isLoading = false
 
+    /// `nil` if the C grammar failed to load; the editor then shows plain text.
+    private let highlighter = try? CSyntaxHighlighter()
+    private var highlights = HighlightMap.empty
+    private var highlightTask: Task<Void, Never>?
+    /// Counts edits, so that highlights computed for older text are dropped.
+    private var textVersion = 0
+
     init() {
         textView = Self.makeTextView()
         super.init(nibName: nil, bundle: nil)
@@ -114,6 +121,14 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
             name: NSView.boundsDidChangeNotification,
             object: scrollView.contentView
         )
+        // Making the window bigger also brings new lines into view.
+        scrollView.contentView.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(editorDidScroll(_:)),
+            name: NSView.frameDidChangeNotification,
+            object: scrollView.contentView
+        )
 
         placeholderLabel.font = .preferredFont(forTextStyle: .title3)
         placeholderLabel.textColor = .secondaryLabelColor
@@ -140,6 +155,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
 
     @objc private func editorDidScroll(_ notification: Notification) {
         ruler?.needsDisplay = true
+        applyVisibleHighlights()
     }
 
     // MARK: - Opening and saving
@@ -167,6 +183,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         ruler?.lineIndex = LineIndex(loaded.text)
         scrollView.isHidden = false
         placeholder.isHidden = true
+        scheduleHighlighting(delay: .zero)
     }
 
     /// Writes the editor's text to the file it was opened from.
@@ -190,6 +207,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         isModified = false
         ruler?.lineIndex = LineIndex("")
         showPlaceholder(hasFolder: hasFolder)
+        scheduleHighlighting(delay: .zero)
     }
 
     private func showPlaceholder(hasFolder: Bool) {
@@ -205,5 +223,63 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         guard !isLoading else { return }
         ruler?.lineIndex = LineIndex(textView.string)
         isModified = true
+        // Wait for a short pause in typing before parsing again.
+        scheduleHighlighting(delay: .milliseconds(40))
+    }
+
+    // MARK: - Syntax highlighting
+
+    /// Starts highlighting the current text in the background, replacing any
+    /// run that is still in progress.
+    private func scheduleHighlighting(delay: Duration) {
+        textVersion += 1
+        highlightTask?.cancel()
+        highlightTask = Task { [weak self] in
+            if delay > .zero {
+                try? await Task.sleep(for: delay)
+            }
+            guard !Task.isCancelled else { return }
+            await self?.rehighlight()
+        }
+    }
+
+    /// Parses the current text and colors it. The parsing happens off the
+    /// main thread; if the text changes meanwhile, the result is dropped.
+    func rehighlight() async {
+        let version = textVersion
+        var tokens: [HighlightToken] = []
+        if let highlighter, let url = document?.url, SourceLanguage(url: url) == .c {
+            tokens = await highlighter.tokens(in: textView.string)
+        }
+        guard version == textVersion else { return }
+
+        highlights = HighlightMap(tokens: tokens)
+        applyVisibleHighlights()
+    }
+
+    /// Colors the part of the text that is on screen. Colors are "temporary
+    /// attributes": they change how text is drawn without touching the text
+    /// itself, so they do not affect undo or cause the text to be laid out again.
+    private func applyVisibleHighlights() {
+        guard let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer,
+              let length = textView.textStorage?.length
+        else { return }
+
+        let glyphs = layoutManager.glyphRange(forBoundingRect: textView.visibleRect, in: textContainer)
+        let visible = layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+        guard visible.length > 0 else { return }
+
+        layoutManager.removeTemporaryAttribute(.foregroundColor, forCharacterRange: visible)
+        for token in highlights.tokens(intersecting: visible) {
+            // Tokens can be briefly out of date after an edit; stay in bounds.
+            let range = NSIntersectionRange(token.range, NSRange(location: 0, length: length))
+            guard range.length > 0 else { continue }
+            layoutManager.addTemporaryAttribute(
+                .foregroundColor,
+                value: EditorTheme.color(for: token.kind),
+                forCharacterRange: range
+            )
+        }
     }
 }
