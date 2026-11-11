@@ -60,29 +60,8 @@ struct BuildPlan: Equatable, Sendable {
         binary = "\(build)/\(outputName).bin"
         map = "\(build)/\(outputName).map"
 
-        let chip = project.target.chip
-        let settings = project.build
-
-        var common = chip.cpuFlags
-        common += [
-            "-std=\(settings.cStandard)",
-            "-\(settings.optimization.rawValue)",
-            "-g",
-            // One section per function and variable, so the linker can drop unused ones.
-            "-ffunction-sections",
-            "-fdata-sections",
-            // Color codes would end up in the parsed messages.
-            "-fdiagnostics-color=never"
-        ]
-        common += (chip.defines + settings.defines).map { "-D\($0)" }
-        common += project.includePaths.map { "-I\($0)" }
-        if settings.useDriverLib {
-            let headers = TivaWare.includeDirectory(in: environment.tivaWareDirectory)
-            common.append("-I\(headers.path(percentEncoded: false))")
-        }
-        common += settings.compilerFlags
-
-        compileSteps = project.sources.map { source in
+        let common = Self.commonCompileArguments(for: project, environment: environment)
+        let steps = project.sources.map { source in
             let object = "\(build)/obj/\(Self.objectName(for: source))"
             let dependencyFile = object + ".d"
             return CompileStep(
@@ -93,8 +72,9 @@ struct BuildPlan: Equatable, Sendable {
                 arguments: common + ["-MMD", "-MP", "-MF", dependencyFile, "-c", source, "-o", object]
             )
         }
+        compileSteps = steps
 
-        var link = chip.cpuFlags
+        var link = project.target.chip.cpuFlags
         link += [
             // The project supplies its own startup code and vector table.
             "-nostartfiles",
@@ -103,19 +83,45 @@ struct BuildPlan: Equatable, Sendable {
             "--specs=nosys.specs",
             "-Wl,--gc-sections",
             "-Wl,-Map=\(map)",
-            "-T", settings.linkerScript
+            "-T", project.build.linkerScript
         ]
-        link += compileSteps.map(\.object)
-        if settings.useDriverLib {
+        link += steps.map(\.object)
+        if project.build.useDriverLib {
             link.append(TivaWare.library(in: environment.tivaWareDirectory).path(percentEncoded: false))
         }
         // Last, so the project can add libraries such as -lm after its objects.
-        link += settings.linkerFlags
+        link += project.build.linkerFlags
         link += ["-o", elf]
         linkArguments = link
 
         objcopyArguments = ["-O", "binary", elf, binary]
         sizeArguments = [elf]
+    }
+
+    /// The compiler arguments every source in the project shares.
+    private static func commonCompileArguments(for project: Project, environment: BuildEnvironment) -> [String] {
+        let chip = project.target.chip
+        let settings = project.build
+
+        var arguments = chip.cpuFlags
+        arguments += [
+            "-std=\(settings.cStandard)",
+            "-\(settings.optimization.rawValue)",
+            "-g",
+            // One section per function and variable, so the linker can drop unused ones.
+            "-ffunction-sections",
+            "-fdata-sections",
+            // Color codes would end up in the parsed messages.
+            "-fdiagnostics-color=never"
+        ]
+        arguments += (chip.defines + settings.defines).map { "-D\($0)" }
+        arguments += project.includePaths.map { "-I\($0)" }
+        if settings.useDriverLib {
+            let headers = TivaWare.includeDirectory(in: environment.tivaWareDirectory)
+            arguments.append("-I\(headers.path(percentEncoded: false))")
+        }
+        arguments += settings.compilerFlags
+        return arguments
     }
 
     /// Files other than objects that the link depends on, relative to the

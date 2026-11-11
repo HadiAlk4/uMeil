@@ -11,35 +11,36 @@ struct DiagnosticParserTests {
         project.appending(path: path).standardizedFileURL
     }
 
-    @Test func parsesCompilerErrorsWarningsAndNotes() {
-        let output = """
-        In file included from src/bad.c:2:
-        src/util.h: In function 'helper':
-        src/util.h:1:48: error: expected ';' before '}' token
-            1 | static int helper(int a) { int unused; return a }
-              |                                                ^~
-              |                                                ;
-        src/util.h:1:32: warning: unused variable 'unused' [-Wunused-variable]
-            1 | static int helper(int a) { int unused; return a }
-              |                                ^~~~~~
-        src/bad.c: In function 'main':
-        src/bad.c:5:5: error: 'x' undeclared (first use in this function)
-            5 |     x = 5;
-              |     ^
-        src/bad.c:5:5: note: each undeclared identifier is reported only once for each function it appears in
-        src/bad.c:6:12: error: implicit declaration of function 'undefined_fn' [-Wimplicit-function-declaration]
-            6 |     return undefined_fn(3);
-              |            ^~~~~~~~~~~~
-        src/bad.c:4:9: warning: unused variable 'y' [-Wunused-variable]
-            4 |     int y;
-              |         ^
-        src/util.h: At top level:
-        src/util.h:1:12: warning: 'helper' defined but not used [-Wunused-function]
-            1 | static int helper(int a) { int unused; return a }
-              |            ^~~~~~
-        """
+    /// Compiling a file with several mistakes, including one in a header.
+    private let compilerOutput = """
+    In file included from src/bad.c:2:
+    src/util.h: In function 'helper':
+    src/util.h:1:48: error: expected ';' before '}' token
+        1 | static int helper(int a) { int unused; return a }
+          |                                                ^~
+          |                                                ;
+    src/util.h:1:32: warning: unused variable 'unused' [-Wunused-variable]
+        1 | static int helper(int a) { int unused; return a }
+          |                                ^~~~~~
+    src/bad.c: In function 'main':
+    src/bad.c:5:5: error: 'x' undeclared (first use in this function)
+        5 |     x = 5;
+          |     ^
+    src/bad.c:5:5: note: each undeclared identifier is reported only once for each function it appears in
+    src/bad.c:6:12: error: implicit declaration of function 'undefined_fn' [-Wimplicit-function-declaration]
+        6 |     return undefined_fn(3);
+          |            ^~~~~~~~~~~~
+    src/bad.c:4:9: warning: unused variable 'y' [-Wunused-variable]
+        4 |     int y;
+          |         ^
+    src/util.h: At top level:
+    src/util.h:1:12: warning: 'helper' defined but not used [-Wunused-function]
+        1 | static int helper(int a) { int unused; return a }
+          |            ^~~~~~
+    """
 
-        let diagnostics = DiagnosticParser.parse(output, workingDirectory: project)
+    @Test func parsesCompilerErrorsWarningsAndNotes() {
+        let diagnostics = DiagnosticParser.parse(compilerOutput, workingDirectory: project)
 
         #expect(diagnostics == [
             Diagnostic(
