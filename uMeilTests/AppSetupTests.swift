@@ -29,7 +29,8 @@ struct AppSetupTests {
     @Test func mainWindowIsConfigured() throws {
         let controller = MainWindowController()
         let window = try #require(controller.window)
-        #expect(window.title == "uMeil")
+        #expect(window.title == "uMeil for the Tiva TM4C129")
+        #expect(window.contentViewController is ToolchainStatusViewController)
         #expect(window.styleMask.contains(.resizable))
     }
 }

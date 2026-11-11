@@ -18,7 +18,14 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
+      - name: Install the embedded toolchain
+        run: brew install arm-none-eabi-gcc arm-none-eabi-gdb open-ocd
+
       - name: Build and run tests
+        env:
+          # xcodebuild passes TEST_RUNNER_* variables to the tests with the
+          # prefix removed. This makes a missing tool fail instead of skip.
+          TEST_RUNNER_UMEIL_REQUIRE_TOOLS: "1"
         run: |
           set -o pipefail
           xcodebuild test \
