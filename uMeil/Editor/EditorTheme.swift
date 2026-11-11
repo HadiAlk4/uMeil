@@ -17,6 +17,21 @@ enum EditorTheme {
         return style
     }()
 
+    /// The color for each kind of highlighted code. These are system colors,
+    /// so they adapt to light and dark mode on their own.
+    static func color(for kind: HighlightKind) -> NSColor {
+        switch kind {
+        case .keyword: .systemPink
+        case .preprocessor: .systemOrange
+        case .type: .systemTeal
+        case .string: .systemRed
+        case .number: .systemPurple
+        case .constant: .systemIndigo
+        case .function: .systemBlue
+        case .comment: .secondaryLabelColor
+        }
+    }
+
     /// The attributes plain (unhighlighted) code is drawn with.
     static var textAttributes: [NSAttributedString.Key: Any] {
         [
