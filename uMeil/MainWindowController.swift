@@ -1,10 +1,27 @@
 import AppKit
 
-/// The main IDE window: a file navigator on the left and the code editor on
-/// the right. Debugger views arrive in later milestones.
+/// The main IDE window: a file navigator on the left, the code editor on the
+/// right, and the build issues under the editor. Debugger views arrive in
+/// later milestones.
 final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation {
     let navigator = FileNavigatorViewController()
     let editor = EditorViewController()
+    let issues = IssuesViewController()
+
+    /// Runs builds. Replaceable so tests can build without a real compiler.
+    var buildEngine = BuildEngine()
+    /// Finds the compiler. Looked up for each build, since a toolchain may
+    /// have been installed since the last one.
+    var makeToolLocator: () -> ToolLocator = { .standard() }
+
+    /// The outcome of the most recent build of the open folder.
+    private(set) var lastBuild: BuildResult?
+    private var isBuilding = false
+    private let issuesItem: NSSplitViewItem
+
+    /// Whether the issues panel under the editor is showing.
+    var isIssuesPanelVisible: Bool { !issuesItem.isCollapsed }
+    private let editorSplit = NSSplitViewController()
 
     /// The folder open in the navigator, or `nil` before one is chosen.
     private(set) var folder: URL?
@@ -21,7 +38,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         sidebar.minimumThickness = 180
         sidebar.maximumThickness = 420
         split.addSplitViewItem(sidebar)
-        split.addSplitViewItem(NSSplitViewItem(viewController: editor))
+
+        // The issues panel sits under the editor and stays hidden until the first build.
+        editorSplit.splitView.isVertical = false
+        editorSplit.addSplitViewItem(NSSplitViewItem(viewController: editor))
+        issuesItem = NSSplitViewItem(viewController: issues)
+        issuesItem.canCollapse = true
+        issuesItem.minimumThickness = 130
+        issuesItem.isCollapsed = true
+        editorSplit.addSplitViewItem(issuesItem)
+        split.addSplitViewItem(NSSplitViewItem(viewController: editorSplit))
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1100, height: 700),
@@ -40,6 +66,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
 
         navigator.onSelectFile = { [weak self] url in self?.userSelectedFile(url) }
         editor.onModifiedChanged = { [weak self] _ in self?.updateTitle() }
+        issues.onSelect = { [weak self] diagnostic in self?.show(diagnostic) }
         updateTitle()
     }
 
@@ -53,6 +80,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     /// Shows `url` in the navigator and closes whatever file was open.
     func openFolder(_ url: URL) {
         folder = url
+        lastBuild = nil
         navigator.showFolder(url)
         editor.close(hasFolder: true)
         defaults.set(url.path(percentEncoded: false), forKey: Self.lastFolderDefaultsKey)
@@ -82,6 +110,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         do {
             try editor.open(url)
             navigator.select(url)
+            refreshMarkers()
         } catch {
             navigator.select(editor.document?.url)
             presentError(error)
@@ -120,7 +149,109 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         if menuItem.action == #selector(saveDocument(_:)) {
             return editor.document != nil
         }
+        if menuItem.action == #selector(buildProject(_:)) {
+            return folder != nil && !isBuilding
+        }
         return true
+    }
+
+    // MARK: - New projects
+
+    /// File > New Project…
+    @objc func newProject(_ sender: Any?) {
+        guard confirmDiscardingChanges() else { return }
+
+        let panel = NSSavePanel()
+        panel.title = "New Project"
+        panel.message = "Choose a name and location for a new Blinky project"
+        panel.nameFieldLabel = "Project Name:"
+        panel.nameFieldStringValue = "Blinky"
+        panel.prompt = "Create"
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            try createProject(named: url.lastPathComponent, in: url.deletingLastPathComponent())
+        } catch {
+            presentError(error)
+        }
+    }
+
+    /// Creates a project from the Blinky template in `parent/name`, opens
+    /// its folder, and shows its main source file.
+    func createProject(named name: String, in parent: URL) throws {
+        guard let template = try ProjectTemplate.all().first else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        let projectFile = try template.createProject(named: name, in: parent)
+        let projectFolder = projectFile.deletingLastPathComponent()
+        openFolder(projectFolder)
+
+        let project = try ProjectFile.load(from: projectFile)
+        if let main = project.sources.first {
+            openFile(projectFolder.appending(path: main))
+        }
+    }
+
+    // MARK: - Building
+
+    /// Product > Build
+    @objc func buildProject(_ sender: Any?) {
+        Task { await build() }
+    }
+
+    /// Saves the open file, builds the project in the open folder, and shows
+    /// the outcome in the issues panel and the editor's gutter.
+    @discardableResult
+    func build() async -> BuildResult? {
+        guard !isBuilding, let folder else { return nil }
+        if editor.isModified, !save() {
+            return nil
+        }
+        issuesItem.isCollapsed = false
+
+        guard let projectFile = BuildSummary.projectFile(in: folder) else {
+            issues.show(failure: "This folder has no uMeil project file (.umeil) to build.")
+            return nil
+        }
+
+        isBuilding = true
+        defer { isBuilding = false }
+        issues.showBuilding()
+
+        do {
+            let plan = try BuildEngine.plan(forProjectFile: projectFile, locator: makeToolLocator())
+            let result = try await buildEngine.build(plan)
+            lastBuild = result
+            issues.show(result)
+            refreshMarkers()
+            return result
+        } catch {
+            lastBuild = nil
+            issues.show(failure: error.localizedDescription)
+            refreshMarkers()
+            return nil
+        }
+    }
+
+    /// Flags the lines of the open file that the last build complained about.
+    private func refreshMarkers() {
+        guard let file = editor.document?.url else { return }
+        editor.setMarkers(BuildSummary.markers(for: file, in: lastBuild?.diagnostics ?? []))
+    }
+
+    /// Takes the editor to the place a build message points at.
+    private func show(_ diagnostic: Diagnostic) {
+        guard let file = diagnostic.file else { return }
+
+        let isOpen = editor.document?.url.resolvingSymlinksInPath() == file.resolvingSymlinksInPath()
+        if !isOpen {
+            guard confirmDiscardingChanges() else { return }
+            openFile(file)
+        }
+        if let line = diagnostic.line {
+            editor.goTo(line: line, column: diagnostic.column)
+        }
     }
 
     // MARK: - Unsaved changes

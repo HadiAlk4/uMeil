@@ -8,6 +8,7 @@ enum MainMenu {
         mainMenu.addItem(submenuItem(appMenu(appName: appName)))
         mainMenu.addItem(submenuItem(fileMenu()))
         mainMenu.addItem(submenuItem(editMenu()))
+        mainMenu.addItem(submenuItem(productMenu()))
 
         let window = windowMenu()
         mainMenu.addItem(submenuItem(window))
@@ -51,6 +52,12 @@ enum MainMenu {
 
     private static func fileMenu() -> NSMenu {
         let menu = NSMenu(title: "File")
+        let newProject = menu.addItem(
+            withTitle: "New Project…",
+            action: #selector(MainWindowController.newProject(_:)),
+            keyEquivalent: "n"
+        )
+        newProject.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(
             withTitle: "Open Folder…",
             action: #selector(MainWindowController.chooseFolder(_:)),
@@ -58,6 +65,12 @@ enum MainMenu {
         )
         menu.addItem(.separator())
         menu.addItem(withTitle: "Save", action: #selector(MainWindowController.saveDocument(_:)), keyEquivalent: "s")
+        return menu
+    }
+
+    private static func productMenu() -> NSMenu {
+        let menu = NSMenu(title: "Product")
+        menu.addItem(withTitle: "Build", action: #selector(MainWindowController.buildProject(_:)), keyEquivalent: "b")
         return menu
     }
 
