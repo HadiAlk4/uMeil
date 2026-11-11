@@ -18,8 +18,12 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
+      # Arm's official toolchain, not Homebrew's arm-none-eabi-gcc formula:
+      # the formula has no C library, so it cannot link firmware.
       - name: Install the embedded toolchain
-        run: brew install arm-none-eabi-gcc arm-none-eabi-gdb open-ocd
+        run: |
+          brew install --cask gcc-arm-embedded
+          brew install open-ocd
 
       - name: Build and run tests
         env:
