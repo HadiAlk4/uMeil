@@ -15,7 +15,7 @@ struct AppSetupTests {
     @Test func mainMenuHasTheStandardMenus() {
         let menu = MainMenu.make(appName: "uMeil")
         let titles = menu.items.compactMap { $0.submenu?.title }
-        #expect(titles == ["uMeil", "Edit", "Window"])
+        #expect(titles == ["uMeil", "File", "Edit", "Window"])
     }
 
     @Test func appMenuCanQuit() throws {
@@ -26,11 +26,28 @@ struct AppSetupTests {
         #expect(quit.action == #selector(NSApplication.terminate(_:)))
     }
 
-    @Test func mainWindowIsConfigured() throws {
+    @Test func mainWindowHasANavigatorAndAnEditor() throws {
         let controller = MainWindowController()
         let window = try #require(controller.window)
-        #expect(window.title == "uMeil for the Tiva TM4C129")
-        #expect(window.contentViewController is ToolchainStatusViewController)
+        let split = try #require(window.contentViewController as? NSSplitViewController)
+
+        #expect(window.title == "uMeil")
         #expect(window.styleMask.contains(.resizable))
+        #expect(split.splitViewItems.map(\.viewController) == [controller.navigator, controller.editor])
+    }
+
+    @Test func findMenuDrivesTheFindBar() throws {
+        let menu = MainMenu.make(appName: "uMeil")
+        let edit = try #require(menu.items.first { $0.submenu?.title == "Edit" }?.submenu)
+        let find = try #require(edit.items.first { $0.title == "Find" }?.submenu)
+
+        #expect(find.items.map(\.tag) == [
+            NSTextFinder.Action.showFindInterface.rawValue,
+            NSTextFinder.Action.showReplaceInterface.rawValue,
+            NSTextFinder.Action.nextMatch.rawValue,
+            NSTextFinder.Action.previousMatch.rawValue,
+            NSTextFinder.Action.setSearchString.rawValue
+        ])
+        #expect(find.items.allSatisfy { $0.action == #selector(NSResponder.performTextFinderAction(_:)) })
     }
 }

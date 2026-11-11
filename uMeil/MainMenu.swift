@@ -6,6 +6,7 @@ enum MainMenu {
     static func make(appName: String) -> NSMenu {
         let mainMenu = NSMenu()
         mainMenu.addItem(submenuItem(appMenu(appName: appName)))
+        mainMenu.addItem(submenuItem(fileMenu()))
         mainMenu.addItem(submenuItem(editMenu()))
 
         let window = windowMenu()
@@ -48,6 +49,41 @@ enum MainMenu {
         return menu
     }
 
+    private static func fileMenu() -> NSMenu {
+        let menu = NSMenu(title: "File")
+        menu.addItem(
+            withTitle: "Open Folder…",
+            action: #selector(MainWindowController.chooseFolder(_:)),
+            keyEquivalent: "o"
+        )
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Save", action: #selector(MainWindowController.saveDocument(_:)), keyEquivalent: "s")
+        return menu
+    }
+
+    /// Edit > Find. The items drive the text view's built-in find bar; the
+    /// tag on each item says which find action it performs.
+    private static func findMenu() -> NSMenu {
+        let menu = NSMenu(title: "Find")
+        let items: [(String, NSTextFinder.Action, String, NSEvent.ModifierFlags)] = [
+            ("Find…", .showFindInterface, "f", [.command]),
+            ("Find and Replace…", .showReplaceInterface, "f", [.command, .option]),
+            ("Find Next", .nextMatch, "g", [.command]),
+            ("Find Previous", .previousMatch, "g", [.command, .shift]),
+            ("Use Selection for Find", .setSearchString, "e", [.command])
+        ]
+        for (title, action, key, modifiers) in items {
+            let item = menu.addItem(
+                withTitle: title,
+                action: #selector(NSResponder.performTextFinderAction(_:)),
+                keyEquivalent: key
+            )
+            item.keyEquivalentModifierMask = modifiers
+            item.tag = action.rawValue
+        }
+        return menu
+    }
+
     private static func editMenu() -> NSMenu {
         let menu = NSMenu(title: "Edit")
         menu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
@@ -60,6 +96,10 @@ enum MainMenu {
         menu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         menu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         menu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        menu.addItem(.separator())
+
+        let find = menu.addItem(withTitle: "Find", action: nil, keyEquivalent: "")
+        find.submenu = findMenu()
         return menu
     }
 
@@ -67,6 +107,12 @@ enum MainMenu {
         let menu = NSMenu(title: "Window")
         menu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         menu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(
+            withTitle: "Toolchain Status",
+            action: #selector(AppDelegate.showToolchainStatus(_:)),
+            keyEquivalent: ""
+        )
         menu.addItem(.separator())
         menu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         return menu
