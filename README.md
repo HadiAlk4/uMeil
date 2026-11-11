@@ -32,7 +32,7 @@ Code style is checked with [SwiftLint](https://github.com/realm/SwiftLint) (`bre
 | Area | What we use |
 |---|---|
 | App | Swift + AppKit (`NSTextView`, `NSOutlineView`, `NSTableView`), with SwiftUI only for settings and simple panels. Xcode, Apple Silicon only |
-| Compiler | [Arm GNU Toolchain](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) (`arm-none-eabi-gcc`, `-mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard`), trimmed to the Cortex-M4 hard-float libraries. Downloaded on first launch, or the user's own install |
+| Compiler | [Arm GNU Toolchain](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) (`arm-none-eabi-gcc`, `-mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard`). Arm's official archive, downloaded on first launch, or the user's own install |
 | Build system | Built into the app: it runs `arm-none-eabi-gcc` directly and uses `-MMD` dependency files for incremental builds. No Make, CMake, or Ninja |
 | Chip support | A trimmed TI TivaWare: TM4C129 headers, a prebuilt `driverlib`, startup code, and linker script only |
 | Flashing | OpenOCD (`ti_icdi` adapter) |
@@ -57,7 +57,7 @@ Set up the Xcode project, folder layout, CI, and coding conventions.
 
 ### M1: Toolchain manager
 
-Find, download, and check the compiler and tools (`arm-none-eabi-gcc`, `gdb`, OpenOCD). Tools are not bundled in the app: uMeil uses ones the user already installed (for example, through Homebrew), or downloads a trimmed toolchain on first launch that contains only the Cortex-M4 hard-float libraries.
+Find, download, and check the compiler and tools (`arm-none-eabi-gcc`, `gdb`, OpenOCD). Tools are not bundled in the app: uMeil uses ones the user already installed (for example, through Homebrew), or downloads the official Apple Silicon archives on first launch: Arm's full GNU toolchain (about 142 MB to download, 1 GB on disk) and xPack OpenOCD. Each download is pinned to an exact version and SHA-256. Trimming the toolchain down to the Cortex-M4 hard-float libraries is a possible later optimisation.
 
 - **What we use:** Swift `Process` to run tools, `URLSession` for downloads, SHA-256 checks with CryptoKit, Apple Silicon builds of each tool.
 - **How we test it:**
