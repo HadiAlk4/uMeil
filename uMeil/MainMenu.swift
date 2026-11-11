@@ -65,21 +65,32 @@ enum MainMenu {
     /// tag on each item says which find action it performs.
     private static func findMenu() -> NSMenu {
         let menu = NSMenu(title: "Find")
-        let items: [(String, NSTextFinder.Action, String, NSEvent.ModifierFlags)] = [
-            ("Find…", .showFindInterface, "f", [.command]),
-            ("Find and Replace…", .showReplaceInterface, "f", [.command, .option]),
-            ("Find Next", .nextMatch, "g", [.command]),
-            ("Find Previous", .previousMatch, "g", [.command, .shift]),
-            ("Use Selection for Find", .setSearchString, "e", [.command])
+        struct FindItem {
+            let title: String
+            let action: NSTextFinder.Action
+            let key: String
+            let modifiers: NSEvent.ModifierFlags
+        }
+        let items = [
+            FindItem(title: "Find…", action: .showFindInterface, key: "f", modifiers: [.command]),
+            FindItem(
+                title: "Find and Replace…",
+                action: .showReplaceInterface,
+                key: "f",
+                modifiers: [.command, .option]
+            ),
+            FindItem(title: "Find Next", action: .nextMatch, key: "g", modifiers: [.command]),
+            FindItem(title: "Find Previous", action: .previousMatch, key: "g", modifiers: [.command, .shift]),
+            FindItem(title: "Use Selection for Find", action: .setSearchString, key: "e", modifiers: [.command])
         ]
-        for (title, action, key, modifiers) in items {
+        for findItem in items {
             let item = menu.addItem(
-                withTitle: title,
+                withTitle: findItem.title,
                 action: #selector(NSResponder.performTextFinderAction(_:)),
-                keyEquivalent: key
+                keyEquivalent: findItem.key
             )
-            item.keyEquivalentModifierMask = modifiers
-            item.tag = action.rawValue
+            item.keyEquivalentModifierMask = findItem.modifiers
+            item.tag = findItem.action.rawValue
         }
         return menu
     }
