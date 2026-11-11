@@ -54,8 +54,16 @@ struct ProcessRunner: ProcessRunning {
 
         return ProcessOutput(
             exitCode: process.terminationStatus,
-            standardOutput: String(decoding: outputData, as: UTF8.self),
-            standardError: String(decoding: errorData.withLock { $0 }, as: UTF8.self)
+            standardOutput: text(from: outputData),
+            standardError: text(from: errorData.withLock { $0 })
         )
+    }
+
+    /// Decodes tool output as UTF-8, replacing any invalid bytes. A failable
+    /// conversion would throw away the whole output over one bad byte, which
+    /// is worse for compiler messages that may quote arbitrary source text.
+    private static func text(from data: Data) -> String {
+        // swiftlint:disable:next optional_data_string_conversion
+        String(decoding: data, as: UTF8.self)
     }
 }
