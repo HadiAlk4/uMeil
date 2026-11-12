@@ -71,6 +71,13 @@ enum MainMenu {
     private static func productMenu() -> NSMenu {
         let menu = NSMenu(title: "Product")
         menu.addItem(withTitle: "Build", action: #selector(MainWindowController.buildProject(_:)), keyEquivalent: "b")
+        menu.addItem(
+            withTitle: "Build and Flash",
+            action: #selector(MainWindowController.flashProject(_:)),
+            keyEquivalent: "r"
+        )
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Stop", action: #selector(MainWindowController.stopFlashing(_:)), keyEquivalent: ".")
         return menu
     }
 
