@@ -84,6 +84,7 @@ actor ClangdSession {
         pendingChanges[normalized] = nil
 
         if openDocuments.contains(normalized) {
+            if lastSyncedText[normalized] == text { return }
             try? await client.didClose(url: normalized)
         }
         let version = 1
@@ -155,20 +156,21 @@ actor ClangdSession {
         if let client { return client }
         if let startTask { return try await startTask.value }
 
-        let task = Task { [clangdExecutable, workspaceDirectory, compileCommandsDirectory, onDiagnostics] in
+        let forwarder: @Sendable (LSPPublishDiagnosticsParams) async -> Void = { [weak self] params in
+            // TivaWare headers require main.c to include <stdint.h> and <stdbool.h>
+            // before driverlib/*.h; clangd's unused-includes check flags them as unused
+            // even though removing them breaks GCC compilation.
+            var filtered = params
+            filtered.diagnostics.removeAll { $0.code == "unused-includes" }
+            await self?.forwardDiagnostics(filtered)
+        }
+        let task = Task { [clangdExecutable, workspaceDirectory, compileCommandsDirectory, forwarder] in
             let transport = try ProcessLSPTransport(
                 executable: clangdExecutable,
                 arguments: Self.launchArguments(compileCommandsDirectory: compileCommandsDirectory),
                 currentDirectory: workspaceDirectory
             )
-            let client = LSPClient(transport: transport) { params in
-                // TivaWare headers require main.c to include <stdint.h> and <stdbool.h>
-                // before driverlib/*.h; clangd's unused-includes check flags them as unused
-                // even though removing them breaks GCC compilation.
-                var filtered = params
-                filtered.diagnostics.removeAll { $0.code == "unused-includes" }
-                await onDiagnostics(filtered)
-            }
+            let client = LSPClient(transport: transport, onDiagnostics: forwarder)
             do {
                 try await client.initialize(rootURL: workspaceDirectory)
                 return client
@@ -216,6 +218,16 @@ actor ClangdSession {
         } else {
             try await client.didChange(url: url, version: pending.version, text: pending.text)
         }
+    }
+
+    private func forwardDiagnostics(_ params: LSPPublishDiagnosticsParams) async {
+        if let url = params.url,
+           let publishedVersion = params.version,
+           let currentVersion = versions[Self.normalize(url)],
+           publishedVersion < currentVersion {
+            return
+        }
+        await onDiagnostics(params)
     }
 
     static func normalize(_ url: URL) -> URL {

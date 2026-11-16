@@ -32,6 +32,10 @@ enum EditorTheme {
         }
     }
 
+    /// Underline colors for live diagnostics reported while typing.
+    static let inlineErrorColor = NSColor.systemRed
+    static let inlineWarningColor = NSColor.systemOrange
+
     /// The attributes plain (unhighlighted) code is drawn with.
     static var textAttributes: [NSAttributedString.Key: Any] {
         [
