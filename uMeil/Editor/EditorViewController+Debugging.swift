@@ -55,6 +55,7 @@ extension EditorViewController {
         showExecutionLine(nil)
         breakpointLines = []
         executableLines = []
+        textView.toolTip = nil
     }
 
     /// While a debug session runs the code must match what is on the chip,
@@ -62,5 +63,51 @@ extension EditorViewController {
     var isReadOnly: Bool {
         get { !textView.isEditable }
         set { textView.isEditable = !newValue }
+    }
+
+    /// Extracts the C identifier at `characterIndex` in the editor's text.
+    func identifier(atCharacterIndex characterIndex: Int) -> String? {
+        let chars = Array(textView.string.utf16)
+        guard chars.indices.contains(characterIndex),
+              Self.isIdentifierChar(chars[characterIndex])
+        else { return nil }
+
+        var start = characterIndex
+        while start > 0 && Self.isIdentifierChar(chars[start - 1]) {
+            start -= 1
+        }
+        guard !Self.isDigitChar(chars[start]) else { return nil }
+
+        var end = characterIndex + 1
+        while end < chars.count && Self.isIdentifierChar(chars[end]) {
+            end += 1
+        }
+        return String(utf16CodeUnits: Array(chars[start..<end]), count: end - start)
+    }
+
+    /// Evaluates the identifier at `characterIndex` and puts `"name = value"`
+    /// in the editor's tooltip.
+    @discardableResult
+    func showHoverValue(atCharacterIndex characterIndex: Int) async -> String? {
+        guard let name = identifier(atCharacterIndex: characterIndex),
+              let value = await onHoverIdentifier?(name)
+        else {
+            textView.toolTip = nil
+            return nil
+        }
+        let tip = "\(name) = \(value)"
+        textView.toolTip = tip
+        return tip
+    }
+
+    private static func isIdentifierChar(_ unit: UInt16) -> Bool {
+        (unit >= 0x41 && unit <= 0x5A)
+            || (unit >= 0x61 && unit <= 0x7A)
+            || (unit >= 0x30 && unit <= 0x39)
+            || unit == 0x5F
+    }
+
+    private static func isDigitChar(_ unit: UInt16) -> Bool {
+        unit >= 0x30 && unit <= 0x39
     }
 }

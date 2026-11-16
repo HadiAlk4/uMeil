@@ -55,7 +55,7 @@ final class DebugController {
     private var inserted: [SourceLine: Breakpoint] = [:]
     /// Lines with code, by file, for the program being debugged.
     private var executableLines: [URL: Set<Int>] = [:]
-    private var session: GDBSession?
+    private(set) var session: GDBSession?
     /// Everything GDB and OpenOCD printed in this session.
     private(set) var log = ""
 

@@ -166,6 +166,7 @@ struct RealDebuggerTests {
         #expect(await controller.startDebugging())
         await waitUntil("the program stops at main") { controller.debugger.isStopped }
 
+        #expect(controller.debugPanels.isDebugLayoutVisible)
         #expect(controller.editor.executionLine == 21)
         #expect(controller.editor.breakpointLines == [28])
         #expect(controller.editor.isReadOnly)
@@ -173,6 +174,11 @@ struct RealDebuggerTests {
         await waitUntil("the lines with code are marked") { !controller.editor.executableLines.isEmpty }
         #expect(controller.editor.executableLines.contains(21))
         #expect(controller.editor.executableLines.contains(28))
+        await waitUntil("the debug panels populate from the board") {
+            !controller.debugPanels.registers.nodes.isEmpty
+                && !controller.debugPanels.disassembly.rows.isEmpty
+        }
+        #expect(controller.debugPanels.callStackLocals.frameNodes.first?.name == "main")
 
         controller.debugStepOver(nil)
         await waitUntil("the program steps to line 22") { controller.editor.executionLine == 22 }
@@ -184,6 +190,7 @@ struct RealDebuggerTests {
 
         await controller.debugger.stop()
         await waitUntil("the session is over") { !controller.debugger.isActive }
+        #expect(!controller.debugPanels.isDebugLayoutVisible)
         #expect(!controller.editor.isReadOnly)
         #expect(controller.editor.executionLine == nil)
         #expect(controller.editor.breakpointLines == [28])

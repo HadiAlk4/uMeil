@@ -26,11 +26,18 @@ enum DebugSummary {
 extension MainWindowController {
     // MARK: - Setup
 
-    /// Connects the debugger to the editor's gutter and the status line.
+    /// Connects the debugger to the editor's gutter, status line, and debug panels.
     func setUpDebugging() {
         editor.onClickGutterLine = { [weak self] line in self?.toggleBreakpoint(atLine: line) }
+        editor.onHoverIdentifier = { [weak self] name in await self?.debugger.evaluate(name) }
         debugger.onStateChange = { [weak self] state in self?.debugStateChanged(state) }
         debugger.onBreakpointsChange = { [weak self] in self?.showBreakpoints() }
+        debugger.onOutput = { [weak self] text in self?.debugPanels.command.appendOutput(text) }
+        debugPanels.callStackLocals.onSelectFrame = { [weak self] frame in self?.showStop(at: frame) }
+        debugPanels.callStackLocals.onDereference = { [weak self] expr in await self?.debugger.evaluate(expr) }
+        debugPanels.watch.onExpressionsChanged = { [weak self] _ in self?.refreshWatchedExpressions() }
+        debugPanels.memory.onRequestAddress = { [weak self] query in self?.inspectMemory(query) }
+        debugPanels.command.onSendCommand = { [weak self] cmd in self?.sendConsoleCommand(cmd) }
     }
 
     // MARK: - Session
@@ -82,6 +89,9 @@ extension MainWindowController {
     }
 
     private func debugStateChanged(_ state: DebugController.State) {
+        if let mainSplit = window?.contentViewController as? NSSplitViewController {
+            debugPanels.setLayoutVisible(state != .idle, mainSplit: mainSplit, editorSplit: editorSplit)
+        }
         // A failed start shows its own message; do not replace it.
         if state != .idle || editor.isReadOnly {
             issues.showDebugging(DebugSummary.statusText(for: state), isBusy: state == .starting)
@@ -92,9 +102,11 @@ extension MainWindowController {
             editor.showExecutionLine(nil)
             editor.executableLines = []
         case .starting, .running:
+            debugPanels.cancelRefresh()
             editor.showExecutionLine(nil)
         case .stopped(let frame):
             showStop(at: frame)
+            debugPanels.scheduleRefresh(using: debugger, at: frame, sourceText: editor.textView.string)
         }
         window?.toolbar?.validateVisibleItems()
     }
@@ -204,11 +216,30 @@ extension MainWindowController {
     /// Runs a debugger action and shows the reason if GDB refuses it, such
     /// as stepping out of `main`.
     private func perform(_ action: @escaping @MainActor (DebugController) async throws -> Void) {
+        debugPanels.cancelRefresh()
         Task {
             do {
                 try await action(debugger)
             } catch {
                 issues.showDebugging(error.localizedDescription)
+            }
+        }
+    }
+
+    private func refreshWatchedExpressions() {
+        Task { await debugPanels.refreshWatches(using: debugger) }
+    }
+
+    private func inspectMemory(_ query: String) {
+        Task { await debugPanels.inspectMemory(query: query, using: debugger) }
+    }
+
+    private func sendConsoleCommand(_ command: String) {
+        Task {
+            do {
+                try await debugger.sendConsoleCommand(command)
+            } catch {
+                debugPanels.command.appendOutput("Error: \(error.localizedDescription)\n")
             }
         }
     }

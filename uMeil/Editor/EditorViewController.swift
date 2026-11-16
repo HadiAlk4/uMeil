@@ -17,6 +17,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
 
     /// Called when `isModified` flips.
     var onModifiedChanged: ((Bool) -> Void)?
+    /// Evaluates a C identifier hovered in the editor while debugging.
+    var onHoverIdentifier: ((String) async -> String?)?
 
     let textView: NSTextView
     private let scrollView = NSScrollView()

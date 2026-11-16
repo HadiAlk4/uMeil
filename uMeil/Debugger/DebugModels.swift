@@ -123,6 +123,49 @@ struct RegisterValue: Equatable, Sendable {
     var value: UInt64?
 }
 
+/// One machine instruction from GDB's `-data-disassemble`.
+struct DisassembledInstruction: Equatable, Sendable {
+    var address: UInt64
+    var function: String?
+    var offset: Int?
+    /// The instruction's bytes in hex, such as `"00 22"`.
+    var opcodes: String
+    /// The assembly text, such as `"movs r2, #0"`.
+    var instruction: String
+    /// The source file and line, when GDB grouped instructions by line.
+    var file: URL?
+    var line: Int?
+
+    /// Reads GDB's `{address="0x00000236",func-name="main",offset="46",opcodes="00 22",inst="movs\tr2, #0"}`.
+    init?(_ value: MIValue, file: URL? = nil, line: Int? = nil) {
+        guard let address = value.address("address"),
+              let instruction = value.text("inst")
+        else { return nil }
+        self.address = address
+        function = value.text("func-name")
+        offset = value.integer("offset")
+        opcodes = value.text("opcodes") ?? ""
+        self.instruction = instruction.replacingOccurrences(of: "\t", with: " ")
+        self.file = file
+        self.line = line
+    }
+
+    /// Reads a flat list of instructions or `src_and_asm_line` tuples from `asm_insns`.
+    static func parseList(_ items: [MIValue]) -> [DisassembledInstruction] {
+        var result: [DisassembledInstruction] = []
+        for item in items {
+            if let nested = item["line_asm_insn"]?.list {
+                let file = item.text("fullname").map { URL(filePath: $0, directoryHint: .notDirectory) }
+                let line = item.integer("line")
+                result.append(contentsOf: nested.compactMap { DisassembledInstruction($0, file: file, line: line) })
+            } else if let single = DisassembledInstruction(item) {
+                result.append(single)
+            }
+        }
+        return result
+    }
+}
+
 /// What a debug session reports while it runs.
 enum DebugEvent: Equatable, Sendable {
     /// The program started running. Nothing can be inspected until it stops.

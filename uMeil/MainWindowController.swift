@@ -22,6 +22,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     let toolbar = MainToolbar()
     /// Runs debug sessions and keeps the breakpoints.
     let debugger = DebugController()
+    let debugPanels = DebugPanelsController()
 
     /// The outcome of the most recent build of the open folder.
     private(set) var lastBuild: BuildResult?
@@ -35,7 +36,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
 
     /// Whether the issues panel under the editor is showing.
     var isIssuesPanelVisible: Bool { !issuesItem.isCollapsed }
-    private let editorSplit = NSSplitViewController()
+    let editorSplit = NSSplitViewController()
 
     /// The folder open in the navigator, or `nil` before one is chosen.
     private(set) var folder: URL?

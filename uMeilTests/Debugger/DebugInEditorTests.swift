@@ -167,11 +167,11 @@ struct DebugInEditorTests {
         await waitUntil("the program is running") { controller.debugger.state == .running }
         #expect(controller.editor.executionLine == nil)
         #expect(controller.issues.statusLabel.stringValue == "Running")
+        #expect(window.gdb.commands.last == "-exec-next")
 
         window.gdb.print(FakeBlinky.stop(atLine: 22, of: window.mainC))
         await waitUntil("the program stops") { controller.debugger.isStopped }
         #expect(controller.editor.executionLine == 22)
-        #expect(window.gdb.commands.last == "-exec-next")
     }
 
     @Test func aStopInAnotherFileOpensIt() async throws {
@@ -201,6 +201,8 @@ struct DebugInEditorTests {
         controller.debugContinue(nil)
         await waitUntil("the program is running") { controller.debugger.state == .running }
         controller.debugPause(nil)
+        await waitUntil("the pause command is sent") { window.gdb.commands.last == "-exec-interrupt" }
+        #expect(window.gdb.commands.suffix(2) == ["-exec-continue", "-exec-interrupt"])
         window.gdb.print(FakeBlinky.stopInLibrary)
         await waitUntil("the program stops") { controller.debugger.isStopped }
 
@@ -208,7 +210,6 @@ struct DebugInEditorTests {
         #expect(controller.editor.document?.url.lastPathComponent == "main.c")
         #expect(controller.issues.statusLabel.stringValue
             == "Stopped in SysCtlDelay at 0x472, where there is no source code to show")
-        #expect(window.gdb.commands.suffix(2) == ["-exec-continue", "-exec-interrupt"])
     }
 
     @Test func runToCursorLineUsesTheLineTheCursorIsOn() async throws {

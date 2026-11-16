@@ -159,4 +159,20 @@ extension GDBSession {
         }
         return value
     }
+
+    /// Disassembles `count` bytes starting at `address`, including raw opcodes.
+    func disassemble(from address: UInt64, count: Int = 64) async throws -> [DisassembledInstruction] {
+        let start = "0x" + String(address, radix: 16)
+        let end = "0x" + String(address + UInt64(max(count, 4)), radix: 16)
+        let command = "-data-disassemble -s \(start) -e \(end) -- 2"
+        guard let items = try await send(command)["asm_insns"]?.list else {
+            throw DebugError.unexpectedAnswer(command)
+        }
+        return DisassembledInstruction.parseList(items)
+    }
+
+    /// Runs a GDB console command and echoes its output to the session stream.
+    func executeConsole(_ command: String) async throws {
+        try await send("-interpreter-exec console \(DebugPlan.cQuoted(command))")
+    }
 }
