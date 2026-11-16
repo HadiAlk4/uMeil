@@ -69,9 +69,9 @@ actor ClangdSession {
         startTask = nil
         client = nil
 
-        if let pendingStart {
-            let started = try? await pendingStart.value
-            await started?.shutdown()
+        pendingStart?.cancel()
+        if let pendingStart, let started = try? await pendingStart.value {
+            await started.shutdown()
         }
         await existingClient?.shutdown()
     }
@@ -168,6 +168,7 @@ actor ClangdSession {
             await self?.forwardDiagnostics(filtered)
         }
         let task = Task { [clangdExecutable, workspaceDirectory, compileCommandsDirectory, forwarder] in
+            try Task.checkCancellation()
             let transport = try ProcessLSPTransport(
                 executable: clangdExecutable,
                 arguments: Self.launchArguments(compileCommandsDirectory: compileCommandsDirectory),
@@ -175,10 +176,18 @@ actor ClangdSession {
             )
             let client = LSPClient(transport: transport, onDiagnostics: forwarder)
             do {
-                try await client.initialize(rootURL: workspaceDirectory)
+                try await withTaskCancellationHandler {
+                    try await client.initialize(rootURL: workspaceDirectory)
+                } onCancel: {
+                    Task { await transport.close() }
+                }
                 return client
             } catch {
-                await client.shutdown()
+                if Task.isCancelled {
+                    await transport.close()
+                } else {
+                    await client.shutdown()
+                }
                 throw error
             }
         }

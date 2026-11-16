@@ -30,58 +30,141 @@ extension ProcessRunning {
 struct ProcessRunner: ProcessRunning {
     func run(_ executable: URL, arguments: [String], currentDirectory: URL?) async throws -> ProcessOutput {
         try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                continuation.resume(with: Result {
-                    try Self.runBlocking(executable, arguments: arguments, currentDirectory: currentDirectory)
-                })
+            let process = Process()
+            let outputPipe = Pipe()
+            let errorPipe = Pipe()
+            process.executableURL = executable
+            process.arguments = arguments
+            if let currentDirectory {
+                process.currentDirectoryURL = currentDirectory
+            }
+            process.standardInput = FileHandle.nullDevice
+            process.standardOutput = outputPipe
+            process.standardError = errorPipe
+
+            let stdoutHandle = outputPipe.fileHandleForReading
+            let stderrHandle = errorPipe.fileHandleForReading
+            let capture = ProcessCapture(
+                stdoutHandle: stdoutHandle,
+                stderrHandle: stderrHandle,
+                continuation: continuation
+            )
+
+            process.terminationHandler = { terminated in
+                capture.markExited(terminated.terminationStatus)
+            }
+            do {
+                try process.run()
+            } catch {
+                capture.fail(error)
+                return
+            }
+
+            // Event-driven pipe reads avoid blocking GCD global worker threads
+            // under heavy concurrent build and toolchain load.
+            stdoutHandle.readabilityHandler = { handle in
+                let chunk = handle.availableData
+                if chunk.isEmpty {
+                    capture.markStdoutClosed()
+                } else {
+                    capture.appendStdout(chunk)
+                }
+            }
+            stderrHandle.readabilityHandler = { handle in
+                let chunk = handle.availableData
+                if chunk.isEmpty {
+                    capture.markStderrClosed()
+                } else {
+                    capture.appendStderr(chunk)
+                }
             }
         }
     }
+}
 
-    private static func runBlocking(
-        _ executable: URL,
-        arguments: [String],
-        currentDirectory: URL?
-    ) throws -> ProcessOutput {
-        let process = Process()
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        process.executableURL = executable
-        process.arguments = arguments
-        if let currentDirectory {
-            process.currentDirectoryURL = currentDirectory
-        }
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
-
-        try process.run()
-
-        // Drain standard error on another thread while this one drains
-        // standard output. Reading them one after the other can deadlock if
-        // the process fills the pipe that is not being read.
-        let errorData = OSAllocatedUnfairLock(initialState: Data())
-        let errorDrained = DispatchGroup()
-        DispatchQueue.global(qos: .userInitiated).async(group: errorDrained) {
-            let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            errorData.withLock { $0 = data }
-        }
-        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        errorDrained.wait()
-        process.waitUntilExit()
-
-        return ProcessOutput(
-            exitCode: process.terminationStatus,
-            standardOutput: text(from: outputData),
-            standardError: text(from: errorData.withLock { $0 })
-        )
+private final class ProcessCapture: @unchecked Sendable {
+    private struct State {
+        var stdout = Data()
+        var stderr = Data()
+        var stdoutClosed = false
+        var stderrClosed = false
+        var exitCode: Int32?
+        var finished = false
     }
 
-    /// Decodes tool output as UTF-8, replacing any invalid bytes. A failable
-    /// conversion would throw away the whole output over one bad byte, which
-    /// is worse for compiler messages that may quote arbitrary source text.
-    private static func text(from data: Data) -> String {
-        // swiftlint:disable:next optional_data_string_conversion
-        String(decoding: data, as: UTF8.self)
+    private let state = OSAllocatedUnfairLock(uncheckedState: State())
+    private let stdoutHandle: FileHandle
+    private let stderrHandle: FileHandle
+    private let continuation: CheckedContinuation<ProcessOutput, Error>
+
+    init(
+        stdoutHandle: FileHandle,
+        stderrHandle: FileHandle,
+        continuation: CheckedContinuation<ProcessOutput, Error>
+    ) {
+        self.stdoutHandle = stdoutHandle
+        self.stderrHandle = stderrHandle
+        self.continuation = continuation
+    }
+
+    func appendStdout(_ data: Data) {
+        state.withLockUnchecked { $0.stdout.append(data) }
+    }
+
+    func appendStderr(_ data: Data) {
+        state.withLockUnchecked { $0.stderr.append(data) }
+    }
+
+    func markStdoutClosed() {
+        stdoutHandle.readabilityHandler = nil
+        try? stdoutHandle.close()
+        finishIfReady { $0.stdoutClosed = true }
+    }
+
+    func markStderrClosed() {
+        stderrHandle.readabilityHandler = nil
+        try? stderrHandle.close()
+        finishIfReady { $0.stderrClosed = true }
+    }
+
+    func markExited(_ code: Int32) {
+        finishIfReady { $0.exitCode = code }
+    }
+
+    func fail(_ error: Error) {
+        stdoutHandle.readabilityHandler = nil
+        stderrHandle.readabilityHandler = nil
+        try? stdoutHandle.close()
+        try? stderrHandle.close()
+        let shouldResume = state.withLockUnchecked { state -> Bool in
+            guard !state.finished else { return false }
+            state.finished = true
+            return true
+        }
+        if shouldResume {
+            continuation.resume(throwing: error)
+        }
+    }
+
+    private func finishIfReady(_ update: (inout State) -> Void) {
+        let output: ProcessOutput? = state.withLockUnchecked { state in
+            update(&state)
+            guard !state.finished,
+                  state.stdoutClosed,
+                  state.stderrClosed,
+                  let exitCode = state.exitCode
+            else { return nil }
+            state.finished = true
+            return ProcessOutput(
+                exitCode: exitCode,
+                // swiftlint:disable:next optional_data_string_conversion
+                standardOutput: String(decoding: state.stdout, as: UTF8.self),
+                // swiftlint:disable:next optional_data_string_conversion
+                standardError: String(decoding: state.stderr, as: UTF8.self)
+            )
+        }
+        if let output {
+            continuation.resume(returning: output)
+        }
     }
 }
