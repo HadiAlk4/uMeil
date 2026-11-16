@@ -38,6 +38,31 @@ jobs:
             -destination 'platform=macOS,arch=arm64' \
             -derivedDataPath DerivedData
 
+  hardware:
+    name: Hardware-in-the-loop
+    # Flashes a real EK-TM4C1294XL and reads its UART. Needs a Mac with the
+    # board plugged in, registered as a self-hosted runner with the label
+    # "launchpad". Skipped until the repository variable HIL_RUNNER is set
+    # to "true". Only for pushes, so a pull request from a fork cannot run
+    # code on that Mac.
+    if: vars.HIL_RUNNER == 'true' && github.event_name == 'push'
+    runs-on: [self-hosted, macOS, launchpad]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Flash the board and read its UART
+        env:
+          TEST_RUNNER_UMEIL_HIL: "1"
+          TEST_RUNNER_UMEIL_REQUIRE_TOOLS: "1"
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project uMeil.xcodeproj \
+            -scheme uMeil \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath DerivedData \
+            -only-testing:uMeilTests/HardwareInTheLoopTests
+
   lint:
     name: SwiftLint
     runs-on: macos-latest

@@ -2,7 +2,7 @@
 
 Open work that is not yet scheduled in the README milestones, and when it is recommended to do each item. Last updated 16 November 2026.
 
-Status today: M0 to M4 are merged. M5 (flashing) is on the `m5-flashing` branch and has flashed a real board. Still open before M5 closes: items 6 to 9.
+Status today: M0 to M4 are merged. M5 (flashing) is on the `m5-flashing` branch and has flashed a real board. Still open before M5 closes: items 6 to 8, and the CI runner for item 9.
 
 ## Summary
 
@@ -16,7 +16,7 @@ Status today: M0 to M4 are merged. M5 (flashing) is on the `m5-flashing` branch 
 | 6 | Locked-chip error message | M5 | With the board, before closing M5 |
 | 7 | Check USB plug and unplug detection | M5 | With the board, before closing M5 |
 | 8 | Look at the board status dot in the running app | M5 | With the board, before closing M5 |
-| 9 | Hardware-in-the-loop flash test | M5 | With the board, before closing M5 |
+| 9 | Hardware-in-the-loop flash test | M5 | Test done 17 November; the CI runner is still to set up |
 | 10 | Check the "no board" test passes in CI | M5 | Done 16 November |
 | 11 | Flash an existing image (`.axf` / `.elf`) | M5 | Done 16 November |
 | 23 | Fix the timing test that fails in CI | M5 | Done 16 November |
@@ -55,11 +55,11 @@ Worth asking now even if route 1 is chosen, because the answer may take a while 
 
 **6. Locked-chip message.** Still missing: nothing in `uMeil/Flashing` handles a locked chip, so it falls through to OpenOCD's own first error line. Capture the real output and add a plain-language message.
 
-**7. USB detection.** The toolbar's "Board connected" status has never seen a real plug or unplug event.
+**7. USB detection.** A plugged-in board is detected (checked by `HardwareInTheLoopTests` on 17 November). The toolbar's "Board connected" status has still never seen a real plug or unplug event while the app is running.
 
 **8. Status dot.** The dot was changed to draw green when connected and was not looked at again afterwards.
 
-**9. Hardware-in-the-loop test.** The README's M5 test: flash a firmware that prints a known message over UART and read it back, on a self-hosted Mac runner. Not written yet, and CI has no self-hosted runner job.
+**9. Hardware-in-the-loop test.** The test is written and passes on an EK-TM4C1294XL: `HardwareInTheLoopTests` builds firmware that prints a one-off message over UART0, flashes it with the real OpenOCD, and reads the message back from the board's serial port. It only runs when `UMEIL_HIL=1` is set (`TEST_RUNNER_UMEIL_HIL=1` with `xcodebuild`), because it writes to the board. Still to do: register a Mac with a board as a self-hosted runner labelled `launchpad` and set the repository variable `HIL_RUNNER` to `true`; the CI job is in place and skipped until then.
 
 **10. CI check.** Done: `RealOpenOCDWithoutABoardTests` passes in CI against Homebrew's OpenOCD.
 
