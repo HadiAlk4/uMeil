@@ -42,6 +42,9 @@ actor ClangdSession {
         arguments.append("--query-driver=**/\(Tool.compiler.executableName)")
         // Keep completions pure so accepting a function does not insert headers unexpectedly.
         arguments.append("--header-insertion=never")
+        // Bound background worker threads and keep PCHs in memory for responsiveness.
+        arguments.append("-j=2")
+        arguments.append("--pch-storage=memory")
         return arguments
     }
 

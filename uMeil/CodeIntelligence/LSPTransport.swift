@@ -27,12 +27,15 @@ final class ProcessLSPTransport: LSPTransporting, @unchecked Sendable {
     private struct State {
         var process: Process?
         var writeHandle: FileHandle?
-        var isClosed = false
+        var stdoutHandle: FileHandle?
+        var stderrHandle: FileHandle?
+        var framer = LSPFraming.MessageBuffer()
         var stderrTail = Data()
+        var isClosed = false
     }
 
     private let state = OSAllocatedUnfairLock(uncheckedState: State())
-    private let writeQueue = DispatchQueue(label: "io.github.hadialk4.uMeil.lsp.write")
+    private let writeQueue = DispatchQueue(label: "io.github.hadialkhub.uMeil.lsp.write")
     private let continuation: AsyncStream<Data>.Continuation
 
     // Ignore SIGPIPE so a crashing language server returns a Swift error on write
@@ -64,17 +67,23 @@ final class ProcessLSPTransport: LSPTransporting, @unchecked Sendable {
 
         try process.run()
 
+        let stdoutHandle = outputPipe.fileHandleForReading
+        let stderrHandle = errorPipe.fileHandleForReading
+
         state.withLockUnchecked { state in
             state.process = process
             state.writeHandle = inputPipe.fileHandleForWriting
+            state.stdoutHandle = stdoutHandle
+            state.stderrHandle = stderrHandle
         }
 
-        // Drain stdout and stderr concurrently so neither pipe ever blocks clangd.
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.readStdoutLoop(from: outputPipe.fileHandleForReading)
+        // Event-driven readability handlers avoid tying up GCD global worker threads
+        // while idle, preventing thread-pool starvation under concurrent sessions.
+        stdoutHandle.readabilityHandler = { [weak self] handle in
+            self?.handleStdoutReadable(handle)
         }
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            self?.drainStderrLoop(from: errorPipe.fileHandleForReading)
+        stderrHandle.readabilityHandler = { [weak self] handle in
+            self?.handleStderrReadable(handle)
         }
     }
 
@@ -120,52 +129,88 @@ final class ProcessLSPTransport: LSPTransporting, @unchecked Sendable {
     }
 
     private func closeSynchronously() {
-        let resources: (Process?, FileHandle?) = state.withLockUnchecked { state in
-            guard !state.isClosed else { return (nil, nil) }
-            state.isClosed = true
-            let process = state.process
-            let handle = state.writeHandle
-            state.process = nil
-            state.writeHandle = nil
-            return (process, handle)
+        struct ClosedResources {
+            let process: Process?
+            let writeHandle: FileHandle?
+            let stdoutHandle: FileHandle?
+            let stderrHandle: FileHandle?
         }
 
-        try? resources.1?.close()
-        if let process = resources.0, process.isRunning {
+        let resources: ClosedResources? = state.withLockUnchecked { state in
+            guard !state.isClosed else { return nil }
+            state.isClosed = true
+            let resources = ClosedResources(
+                process: state.process,
+                writeHandle: state.writeHandle,
+                stdoutHandle: state.stdoutHandle,
+                stderrHandle: state.stderrHandle
+            )
+            state.process = nil
+            state.writeHandle = nil
+            state.stdoutHandle = nil
+            state.stderrHandle = nil
+            return resources
+        }
+        guard let resources else { return }
+
+        resources.stdoutHandle?.readabilityHandler = nil
+        resources.stderrHandle?.readabilityHandler = nil
+        try? resources.writeHandle?.close()
+        try? resources.stdoutHandle?.close()
+        try? resources.stderrHandle?.close()
+        if let process = resources.process, process.isRunning {
             process.terminate()
         }
         continuation.finish()
     }
 
-    private func readStdoutLoop(from handle: FileHandle) {
-        var framer = LSPFraming.MessageBuffer()
-        while true {
-            let chunk = handle.availableData
-            if chunk.isEmpty { break }
+    private func handleStdoutReadable(_ handle: FileHandle) {
+        let chunk = handle.availableData
+        if chunk.isEmpty {
+            handle.readabilityHandler = nil
+            try? handle.close()
+            continuation.finish()
+            return
+        }
+
+        enum Outcome {
+            case payloads([Data])
+            case failed
+        }
+        let outcome: Outcome = state.withLockUnchecked { state in
+            guard !state.isClosed else { return .failed }
             do {
-                for message in try framer.append(chunk) {
-                    continuation.yield(message)
-                }
+                return .payloads(try state.framer.append(chunk))
             } catch {
-                break
+                return .failed
             }
         }
-        try? handle.close()
-        continuation.finish()
+
+        switch outcome {
+        case .payloads(let messages):
+            for message in messages {
+                continuation.yield(message)
+            }
+        case .failed:
+            handle.readabilityHandler = nil
+            try? handle.close()
+            continuation.finish()
+        }
     }
 
-    private func drainStderrLoop(from handle: FileHandle) {
+    private func handleStderrReadable(_ handle: FileHandle) {
+        let chunk = handle.availableData
+        if chunk.isEmpty {
+            handle.readabilityHandler = nil
+            try? handle.close()
+            return
+        }
         let maxBytes = 8192
-        while true {
-            let chunk = handle.availableData
-            if chunk.isEmpty { break }
-            state.withLockUnchecked { state in
-                state.stderrTail.append(chunk)
-                if state.stderrTail.count > maxBytes {
-                    state.stderrTail = Data(state.stderrTail.suffix(maxBytes))
-                }
+        state.withLockUnchecked { state in
+            state.stderrTail.append(chunk)
+            if state.stderrTail.count > maxBytes {
+                state.stderrTail = Data(state.stderrTail.suffix(maxBytes))
             }
         }
-        try? handle.close()
     }
 }
