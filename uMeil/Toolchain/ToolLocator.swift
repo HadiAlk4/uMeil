@@ -4,6 +4,10 @@ import Foundation
 struct ToolLocator: Sendable {
     /// Directories to search, highest priority first.
     var searchDirectories: [URL]
+    /// Extra directories searched after `searchDirectories` for a specific tool.
+    var extraDirectories: [Tool: [URL]] = [:]
+    /// Executable paths to skip for a tool (such as macOS's `/usr/bin/clangd` shim).
+    var excludedPaths: [Tool: Set<String>] = [:]
 
     /// The first usable executable for `tool`, or `nil` if there is none.
     func locate(_ tool: Tool) -> URL? {
@@ -12,9 +16,21 @@ struct ToolLocator: Sendable {
 
     /// Every executable for `tool` in the search directories, in priority order.
     func candidates(for tool: Tool) -> [URL] {
-        searchDirectories
+        let directories = deduplicated(searchDirectories + (extraDirectories[tool] ?? []))
+        let excluded = excludedPaths[tool] ?? []
+        return directories
             .map { $0.appending(path: tool.executableName, directoryHint: .notDirectory) }
-            .filter(Self.isExecutableFile)
+            .filter { url in
+                !excluded.contains(url.standardizedFileURL.path(percentEncoded: false))
+                    && Self.isExecutableFile(url)
+            }
+    }
+
+    private func deduplicated(_ directories: [URL]) -> [URL] {
+        var seen = Set<String>()
+        return directories.filter { directory in
+            seen.insert(directory.standardizedFileURL.path(percentEncoded: false)).inserted
+        }
     }
 
     private static func isExecutableFile(_ url: URL) -> Bool {
@@ -29,7 +45,45 @@ struct ToolLocator: Sendable {
 extension ToolLocator {
     /// A locator that searches the places tools normally live on a Mac.
     static func standard() -> ToolLocator {
-        ToolLocator(searchDirectories: defaultSearchDirectories())
+        ToolLocator(
+            searchDirectories: defaultSearchDirectories(),
+            extraDirectories: [.clangd: clangdSearchDirectories()],
+            // /usr/bin/clangd is an xcrun trampoline that pops up an OS install prompt
+            // or fails when Xcode and the Command Line Tools are absent.
+            excludedPaths: [.clangd: ["/usr/bin/clangd"]]
+        )
+    }
+
+    /// Extra places `clangd` lives on macOS: Xcode's toolchain, the Command
+    /// Line Tools, and Homebrew's keg-only `llvm` formula.
+    static func clangdSearchDirectories(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        xcodeToolchainDirectory: URL = URL(
+            filePath: "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+            directoryHint: .isDirectory
+        ),
+        commandLineToolsDirectory: URL = URL(
+            filePath: "/Library/Developer/CommandLineTools/usr/bin",
+            directoryHint: .isDirectory
+        )
+    ) -> [URL] {
+        var directories: [URL] = []
+        if let developerDir = environment["DEVELOPER_DIR"], !developerDir.isEmpty {
+            directories.append(
+                URL(filePath: developerDir, directoryHint: .isDirectory)
+                    .appending(path: "Toolchains/XcodeDefault.xctoolchain/usr/bin", directoryHint: .isDirectory)
+            )
+        }
+        directories.append(xcodeToolchainDirectory)
+        directories.append(commandLineToolsDirectory)
+        directories.append(contentsOf: ["/opt/homebrew/opt/llvm/bin", "/usr/local/opt/llvm/bin"].map {
+            URL(filePath: $0, directoryHint: .isDirectory)
+        })
+
+        var seen = Set<String>()
+        return directories.filter { directory in
+            seen.insert(directory.standardizedFileURL.path(percentEncoded: false)).inserted
+        }
     }
 
     /// The default search order:

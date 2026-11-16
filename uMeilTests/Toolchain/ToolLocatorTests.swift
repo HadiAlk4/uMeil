@@ -94,6 +94,46 @@ struct ToolLocatorTests {
         #expect(directories.map(Self.normalizedPath) == ["/opt/homebrew/bin", "/usr/local/bin"])
     }
 
+    @Test func clangdSearchOrderIncludesDeveloperDirXcodeCommandLineToolsAndHomebrewLLVM() throws {
+        let temp = try TemporaryDirectory()
+        let devDir = temp.url.appending(path: "CustomXcode.app/Contents/Developer", directoryHint: .isDirectory)
+        let xcodeBin = temp.url.appending(
+            path: "Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+        )
+        let cltBin = temp.url.appending(path: "CommandLineTools/usr/bin")
+
+        let directories = ToolLocator.clangdSearchDirectories(
+            environment: ["DEVELOPER_DIR": devDir.path(percentEncoded: false)],
+            xcodeToolchainDirectory: xcodeBin,
+            commandLineToolsDirectory: cltBin
+        )
+
+        #expect(directories.map(Self.normalizedPath) == [
+            Self.normalizedPath(devDir.appending(path: "Toolchains/XcodeDefault.xctoolchain/usr/bin")),
+            Self.normalizedPath(xcodeBin),
+            Self.normalizedPath(cltBin),
+            "/opt/homebrew/opt/llvm/bin",
+            "/usr/local/opt/llvm/bin"
+        ])
+    }
+
+    @Test func skipsExcludedStubPathsForClangd() throws {
+        let temp = try TemporaryDirectory()
+        let stubBin = try temp.directory("stub")
+        let realBin = try temp.directory("real")
+        let stub = try FakeTool.install(.clangd, in: stubBin, script: "exit 1")
+        let real = try FakeTool.install(.clangd, in: realBin, script: "exit 0")
+
+        let locator = ToolLocator(
+            searchDirectories: [stubBin],
+            extraDirectories: [.clangd: [realBin]],
+            excludedPaths: [.clangd: [stub.standardizedFileURL.path(percentEncoded: false)]]
+        )
+
+        #expect(locator.locate(.clangd) == real)
+        #expect(locator.candidates(for: .clangd) == [real])
+    }
+
     /// A path with no trailing slash and no `/private` prefix, so that
     /// `/var/...` and `/private/var/...` (the same folder) compare equal.
     private static func normalizedPath(_ url: URL) -> String {
