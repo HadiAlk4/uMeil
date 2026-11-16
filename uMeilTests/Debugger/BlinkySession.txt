@@ -1,0 +1,116 @@
+=thread-group-added,id="i1"
+(gdb) 
+^done
+(gdb) 
+^done
+(gdb) 
+^done
+(gdb) 
+&"xPack Open On-Chip Debugger 0.12.0+dev-02228-ge5888bda3-dirty (2025-10-04-22:45)\n"
+&"Licensed under GNU GPL v2\n"
+&"For bug reports, read\n"
+&"\thttp://openocd.org/doc/doxygen/bugs.html\n"
+&"DEPRECATED! use 'gdb port', not 'gdb_port'\n"
+=thread-group-started,id="i1",pid="42000"
+=thread-created,id="1",group-id="i1"
+~"0x00000472 in SysCtlDelay ()\n"
+*stopped,frame={addr="0x00000472",func="SysCtlDelay",args=[],arch="armv7e-m"},thread-id="1",stopped-threads="all"
+^connected
+(gdb) 
+@"SRST error\n"
+@"[tm4c1294ncpdt.cpu] halted due to debug-request, current mode: Thread \n"
+@"xPSR: 0x01000000 pc: 0x00000258 msp: 0x20040000\n"
+^done
+(gdb) 
+~"Section .text, range 0x0 -- 0x478: matched.\n"
+^done
+(gdb) 
+~"Note: automatically using hardware breakpoints for read-only addresses.\n"
+^done,bkpt={number="1",type="breakpoint",disp="del",enabled="y",addr="0x0000020a",func="main",file="src/main.c",fullname="/tmp/Blinky/src/main.c",line="21",thread-groups=["i1"],times="0",original-location="main"}
+(gdb) 
+^running
+*running,thread-id="all"
+(gdb) 
+=breakpoint-modified,bkpt={number="1",type="breakpoint",disp="del",enabled="y",addr="0x0000020a",func="main",file="src/main.c",fullname="/tmp/Blinky/src/main.c",line="21",thread-groups=["i1"],times="1",original-location="main"}
+~"\n"
+~"Temporary breakpoint 1, main () at src/main.c:21\n"
+~"21\t    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPION);\n"
+*stopped,reason="breakpoint-hit",disp="del",bkptno="1",frame={addr="0x0000020a",func="main",args=[],file="src/main.c",fullname="/tmp/Blinky/src/main.c",line="21",arch="armv7e-m"},thread-id="1",stopped-threads="all"
+=breakpoint-deleted,id="1"
+^done,stack=[frame={level="0",addr="0x0000020a",func="main",file="src/main.c",fullname="/tmp/Blinky/src/main.c",line="21",arch="armv7e-m"}]
+(gdb) 
+^done,variables=[]
+(gdb) 
+^done,register-names=["r0","r1","r2","r3","r4","r5","r6","r7","r8","r9","r10","r11","r12","sp","lr","pc","","","","","","","","","","xpsr","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","d0","d1","d2","d3","d4","d5","d6","d7","d8","d9","d10","d11","d12","d13","d14","d15","","","","","","","","","","","","","","","","","fpscr","msp","psp","primask","basepri","faultmask","control","s0","s1","s2","s3","s4","s5","s6","s7","s8","s9","s10","s11","s12","s13","s14","s15","s16","s17","s18","s19","s20","s21","s22","s23","s24","s25","s26","s27","s28","s29","s30","s31"]
+(gdb) 
+^done,register-values=[{number="0",value="0x0"},{number="1",value="0x20000000"},{number="2",value="0x20000000"},{number="3",value="0x20000000"},{number="4",value="0x0"},{number="5",value="0x0"},{number="6",value="0x0"},{number="7",value="0x0"},{number="8",value="0x0"},{number="9",value="0x0"},{number="10",value="0x0"},{number="11",value="0x0"},{number="12",value="0x0"},{number="13",value="0x2003fff0"},{number="14",value="0x293"},{number="15",value="0x20a"},{number="25",value="0x61000000"},{number="58",value="0x0"},{number="59",value="0x0"},{number="60",value="0x0"},{number="61",value="0x0"},{number="62",value="0x0"},{number="63",value="0x0"},{number="64",value="0x0"},{number="65",value="0x0"},{number="66",value="0x0"},{number="67",value="0x0"},{number="68",value="0x0"},{number="69",value="0x0"},{number="70",value="0x0"},{number="71",value="0x0"},{number="72",value="0x0"},{number="73",value="0x0"},{number="90",value="0x0"},{number="91",value="0x2003fff0"},{number="92",value="0x0"},{number="93",value="0x0"},{number="94",value="0x0"},{number="95",value="0x0"},{number="96",value="0x0"},{number="97",value="0x0"},{number="98",value="0x0"},{number="99",value="0x0"},{number="100",value="0x0"},{number="101",value="0x0"},{number="102",value="0x0"},{number="103",value="0x0"},{number="104",value="0x0"},{number="105",value="0x0"},{number="106",value="0x0"},{number="107",value="0x0"},{number="108",value="0x0"},{number="109",value="0x0"},{number="110",value="0x0"},{number="111",value="0x0"},{number="112",value="0x0"},{number="113",value="0x0"},{number="114",value="0x0"},{number="115",value="0x0"},{number="116",value="0x0"},{number="117",value="0x0"},{number="118",value="0x0"},{number="119",value="0x0"},{number="120",value="0x0"},{number="121",value="0x0"},{number="122",value="0x0"},{number="123",value="0x0"},{number="124",value="0x0"},{number="125",value="0x0"},{number="126",value="0x0"},{number="127",value="0x0"},{number="128",value="0x0"}]
+(gdb) 
+^done,bkpt={number="2",type="breakpoint",disp="keep",enabled="y",addr="0x00000222",func="main",file="src/main.c",fullname="/tmp/Blinky/src/main.c",line="28",thread-groups=["i1"],times="0",original-location="main.c:28"}
+(gdb) 
+^running
+*running,thread-id="all"
+(gdb) 
+=breakpoint-modified,bkpt={number="2",type="breakpoint",disp="keep",enabled="y",addr="0x00000222",func="main",file="src/main.c",fullname="/tmp/Blinky/src/main.c",line="28",thread-groups=["i1"],times="1",original-location="main.c:28"}
+~"\n"
+~"Breakpoint 2, main () at src/main.c:28\n"
+~"28\t        GPIOPinWrite(GPIO_PORTN_BASE, GPIO_PIN_1, GPIO_PIN_1);\n"
+*stopped,reason="breakpoint-hit",disp="keep",bkptno="2",frame={addr="0x00000222",func="main",args=[],file="src/main.c",fullname="/tmp/Blinky/src/main.c",line="28",arch="armv7e-m"},thread-id="1",stopped-threads="all"
+^running
+*running,thread-id="all"
+(gdb) 
+@"halted: PC: 0x00000224\n"
+@"halted: PC: 0x00000226\n"
+@"halted: PC: 0x00000228\n"
+@"halted: PC: 0x0000022a\n"
+@"halted: PC: 0x0000040c\n"
+*stopped,reason="end-stepping-range",frame={addr="0x0000022e",func="main",args=[],file="src/main.c",fullname="/tmp/Blinky/src/main.c",line="29",arch="armv7e-m"},thread-id="1",stopped-threads="all"
+^running
+*running,thread-id="all"
+(gdb) 
+@"halted: PC: 0x00000230\n"
+@"halted: PC: 0x00000232\n"
+@"halted: PC: 0x00000470\n"
+*stopped,reason="end-stepping-range",frame={addr="0x00000236",func="main",args=[],file="src/main.c",fullname="/tmp/Blinky/src/main.c",line="31",arch="armv7e-m"},thread-id="1",stopped-threads="all"
+^done,stack=[frame={level="0",addr="0x00000236",func="main",file="src/main.c",fullname="/tmp/Blinky/src/main.c",line="31",arch="armv7e-m"}]
+(gdb) 
+^done,variables=[]
+(gdb) 
+^error,msg="\"finish\" not meaningful in the outermost frame."
+(gdb) 
+^done,memory=[{begin="0x20000000",offset="0x00000000",end="0x20000010",contents="02460020c0430a4e0b4600240de0115d"}]
+(gdb) 
+^done,asm_insns=[{address="0x00000236",func-name="main",offset="46",opcodes="00 22",inst="movs\tr2, #0"},{address="0x00000238",func-name="main",offset="48",opcodes="02 21",inst="movs\tr1, #2"},{address="0x0000023a",func-name="main",offset="50",opcodes="28 46",inst="mov\tr0, r5"},{address="0x0000023c",func-name="main",offset="52",opcodes="00 f0 e6 f8",inst="bl\t0x40c <GPIOPinWrite>"},{address="0x00000240",func-name="main",offset="56",opcodes="20 46",inst="mov\tr0, r4"}]
+(gdb) 
+^done,value="4"
+(gdb) 
+^error,msg="No symbol \"nosuchvar\" in current context."
+(gdb) 
+^running
+*running,thread-id="all"
+(gdb) 
+@"halted: PC: 0x00000238\n"
+=breakpoint-modified,bkpt={number="2",type="breakpoint",disp="keep",enabled="y",addr="0x00000222",func="main",file="src/main.c",fullname="/tmp/Blinky/src/main.c",line="28",thread-groups=["i1"],times="2",original-location="main.c:28"}
+~"\n"
+~"Breakpoint 2, main () at src/main.c:28\n"
+~"28\t        GPIOPinWrite(GPIO_PORTN_BASE, GPIO_PIN_1, GPIO_PIN_1);\n"
+*stopped,reason="breakpoint-hit",disp="keep",bkptno="2",frame={addr="0x00000222",func="main",args=[],file="src/main.c",fullname="/tmp/Blinky/src/main.c",line="28",arch="armv7e-m"},thread-id="1",stopped-threads="all"
+^done
+(gdb) 
+^running
+*running,thread-id="all"
+(gdb) 
+^done
+(gdb) 
+~"\nProgram"
+~" received signal SIGINT, Interrupt.\n"
+~"0x00000472 in SysCtlDelay ()\n"
+*stopped,reason="signal-received",signal-name="SIGINT",signal-meaning="Interrupt",frame={addr="0x00000472",func="SysCtlDelay",args=[],arch="armv7e-m"},thread-id="1",stopped-threads="all"
+^done,frame={level="0",addr="0x00000472",func="SysCtlDelay",arch="armv7e-m"}
+(gdb) 
+@"SRST error\n"
+^done
+(gdb) 
+^exit
+=thread-exited,id="1",group-id="i1"
+=thread-group-exited,id="i1"
+~"[Inferior 1 (Remote target) detached]\n"

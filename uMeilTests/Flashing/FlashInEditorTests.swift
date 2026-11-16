@@ -214,7 +214,8 @@ struct FlashInEditorTests {
     @Test func theToolbarHasBuildAndFlashButtonsThatFollowTheMenu() throws {
         let folder = try TemporaryFolder()
         let controller = try makeBlinkyWindow(in: folder).controller
-        let items = try #require(controller.window?.toolbar?.items)
+        // Build and Flash come first; the debugger's buttons follow them.
+        let items = Array(try #require(controller.window?.toolbar?.items).filter { $0.action != nil }.prefix(2))
         let actions = items.compactMap(\.action)
 
         #expect(actions == [
