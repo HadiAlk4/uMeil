@@ -76,6 +76,11 @@ enum MainMenu {
             action: #selector(MainWindowController.flashProject(_:)),
             keyEquivalent: "r"
         )
+        menu.addItem(
+            withTitle: "Flash Image…",
+            action: #selector(MainWindowController.flashImage(_:)),
+            keyEquivalent: ""
+        )
         menu.addItem(.separator())
         menu.addItem(withTitle: "Stop", action: #selector(MainWindowController.stopFlashing(_:)), keyEquivalent: ".")
         return menu
