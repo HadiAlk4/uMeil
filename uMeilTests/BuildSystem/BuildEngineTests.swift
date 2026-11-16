@@ -120,6 +120,7 @@ struct BuildEngineTests {
         let arguments = try #require(entries.first?["arguments"] as? [String])
         #expect(arguments.first == plan.environment.compiler.path)
         #expect(arguments.contains("-DPART_TM4C1294NCPDT"))
+        #expect(!arguments.contains("-fdiagnostics-column-unit=byte"))
     }
 
     // MARK: - Incremental builds
@@ -283,5 +284,45 @@ struct BuildEngineTests {
         #expect(throws: BuildError.compilerNotFound) {
             try BuildEngine.plan(forProjectFile: projectFile, locator: nowhere)
         }
+    }
+}
+
+struct CompileCommandsPreparationTests {
+    private func makeBlinkyProject(in folder: TemporaryDirectory) throws -> URL {
+        let template = try #require(try ProjectTemplate.all().first { $0.identifier == "Blinky" })
+        return try template.createProject(named: "Blinky", in: folder.url)
+    }
+
+    @Test func preparesCompileCommandsWithInstalledCompilerWithoutBuilding() throws {
+        let folder = try TemporaryDirectory()
+        let projectFile = try makeBlinkyProject(in: folder)
+        let bin = try folder.directory("bin")
+        let gcc = try FakeTool.install(.compiler, in: bin, script: "exit 0")
+
+        let url = try BuildEngine.prepareCompileCommands(
+            forProjectFile: projectFile,
+            locator: ToolLocator(searchDirectories: [bin])
+        )
+
+        let data = try Data(contentsOf: url)
+        let entries = try #require(try JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        #expect(entries.compactMap { $0["file"] as? String } == ["src/main.c", "startup/startup.c"])
+        let arguments = try #require(entries.first?["arguments"] as? [String])
+        #expect(arguments.first == gcc.path)
+        #expect(!arguments.contains("-fdiagnostics-column-unit=byte"))
+    }
+
+    @Test func fallsBackToClangTargetWhenCompilerIsMissing() throws {
+        let folder = try TemporaryDirectory()
+        let projectFile = try makeBlinkyProject(in: folder)
+        let nowhere = ToolLocator(searchDirectories: [folder.url])
+
+        let url = try BuildEngine.prepareCompileCommands(forProjectFile: projectFile, locator: nowhere)
+
+        let data = try Data(contentsOf: url)
+        let entries = try #require(try JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        let arguments = try #require(entries.first?["arguments"] as? [String])
+        #expect(arguments.starts(with: ["clang", "--target=arm-none-eabi"]))
+        #expect(arguments.contains("-DPART_TM4C1294NCPDT"))
     }
 }

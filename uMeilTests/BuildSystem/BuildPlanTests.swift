@@ -156,4 +156,17 @@ struct BuildPlanTests {
         #expect(environment.objcopy.path == "/tools/bin/arm-none-eabi-objcopy")
         #expect(environment.size.path == "/tools/bin/arm-none-eabi-size")
     }
+
+    @Test func clangdArgumentsOmitGCCOnlyDiagnosticAndDependencyFlags() {
+        let plan = BuildPlan(project: project(), projectDirectory: directory, environment: environment)
+
+        #expect(plan.compileSteps[0].clangdArguments == [
+            "-mcpu=cortex-m4", "-mthumb", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard",
+            "-std=gnu11", "-Og", "-g", "-ffunction-sections", "-fdata-sections",
+            "-DPART_TM4C1294NCPDT", "-DDEBUG=1",
+            "-Isrc", "-I/app/TivaWare.bundle/",
+            "-Wall", "-Wextra",
+            "-c", "src/main.c", "-o", "build/obj/src/main.c.o"
+        ])
+    }
 }

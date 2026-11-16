@@ -27,6 +27,29 @@ struct CompileStep: Equatable, Sendable {
     var dependencyFile: String
     /// The full compiler arguments.
     var arguments: [String]
+
+    /// Arguments safe to pass to `clangd` in `compile_commands.json`: omits
+    /// GCC-only diagnostic flags that clang rejects (`-fdiagnostics-column-unit=byte`)
+    /// and dependency-file options that expect `build/obj` folders to exist.
+    var clangdArguments: [String] {
+        var filtered: [String] = []
+        var skipNext = false
+        for argument in arguments {
+            if skipNext {
+                skipNext = false
+                continue
+            }
+            switch argument {
+            case "-MF":
+                skipNext = true
+            case "-MMD", "-MP", "-fdiagnostics-color=never", "-fdiagnostics-column-unit=byte":
+                continue
+            default:
+                filtered.append(argument)
+            }
+        }
+        return filtered
+    }
 }
 
 /// Every command needed to turn a project into firmware.
