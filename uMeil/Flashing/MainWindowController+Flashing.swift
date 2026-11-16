@@ -92,7 +92,7 @@ extension MainWindowController {
             isFlashing = false
             flashTask = nil
         }
-        issuesItem.isCollapsed = false
+        showIssuesPanel()
         // Messages from an earlier build are about a different program.
         issues.clear()
 

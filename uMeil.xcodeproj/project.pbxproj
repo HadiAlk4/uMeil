@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		B10000000000000000000005 /* SwiftTreeSitter in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000003 /* SwiftTreeSitter */; };
 		B10000000000000000000006 /* TreeSitterC in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000004 /* TreeSitterC */; };
+		B10000000000000000000009 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000008 /* SwiftTerm */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -46,6 +47,7 @@
 			files = (
 				B10000000000000000000005 /* SwiftTreeSitter in Frameworks */,
 				B10000000000000000000006 /* TreeSitterC in Frameworks */,
+				B10000000000000000000009 /* SwiftTerm in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -99,6 +101,7 @@
 			packageProductDependencies = (
 				B10000000000000000000003 /* SwiftTreeSitter */,
 				B10000000000000000000004 /* TreeSitterC */,
+				B10000000000000000000008 /* SwiftTerm */,
 			);
 			productName = uMeil;
 			productReference = A10000000000000000000006 /* uMeil.app */;
@@ -158,6 +161,7 @@
 			packageReferences = (
 				B10000000000000000000001 /* XCRemoteSwiftPackageReference "swift-tree-sitter" */,
 				B10000000000000000000002 /* XCRemoteSwiftPackageReference "tree-sitter-c" */,
+				B10000000000000000000007 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A10000000000000000000003 /* Products */;
@@ -380,6 +384,14 @@
 				minimumVersion = 0.24.2;
 			};
 		};
+		B10000000000000000000007 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 1.11.2;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -392,6 +404,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B10000000000000000000002 /* XCRemoteSwiftPackageReference "tree-sitter-c" */;
 			productName = TreeSitterC;
+		};
+		B10000000000000000000008 /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B10000000000000000000007 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
