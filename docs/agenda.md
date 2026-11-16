@@ -15,7 +15,7 @@ Status today: M0 to M4 are merged. M5 (flashing) is on the `m5-flashing` branch 
 | 5 | Replace reconstructed OpenOCD logs with real captures | M5 | Done 16 November, except two logs that could not be captured |
 | 6 | Locked-chip error message | M5 | Done 17 November |
 | 7 | Check USB plug and unplug detection | M5 | With the board, before closing M5 |
-| 8 | Look at the board status dot in the running app | M5 | With the board, before closing M5 |
+| 8 | Look at the board status dot in the running app | M5 | Done 17 November |
 | 9 | Hardware-in-the-loop flash test | M5 | Test done 17 November; the CI runner is still to set up |
 | 10 | Check the "no board" test passes in CI | M5 | Done 16 November |
 | 11 | Flash an existing image (`.axf` / `.elf`) | M5 | Done 16 November |
@@ -25,11 +25,11 @@ Status today: M0 to M4 are merged. M5 (flashing) is on the `m5-flashing` branch 
 | 14 | Ship or download `TM4C129.h` | M2 | After M5, before M6 |
 | 15 | Link the course library | M3 | After M5, before M6 |
 | 16 | Build output reports Code, RO-data, RW-data, ZI-data | M3 | Done 17 November |
-| 17 | Decide `-O0` or `-Og` for debug builds | M2 | Before M6 |
+| 17 | Decide `-O0` or `-Og` for debug builds | M2 | Done 17 November |
 | 18 | XCUITest target and typing performance test | M4 | Before M6 |
 | 19 | Tabbed source viewer | M4 | Before M6 |
 | 20 | Gutter: clicks, breakpoints, program counter arrow | M4 | Start of M6 |
-| 21 | Reword FR-7.2 (`States` and `Sec` counters) | Spec | Before M6 |
+| 21 | Reword FR-7.2 (`States` and `Sec` counters) | Spec | Done 17 November |
 | 22 | Command window showing build, flash and debug logs | M3, M5 | During M6 |
 | 24 | Integrated terminal panel (`⌘J`) | IDE | After M6 |
 
@@ -58,7 +58,7 @@ Worth asking now even if route 1 is chosen, because the answer may take a while 
 
 **7. USB detection.** A plugged-in board is detected (checked by `HardwareInTheLoopTests` on 17 November). The toolbar's "Board connected" status has still never seen a real plug or unplug event while the app is running.
 
-**8. Status dot.** The dot was changed to draw green when connected and was not looked at again afterwards.
+**8. Status dot.** Done on 17 November: verified in the running app window with an EK-TM4C1294XL connected (`Board connected` with the green circle dot in the unified toolbar).
 
 **9. Hardware-in-the-loop test.** The test is written and passes on an EK-TM4C1294XL: `HardwareInTheLoopTests` builds firmware that prints a one-off message over UART0, flashes it with the real OpenOCD, and reads the message back from the board's serial port. It only runs when `UMEIL_HIL=1` is set (`TEST_RUNNER_UMEIL_HIL=1` with `xcodebuild`), because it writes to the board. Still to do: register a Mac with a board as a self-hosted runner labelled `launchpad` and set the repository variable `HIL_RUNNER` to `true`; the CI job is in place and skipped until then.
 
@@ -86,7 +86,7 @@ Note: the `Template` folder's `main.c` has a stray `}` after `while(true) {}` an
 
 **16. Size metrics (FR-1.1, M3).** Done on 17 November: a build reports Code, RO-data, RW-data and ZI-data in the status line and the build log, read from the image's sections. The Blinky template's linker script now gives constants their own `.rodata` section so they count as RO-data; projects made before this, and Keil-built images, keep constants inside the code section, so theirs are counted as Code.
 
-**17. Optimisation level for debugging (FR-5.2, M2).** The Blinky template builds with `-Og`, where some locals can show as optimised out. Decide whether debug builds should use `-O0`.
+**17. Optimisation level for debugging (FR-5.2, M2).** Done on 17 November: the Blinky template now defaults to `-O0` (`Optimization.none`), matching imported Keil projects, so local variables and parameters are not optimised out when inspected in the debugger.
 
 **18. Missing M4 tests.** The README's M4 test plan lists an XCUITest for opening, editing and saving files, and a typing performance test on a 10,000-line file. Neither was found in the repo. Recommended before items 19 and 20 change the editor.
 
@@ -94,7 +94,7 @@ Note: the `Template` folder's `main.c` has a stray `}` after `while(true) {}` an
 
 **20. Gutter (FR-3.2, FR-4.1, M4).** The gutter only draws error and warning markers and does not handle clicks. The debugger needs clicks to toggle breakpoints, a red circle for breakpoints, an arrow for the program counter, and marks for executable lines. Recommended as the first piece of M6.
 
-**21. Reword FR-7.2.** The `States` and `Sec` counters come from Keil's simulator and are probably not available on real hardware through the LaunchPad's ICDI probe. The requirement likely needs rewording rather than code.
+**21. Reword FR-7.2.** Done on 17 November: FR-7.2 now specifies reporting processor mode (`Handler`/`Thread`), privilege level, and active stack pointer (`MSP`/`PSP`) from `xPSR` and `CONTROL`, and notes that Keil's software simulator `States` and `Sec` counters are not exposed by the LaunchPad's ICDI hardware probe.
 
 ## During M6
 
