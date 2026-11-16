@@ -1,8 +1,8 @@
 # Agenda
 
-Open work that is not yet scheduled in the README milestones, and when it is recommended to do each item. Last updated 13 November 2026.
+Open work that is not yet scheduled in the README milestones, and when it is recommended to do each item. Last updated 16 November 2026.
 
-Status today: M0 to M4 are merged. M5 (flashing) is built without the board on the `m5-flashing` branch; the parts that need the board are still to do.
+Status today: M0 to M4 are merged. M5 (flashing) is on the `m5-flashing` branch and has flashed a real board. Still open before M5 closes: items 6 to 9, 11 and 23.
 
 ## Summary
 
@@ -11,14 +11,15 @@ Status today: M0 to M4 are merged. M5 (flashing) is built without the board on t
 | 1 | Decide how to handle the course library | Keil support | Now (decision only) |
 | 2 | Ask the course for the library source or a GCC build | Keil support | Now (long wait) |
 | 3 | Check the licence of `TM4C129.h` | Keil support | Now (check only) |
-| 4 | Real flash of Blinky on the board | M5 | With the board, before closing M5 |
-| 5 | Replace reconstructed OpenOCD logs with real captures | M5 | With the board, before closing M5 |
+| 4 | Real flash of Blinky on the board | M5 | Done 16 November |
+| 5 | Replace reconstructed OpenOCD logs with real captures | M5 | Done 16 November, except two logs that could not be captured |
 | 6 | Locked-chip error message | M5 | With the board, before closing M5 |
 | 7 | Check USB plug and unplug detection | M5 | With the board, before closing M5 |
 | 8 | Look at the board status dot in the running app | M5 | With the board, before closing M5 |
 | 9 | Hardware-in-the-loop flash test | M5 | With the board, before closing M5 |
-| 10 | Check the "no board" test passes in CI | M5 | Before merging `m5-flashing` |
+| 10 | Check the "no board" test passes in CI | M5 | Done 16 November |
 | 11 | Flash an existing image (`.axf` / `.elf`) | M5 | Before closing M5 |
+| 23 | Fix the timing test that fails in CI | M5 | Before merging `m5-flashing` |
 | 12 | Keil project import (`.uvprojx` to `.umeil`) | M2 | After M5, before M6 |
 | 13 | GNU startup file and linker script for Keil projects | M2, M3 | After M5, before M6 |
 | 14 | Ship or download `TM4C129.h` | M2 | After M5, before M6 |
@@ -30,8 +31,6 @@ Status today: M0 to M4 are merged. M5 (flashing) is built without the board on t
 | 20 | Gutter: clicks, breakpoints, program counter arrow | M4 | Start of M6 |
 | 21 | Reword FR-7.2 (`States` and `Sec` counters) | Spec | Before M6 |
 | 22 | Command window showing build, flash and debug logs | M3, M5 | During M6 |
-
-Nothing in this list has to change before the board is plugged in.
 
 ## Now: decisions and checks, no code
 
@@ -50,21 +49,23 @@ Worth asking now even if route 1 is chosen, because the answer may take a while 
 
 ## With the board: finish M5
 
-**4. Real flash of Blinky.** Confirm the firmware lands and the LED blinks. Nothing has been written to a real board yet.
+**4. Real flash of Blinky.** Done on 16 November: Blinky was written to an EK-TM4C1294XL and verified.
 
-**5. Replace reconstructed logs.** The success, wrong-chip, verify-failed and write-failed logs in `uMeilTests/Flashing/FlashTestSupport.swift` are put together from OpenOCD's message formats. Only the "no board" log is a real capture.
+**5. Replace reconstructed logs.** Done on 16 November for the success, verify-failed and "no board" logs in `uMeilTests/Flashing/FlashTestSupport.swift`. Two are still partly written from OpenOCD's message formats: wrong-chip (no TM4C123 board was to hand) and write-failed (could not be provoked on a healthy board).
 
-**6. Locked-chip message.** A locked chip currently falls through to OpenOCD's own first error line. Capture the real output and add a plain-language message.
+**6. Locked-chip message.** Still missing: nothing in `uMeil/Flashing` handles a locked chip, so it falls through to OpenOCD's own first error line. Capture the real output and add a plain-language message.
 
 **7. USB detection.** The toolbar's "Board connected" status has never seen a real plug or unplug event.
 
 **8. Status dot.** The dot was changed to draw green when connected and was not looked at again afterwards.
 
-**9. Hardware-in-the-loop test.** The README's M5 test: flash a firmware that prints a known message over UART and read it back, on a self-hosted Mac runner. Not written yet.
+**9. Hardware-in-the-loop test.** The README's M5 test: flash a firmware that prints a known message over UART and read it back, on a self-hosted Mac runner. Not written yet, and CI has no self-hosted runner job.
 
-**10. CI check.** The real-OpenOCD "no board" test was only run against the pinned xPack build. CI uses Homebrew's OpenOCD, which may word its error differently.
+**10. CI check.** Done: `RealOpenOCDWithoutABoardTests` passes in CI against Homebrew's OpenOCD.
 
 **11. Flash an existing image.** A command that writes a Keil-built `.axf` or any `.elf` straight to the board, without a uMeil project. It is small, it reuses the M5 flasher, and it already covers the `L4` lab folders, which contain built images. Recommended inside M5 because it is flashing work and gives Keil users something useful before the importer exists.
+
+**23. Timing test that fails in CI.** `StreamingProcessRunnerTests/reportsLinesWhileTheProcessIsStillRunning()` has failed in the last three CI runs on `m5-flashing`. It expects the first line within 0.7 s of launch, which does not hold on a loaded CI runner. Change it to check that the early line arrives well before the late one, instead of timing from launch.
 
 ## After M5, before M6: Keil project support
 
