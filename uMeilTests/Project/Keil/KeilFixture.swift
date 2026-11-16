@@ -18,7 +18,7 @@ enum KeilFixture {
         let files: [String: String] = [
             "Template.uvprojx": projectFile(device: device),
             "main.c": mainSource(message: message),
-            "Lib4.h": "#ifndef ES_LIB_H\n#define ES_LIB_H\nextern void msDelay(int msec);\n#endif\n",
+            "Lib4.h": libraryHeader,
             "Lib4.lib": "!<arch>\nnot a library the GNU linker can read\n",
             "RTE/_Target_1/RTE_Components.h": "#define CMSIS_device_header \"TM4C129.h\"\n",
             "RTE/Device/TM4C1294NCPDT/startup_TM4C129.s": keilStartup,
@@ -187,13 +187,37 @@ enum KeilFixture {
 
         """
 
+    static let libraryHeader = """
+        #ifndef ES_LIB_H
+        #define ES_LIB_H
+
+        #include "TM4C129.h"
+        #include <stdint.h>
+        #include <stdlib.h>
+        #include <stdbool.h>
+        #include <string.h>
+
+        extern void ES_Serial(int number, char line_format[20]);
+        extern char ES_getchar(int number);
+        extern void ES_putchar(int number, char c);
+        extern void ES_printf(const char *format, ...);
+        extern int readDec(void);
+        extern void msDelay(int msec);
+
+        #endif
+        """
+
     static let systemSource = """
         #include <stdint.h>
+        #include "TM4C129.h"
 
-        uint32_t SystemCoreClock;
+        uint32_t SystemCoreClock = 16000000ul;
 
         void SystemInit(void)
         {
+        #if (__FPU_USED == 1)
+            SCB->CPACR |= ((3UL << 10*2) | (3UL << 11*2));
+        #endif
             SystemCoreClock = 16000000ul;
         }
 
@@ -201,14 +225,18 @@ enum KeilFixture {
 }
 
 extension KeilFixture {
-    /// Firmware that only talks when its `SysTick_Handler` is being called
-    /// and `SystemInit` has run, so a message on the serial port proves the
-    /// imported startup file wired both up. It uses register addresses
-    /// directly, because Keil's register header is not part of the fixture.
+    /// Firmware shaped like `L4Q1`: includes `<TM4C129.h>` and `"Lib4.h"`,
+    /// configures `GPION` and `SysTick` through the CMSIS register structs,
+    /// and prints `message` over UART0 with `ES_Serial` and `ES_printf`.
     static func mainSource(message: String) -> String {
         """
-        \(uartRegistersAndSetup)
-        static const char message[] = "\(message)\\r\\n";
+        #include <TM4C129.h>
+        #include <stdbool.h>
+        #include <stdint.h>
+        #include <stdlib.h>
+
+        #include "Lib4.h"
+
         static volatile uint32_t ticks;
 
         void SysTick_Handler(void)
@@ -218,74 +246,29 @@ extension KeilFixture {
 
         int main(void)
         {
-            startUART0();
+            ES_Serial(0, "115200,8,N,1");
 
-            // An interrupt every 100 ms, as long as SystemInit set the clock.
-            SYSTICK_CTRL = 0;
-            SYSTICK_LOAD = SystemCoreClock / 10 - 1;
-            SYSTICK_VAL = 0;
-            SYSTICK_CTRL = 7;
+            SYSCTL->RCGCGPIO |= (1u << 12);
+            while ((SYSCTL->PRGPIO & (1u << 12)) == 0u) {
+            }
+            GPION->DIR |= (1u << 0);
+            GPION->DEN |= (1u << 0);
+            GPION->AFSEL &= ~(1u << 0);
+
+            SysTick->CTRL = 0;
+            SysTick->LOAD = SystemCoreClock / 10 - 1;
+            SysTick->VAL  = 0;
+            SysTick->CTRL = 7;
 
             uint32_t sent = 0;
             while (true) {
                 if (ticks != sent) {
                     sent = ticks;
-                    for (const char *next = message; *next != 0; next++) {
-                        while ((UART0_FR & 0x20) != 0) {
-                        }
-                        UART0_DR = (uint32_t)*next;
-                    }
+                    ES_printf("\(message)\\n");
                 }
             }
         }
 
         """
     }
-
-    private static let uartRegistersAndSetup = """
-        #include <stdbool.h>
-        #include <stdint.h>
-
-        #include "Lib4.h"
-
-        #define REGISTER(address) (*(volatile uint32_t *)(address))
-
-        #define SYSCTL_RCGCGPIO REGISTER(0x400FE608)
-        #define SYSCTL_RCGCUART REGISTER(0x400FE618)
-        #define SYSCTL_PRGPIO   REGISTER(0x400FEA08)
-        #define SYSCTL_PRUART   REGISTER(0x400FEA18)
-        #define GPIOA_AFSEL     REGISTER(0x40058420)
-        #define GPIOA_DEN       REGISTER(0x4005851C)
-        #define GPIOA_PCTL      REGISTER(0x4005852C)
-        #define UART0_DR        REGISTER(0x4000C000)
-        #define UART0_FR        REGISTER(0x4000C018)
-        #define UART0_IBRD      REGISTER(0x4000C024)
-        #define UART0_FBRD      REGISTER(0x4000C028)
-        #define UART0_LCRH      REGISTER(0x4000C02C)
-        #define UART0_CTL       REGISTER(0x4000C030)
-        #define UART0_CC        REGISTER(0x4000CFC8)
-        #define SYSTICK_CTRL    REGISTER(0xE000E010)
-        #define SYSTICK_LOAD    REGISTER(0xE000E014)
-        #define SYSTICK_VAL     REGISTER(0xE000E018)
-
-        extern uint32_t SystemCoreClock;
-
-        static void startUART0(void)
-        {
-            SYSCTL_RCGCGPIO |= 1u << 0;
-            SYSCTL_RCGCUART |= 1u << 0;
-            while ((SYSCTL_PRGPIO & 1u) == 0 || (SYSCTL_PRUART & 1u) == 0) {
-            }
-            GPIOA_AFSEL |= 0x3;
-            GPIOA_PCTL = (GPIOA_PCTL & ~0xFFu) | 0x11;
-            GPIOA_DEN |= 0x3;
-
-            UART0_CTL = 0;
-            UART0_CC = 0x5;    // Clocked by the 16 MHz internal oscillator.
-            UART0_IBRD = 8;    // 115200 baud
-            UART0_FBRD = 44;
-            UART0_LCRH = 0x70; // 8 data bits, no parity, 1 stop bit
-            UART0_CTL = 0x301;
-        }
-        """
 }

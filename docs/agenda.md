@@ -8,9 +8,9 @@ Status today: M0 to M4 are merged. M5 (flashing) is on the `m5-flashing` branch 
 
 | # | Item | Belongs to | Do it |
 |---|---|---|---|
-| 1 | Decide how to handle the course library | Keil support | Now (decision only) |
-| 2 | Ask the course for the library source or a GCC build | Keil support | Now (long wait) |
-| 3 | Check the licence of `TM4C129.h` | Keil support | Now (check only) |
+| 1 | Decide how to handle the course library | Keil support | Done 17 November |
+| 2 | Ask the course for the library source or a GCC build | Keil support | Optional |
+| 3 | Check the licence of `TM4C129.h` | Keil support | Done 17 November |
 | 4 | Real flash of Blinky on the board | M5 | Done 16 November |
 | 5 | Replace reconstructed OpenOCD logs with real captures | M5 | Done 16 November, except two logs that could not be captured |
 | 6 | Locked-chip error message | M5 | Done 17 November |
@@ -22,8 +22,8 @@ Status today: M0 to M4 are merged. M5 (flashing) is on the `m5-flashing` branch 
 | 23 | Fix the timing test that fails in CI | M5 | Done 16 November |
 | 12 | Keil project import (`.uvprojx` to `.umeil`) | M2 | Done 17 November |
 | 13 | GNU startup file and linker script for Keil projects | M2, M3 | Done 17 November |
-| 14 | Ship or download `TM4C129.h` | M2 | After M5, before M6 |
-| 15 | Link the course library | M3 | After M5, before M6 |
+| 14 | Ship or download `TM4C129.h` | M2 | Done 17 November |
+| 15 | Link the course library | M3 | Done 17 November |
 | 16 | Build output reports Code, RO-data, RW-data, ZI-data | M3 | Done 17 November |
 | 17 | Decide `-O0` or `-Og` for debug builds | M2 | Done 17 November |
 | 18 | XCUITest target and typing performance test | M4 | Before M6 |
@@ -76,9 +76,9 @@ Recommended here because the debugger requirements (`docs/debugger-functional-re
 
 **13. GNU startup file and linker script.** Done on 17 November: importing a Keil project writes `uMeil/startup_gcc.c`, generated from the handler names in Keil's `startup_TM4C129.s` and calling `SystemInit` before `main()`, plus `uMeil/tm4c1294ncpdt.ld`.
 
-**14. `TM4C129.h`.** Ship it or download it, depending on item 3.
+**14. `TM4C129.h`.** Done on 17 November: `KeilImporter` writes a clean-room `uMeil/TM4C129.h` register header (Cortex-M4 core structs and TM4C1294 peripheral structs from the datasheet and BSD TivaWare offsets) and adds `uMeil` to the project's include paths.
 
-**15. Course library.** Carry out whichever route was chosen in item 1. Also needs a way for a project to name an extra library; today that takes hand-written linker flags.
+**15. Course library.** Done on 17 November: when a Keil project lists `ES_Library.lib` or `Lib4.lib`, `KeilImporter` writes `uMeil/es_lib.c` (implementing `ES_Serial`, `ES_getchar`, `ES_putchar`, `ES_echo`, `ES_printf`, `ES_utob`, `readDec`, `msDelay`, `setSysClk80MHz`, and the Port N helpers) and includes it in the build.
 
 Note: the `Template` folder's `main.c` has a stray `}` after `while(true) {}` and will not compile in any toolchain until it is removed. That is a fix in the course file, not in uMeil.
 

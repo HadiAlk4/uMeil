@@ -56,14 +56,23 @@ enum KeilImporter {
         }
 
         var notes: [String] = []
-        var sources = sourceFiles(of: keil, in: folder, notes: &notes)
+        var usesCourseLibrary = false
+        var sources = sourceFiles(of: keil, in: folder, usesCourseLibrary: &usesCourseLibrary, notes: &notes)
 
-        // The startup file and linker script, in a folder of their own.
+        // The startup file, register header, course library, and linker script,
+        // in a folder of their own.
         let support = folder.appending(path: supportDirectoryName, directoryHint: .isDirectory)
         let scriptName = linkerScript.lastPathComponent
         let startup = try startupSource(for: keil, chip: chip, in: folder, notes: &notes)
         try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
         try startup.write(to: support.appending(path: startupFileName), atomically: true, encoding: .utf8)
+        let headerURL = support.appending(path: KeilDeviceHeader.fileName)
+        try KeilDeviceHeader.source.write(to: headerURL, atomically: true, encoding: .utf8)
+        if usesCourseLibrary {
+            let libURL = support.appending(path: KeilCourseLibrary.fileName)
+            try KeilCourseLibrary.source.write(to: libURL, atomically: true, encoding: .utf8)
+            sources.append("\(supportDirectoryName)/\(KeilCourseLibrary.fileName)")
+        }
         let scriptCopy = support.appending(path: scriptName)
         try? FileManager.default.removeItem(at: scriptCopy)
         try FileManager.default.copyItem(at: linkerScript, to: scriptCopy)
@@ -96,7 +105,12 @@ enum KeilImporter {
 
     /// The C files to build: the ones in the project's groups, plus C files
     /// Keil copied in from its device pack (the system file).
-    private static func sourceFiles(of keil: KeilProject, in folder: URL, notes: inout [String]) -> [String] {
+    private static func sourceFiles(
+        of keil: KeilProject,
+        in folder: URL,
+        usesCourseLibrary: inout Bool,
+        notes: inout [String]
+    ) -> [String] {
         var sources: [String] = []
         for file in keil.files {
             let name = URL(filePath: file.path).lastPathComponent
@@ -111,8 +125,14 @@ enum KeilImporter {
                 notes.append("\(name) was left out: it is written for Keil's assembler, which the GNU toolchain "
                     + "cannot read.")
             case .library:
-                notes.append("\(name) was left out: it is a library built by Arm Compiler, which the GNU linker "
-                    + "cannot read. The functions it provides will be reported as undefined when you build.")
+                if KeilCourseLibrary.isCourseLibrary(file.path) {
+                    usesCourseLibrary = true
+                    notes.append("\(name) was replaced with \(supportDirectoryName)/\(KeilCourseLibrary.fileName), "
+                        + "because the original library was built for Arm Compiler.")
+                } else {
+                    notes.append("\(name) was left out: it is a library built by Arm Compiler, which the GNU linker "
+                        + "cannot read. The functions it provides will be reported as undefined when you build.")
+                }
             case .header, .other:
                 break
             }
@@ -178,6 +198,7 @@ enum KeilImporter {
         if exists(generated, in: folder) {
             paths.append(generated)
         }
+        paths.append(supportDirectoryName)
 
         var seen = Set<String>()
         return paths.filter { seen.insert($0).inserted }
