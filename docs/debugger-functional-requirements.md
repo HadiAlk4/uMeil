@@ -11,7 +11,7 @@ This document outlines the debugger features demonstrated in the Keil µVision r
 3. **Automatic Startup to `main()`:** Running target startup code (`Startup.s`) automatically upon session launch and halting at the entry point of `main()`.
 4. **Execution Flow Control:** Resetting the CPU, running continuously, halting execution, single-stepping (`Step` / `F11`), stepping over functions (`Step Over` / `F10`), stepping out of functions (`Step Out` / `Ctrl+F11`), and running to the cursor line (`Run to Cursor Line`).
 5. **Source & Disassembly Synchronization:** Viewing high-level C source code alongside processor-specific assembly instructions (Disassembly window) with visual program counter (`PC`) and cursor indicators.
-6. **CPU Register Inspection:** Viewing core general-purpose registers (`R0`–`R12`), bank/stack pointers (`SP`, `LR`, `PC`), program status registers (`xPSR`), and system/internal state (`States`, `Sec`).
+6. **CPU Register Inspection:** Viewing core general-purpose registers (`R0`–`R12`), bank/stack pointers (`SP`, `LR`, `PC`), program status registers (`xPSR`), and processor execution state (`Handler`/`Thread` mode, privilege level, active stack pointer).
 7. **Call Stack & Local Variable Inspection:** Real-time tracking of active stack frames (`main`, `add`), function parameters, local variables, data types, memory locations/registers, and values.
 8. **Pointer Dereferencing & Value Formatting:** Expanding pointer variables (`int *p`) to inspect both the memory address stored and the dereferenced target value (`*p`), and toggling between Hexadecimal and Decimal (Integer) display formats.
 9. **Raw Memory Inspection:** Querying specific hexadecimal memory addresses (e.g., `0x20000258`) in a hex-dump view and observing byte-level storage (little-endian byte ordering).
@@ -119,8 +119,9 @@ This document outlines the debugger features demonstrated in the Keil µVision r
     * Stack Pointer (`SP` / `R13`), Link Register (`LR` / `R14`), Program Counter (`PC` / `R15`)
     * Program Status Register (`xPSR`) with expandable bitfields
     * Special-purpose registers (`MSP`, `PSP`, `PRIMASK`, `BASEPRI`, `FAULTMASK`, `CONTROL`)
-* **FR-7.2 — Processor Execution State & Timing:**
-  * **Description:** The `Regs` window shall also report internal processor states (`Handler`/`Thread` mode, `Privileged`/`Unprivileged`, active stack pointer) and elapsed instruction states/execution time (`States`, `Sec`).
+* **FR-7.2 — Processor Execution State:**
+  * **Description:** The `Regs` window shall also report internal processor states (`Handler`/`Thread` mode, `Privileged`/`Unprivileged`, active stack pointer) decoded from `xPSR` and `CONTROL`.
+  * **Details:** Instruction cycle and elapsed time counters (`States`, `Sec`) shown in Keil's software simulator are not exposed by the LaunchPad's on-board ICDI hardware probe and are omitted on hardware targets.
 
 ---
 

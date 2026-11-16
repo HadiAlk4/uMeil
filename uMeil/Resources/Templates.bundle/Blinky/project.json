@@ -14,7 +14,7 @@
   ],
   "build": {
     "cStandard": "gnu11",
-    "optimization": "Og",
+    "optimization": "O0",
     "defines": [],
     "compilerFlags": [
       "-Wall",

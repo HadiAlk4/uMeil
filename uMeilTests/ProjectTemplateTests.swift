@@ -54,7 +54,7 @@ struct ProjectTemplateTests {
             includePaths: ["src"],
             build: .init(
                 cStandard: "gnu11",
-                optimization: .debug,
+                optimization: .none,
                 defines: [],
                 compilerFlags: ["-Wall", "-Wextra"],
                 linkerFlags: [],
