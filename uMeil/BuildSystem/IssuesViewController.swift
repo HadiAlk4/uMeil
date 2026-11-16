@@ -133,6 +133,21 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
         show(status: FlashSummary.statusText(for: result), diagnostics: diagnostics)
     }
 
+    /// Shows what the debugger is doing. The messages from the build that
+    /// came before it stay listed.
+    func showDebugging(_ status: String, isBusy: Bool = false) {
+        show(status: status, diagnostics: diagnostics)
+        if isBusy {
+            spinner.startAnimation(nil)
+        }
+    }
+
+    /// Shows something the debugger could not do, listed first, above any
+    /// warnings from the build.
+    func show(debugFailure message: String, status: String) {
+        show(status: status, diagnostics: [Diagnostic(severity: .error, message: message)] + diagnostics)
+    }
+
     private func show(status: String, diagnostics: [Diagnostic]) {
         loadViewIfNeeded()
         spinner.stopAnimation(nil)

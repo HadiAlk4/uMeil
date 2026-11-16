@@ -9,6 +9,7 @@ enum MainMenu {
         mainMenu.addItem(submenuItem(fileMenu()))
         mainMenu.addItem(submenuItem(editMenu()))
         mainMenu.addItem(submenuItem(productMenu()))
+        mainMenu.addItem(submenuItem(debugMenu()))
 
         let window = windowMenu()
         mainMenu.addItem(submenuItem(window))
@@ -78,6 +79,32 @@ enum MainMenu {
         )
         menu.addItem(.separator())
         menu.addItem(withTitle: "Stop", action: #selector(MainWindowController.stopFlashing(_:)), keyEquivalent: ".")
+        return menu
+    }
+
+    /// The shortcuts are the Keil µVision debugger's, which the course uses.
+    private static func debugMenu() -> NSMenu {
+        let menu = NSMenu(title: "Debug")
+        func add(_ title: String, _ action: Selector, key: Int, control: Bool = false) {
+            let functionKey = UnicodeScalar(key).map { String(Character($0)) } ?? ""
+            let item = menu.addItem(withTitle: title, action: action, keyEquivalent: functionKey)
+            item.keyEquivalentModifierMask = control ? [.control] : []
+        }
+
+        add("Start/Stop Debug Session", #selector(MainWindowController.toggleDebugging(_:)), key: NSF5FunctionKey,
+            control: true)
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Reset", action: #selector(MainWindowController.debugReset(_:)), keyEquivalent: "")
+        add("Run", #selector(MainWindowController.debugContinue(_:)), key: NSF5FunctionKey)
+        menu.addItem(withTitle: "Stop", action: #selector(MainWindowController.debugPause(_:)), keyEquivalent: "")
+        add("Step", #selector(MainWindowController.debugStepInto(_:)), key: NSF11FunctionKey)
+        add("Step Over", #selector(MainWindowController.debugStepOver(_:)), key: NSF10FunctionKey)
+        add("Step Out", #selector(MainWindowController.debugStepOut(_:)), key: NSF11FunctionKey, control: true)
+        add("Run to Cursor Line", #selector(MainWindowController.debugRunToCursor(_:)), key: NSF10FunctionKey,
+            control: true)
+        menu.addItem(.separator())
+        add("Insert/Remove Breakpoint", #selector(MainWindowController.toggleBreakpointAtCursor(_:)),
+            key: NSF9FunctionKey)
         return menu
     }
 

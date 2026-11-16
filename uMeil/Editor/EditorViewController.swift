@@ -20,7 +20,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
 
     let textView: NSTextView
     private let scrollView = NSScrollView()
-    private var ruler: LineNumberRulerView?
+    private(set) var ruler: LineNumberRulerView?
     private let placeholderLabel = NSTextField(labelWithString: "")
     private lazy var openFolderButton = NSButton(
         title: "Open Folder…",
@@ -41,7 +41,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
     private var textVersion = 0
 
     /// Line positions for the current text, shared with the gutter.
-    private var lineIndex = LineIndex("") {
+    private(set) var lineIndex = LineIndex("") {
         didSet { ruler?.lineIndex = lineIndex }
     }
 
@@ -187,6 +187,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         isModified = false
         lineIndex = LineIndex(loaded.text)
         setMarkers([:])
+        clearDebugMarks()
         scrollView.isHidden = false
         placeholder.isHidden = true
         scheduleHighlighting(delay: .zero)
@@ -213,6 +214,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         isModified = false
         lineIndex = LineIndex("")
         setMarkers([:])
+        clearDebugMarks()
         showPlaceholder(hasFolder: hasFolder)
         scheduleHighlighting(delay: .zero)
     }
