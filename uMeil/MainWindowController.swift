@@ -1,13 +1,15 @@
 import AppKit
 
 /// The main IDE window: a file navigator on the left, the code editor on the
-/// right, and the build issues under the editor. Debugger views arrive in
-/// later milestones. Flashing lives in `MainWindowController+Flashing.swift`.
+/// right, and a collapsible bottom panel for build issues and the terminal.
+/// Flashing lives in `MainWindowController+Flashing.swift`.
 final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation,
     NSToolbarItemValidation {
     let navigator = FileNavigatorViewController()
     let editor = EditorViewController()
     let issues = IssuesViewController()
+    let terminal: TerminalViewController
+    let bottomPanel: BottomPanelViewController
 
     /// Runs builds. Replaceable so tests can build without a real compiler.
     var buildEngine = BuildEngine()
@@ -29,11 +31,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     var isFlashing = false
     /// The Build and Flash in progress, kept so it can be stopped.
     var flashTask: Task<Void, Never>?
-    let issuesItem: NSSplitViewItem
-
-    /// Whether the issues panel under the editor is showing.
-    var isIssuesPanelVisible: Bool { !issuesItem.isCollapsed }
-    private let editorSplit = NSSplitViewController()
+    let bottomPanelItem: NSSplitViewItem
 
     /// The folder open in the navigator, or `nil` before one is chosen.
     private(set) var folder: URL?
@@ -42,37 +40,27 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     static let lastFolderDefaultsKey = "LastOpenedFolder"
     private let defaults: UserDefaults
 
-    init(defaults: UserDefaults = .standard, boardMonitor: any BoardMonitoring = USBBoardMonitor()) {
+    init(
+        defaults: UserDefaults = .standard,
+        boardMonitor: any BoardMonitoring = USBBoardMonitor(),
+        makeTerminalSession: @escaping @MainActor () -> any TerminalSessionView = { SwiftTermSessionView() }
+    ) {
         self.defaults = defaults
         self.boardMonitor = boardMonitor
+        self.terminal = TerminalViewController(session: makeTerminalSession())
+        self.bottomPanel = BottomPanelViewController(issues: issues, terminal: terminal)
 
-        let split = NSSplitViewController()
-        let sidebar = NSSplitViewItem(sidebarWithViewController: navigator)
-        sidebar.minimumThickness = 180
-        sidebar.maximumThickness = 420
-        split.addSplitViewItem(sidebar)
+        let bottomPanelItem = NSSplitViewItem(viewController: bottomPanel)
+        bottomPanelItem.canCollapse = true
+        bottomPanelItem.minimumThickness = 150
+        bottomPanelItem.isCollapsed = true
+        self.bottomPanelItem = bottomPanelItem
 
-        // The issues panel sits under the editor and stays hidden until the first build.
-        editorSplit.splitView.isVertical = false
-        editorSplit.addSplitViewItem(NSSplitViewItem(viewController: editor))
-        issuesItem = NSSplitViewItem(viewController: issues)
-        issuesItem.canCollapse = true
-        issuesItem.minimumThickness = 130
-        issuesItem.isCollapsed = true
-        editorSplit.addSplitViewItem(issuesItem)
-        split.addSplitViewItem(NSSplitViewItem(viewController: editorSplit))
-
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1100, height: 700),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
+        let window = Self.makeMainWindow(
+            navigator: navigator,
+            editor: editor,
+            bottomPanelItem: bottomPanelItem
         )
-        window.contentViewController = split
-        window.contentMinSize = NSSize(width: 640, height: 360)
-        window.setContentSize(NSSize(width: 1100, height: 700))
-        window.setFrameAutosaveName("MainWindow")
-        window.center()
 
         super.init(window: window)
         window.delegate = self
@@ -80,6 +68,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         navigator.onSelectFile = { [weak self] url in self?.userSelectedFile(url) }
         editor.onModifiedChanged = { [weak self] _ in self?.updateTitle() }
         issues.onSelect = { [weak self] diagnostic in self?.show(diagnostic) }
+        configureBottomPanelCallbacks()
         window.toolbar = toolbar.toolbar
         window.toolbarStyle = .unified
         startWatchingForBoard()
@@ -99,6 +88,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         lastBuild = nil
         navigator.showFolder(url)
         editor.close(hasFolder: true)
+        terminal.updateFolder(url)
         defaults.set(url.path(percentEncoded: false), forKey: Self.lastFolderDefaultsKey)
         updateTitle()
     }
@@ -191,7 +181,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        isEnabled(menuItem.action)
+        updateViewMenuItem(menuItem)
+        return isEnabled(menuItem.action)
     }
 
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
@@ -267,7 +258,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         if editor.isModified, !save() {
             return nil
         }
-        issuesItem.isCollapsed = false
+        showIssuesPanel()
 
         guard let projectFile = BuildSummary.projectFile(in: folder) else {
             issues.show(failure: "This folder has no uMeil project file (.umeil) to build.")
@@ -335,7 +326,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        confirmDiscardingChanges()
+        guard confirmDiscardingChanges() else { return false }
+        terminal.terminate()
+        return true
     }
 
     // MARK: - Title

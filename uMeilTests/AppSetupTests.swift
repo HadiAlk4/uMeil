@@ -15,7 +15,7 @@ struct AppSetupTests {
     @Test func mainMenuHasTheStandardMenus() {
         let menu = MainMenu.make(appName: "uMeil")
         let titles = menu.items.compactMap { $0.submenu?.title }
-        #expect(titles == ["uMeil", "File", "Edit", "Product", "Window"])
+        #expect(titles == ["uMeil", "File", "Edit", "View", "Product", "Window"])
     }
 
     @Test func appMenuCanQuit() throws {
@@ -33,10 +33,10 @@ struct AppSetupTests {
 
         #expect(window.title == "uMeil")
         #expect(window.styleMask.contains(.resizable))
-        // The navigator beside a second split that stacks the editor over the issues list.
+        // The navigator beside a second split that stacks the editor over the bottom panel.
         #expect(split.splitViewItems.first?.viewController == controller.navigator)
         let editorSplit = try #require(split.splitViewItems.last?.viewController as? NSSplitViewController)
-        #expect(editorSplit.splitViewItems.map(\.viewController) == [controller.editor, controller.issues])
+        #expect(editorSplit.splitViewItems.map(\.viewController) == [controller.editor, controller.bottomPanel])
         #expect(editorSplit.splitViewItems.last?.isCollapsed == true)
     }
 

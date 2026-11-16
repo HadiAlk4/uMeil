@@ -8,6 +8,7 @@ enum MainMenu {
         mainMenu.addItem(submenuItem(appMenu(appName: appName)))
         mainMenu.addItem(submenuItem(fileMenu()))
         mainMenu.addItem(submenuItem(editMenu()))
+        mainMenu.addItem(submenuItem(viewMenu()))
         mainMenu.addItem(submenuItem(productMenu()))
 
         let window = windowMenu()
@@ -70,6 +71,21 @@ enum MainMenu {
         )
         menu.addItem(.separator())
         menu.addItem(withTitle: "Save", action: #selector(MainWindowController.saveDocument(_:)), keyEquivalent: "s")
+        return menu
+    }
+
+    private static func viewMenu() -> NSMenu {
+        let menu = NSMenu(title: "View")
+        menu.addItem(
+            withTitle: "Show Terminal",
+            action: #selector(MainWindowController.toggleTerminal(_:)),
+            keyEquivalent: "j"
+        )
+        menu.addItem(
+            withTitle: "Show Issues",
+            action: #selector(MainWindowController.toggleIssues(_:)),
+            keyEquivalent: ""
+        )
         return menu
     }
 
