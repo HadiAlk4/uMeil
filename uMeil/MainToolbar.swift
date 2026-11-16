@@ -1,6 +1,7 @@
 import AppKit
 
-/// The main window's toolbar: Build, Flash, and whether a board is plugged in.
+/// The main window's toolbar: Build, Flash, the debugger's controls, and
+/// whether a board is plugged in.
 ///
 /// The buttons send their actions up the responder chain, where the window
 /// controller handles them and decides when they are enabled.
@@ -17,6 +18,68 @@ final class MainToolbar: NSObject, NSToolbarDelegate {
         static let flash = NSToolbarItem.Identifier("Flash")
         static let board = NSToolbarItem.Identifier("Board")
     }
+
+    /// A button for one of the debugger's commands.
+    private struct DebugButton {
+        var title: String
+        var symbol: String
+        var toolTip: String
+        var action: Selector
+
+        var identifier: NSToolbarItem.Identifier { NSToolbarItem.Identifier("Debug." + title) }
+    }
+
+    /// The names follow the Keil µVision debugger, which the course uses.
+    private let debugButtons = [
+        DebugButton(
+            title: "Debug",
+            symbol: "ladybug",
+            toolTip: "Start or stop a debug session",
+            action: #selector(MainWindowController.toggleDebugging(_:))
+        ),
+        DebugButton(
+            title: "Reset",
+            symbol: "arrow.counterclockwise",
+            toolTip: "Reset the chip and stop at its first instruction",
+            action: #selector(MainWindowController.debugReset(_:))
+        ),
+        DebugButton(
+            title: "Run",
+            symbol: "play",
+            toolTip: "Run until a breakpoint",
+            action: #selector(MainWindowController.debugContinue(_:))
+        ),
+        DebugButton(
+            title: "Stop",
+            symbol: "xmark.circle",
+            toolTip: "Stop the running program where it is",
+            action: #selector(MainWindowController.debugPause(_:))
+        ),
+        DebugButton(
+            title: "Step",
+            symbol: "arrow.down.right",
+            toolTip: "Run one line, going into a function it calls",
+            action: #selector(MainWindowController.debugStepInto(_:))
+        ),
+        DebugButton(
+            title: "Step Over",
+            symbol: "arrow.turn.up.right",
+            toolTip: "Run one line, including any function it calls",
+            action: #selector(MainWindowController.debugStepOver(_:))
+        ),
+        DebugButton(
+            title: "Step Out",
+            symbol: "arrow.up.left",
+            toolTip: "Run until this function returns",
+            action: #selector(MainWindowController.debugStepOut(_:))
+        ),
+        DebugButton(
+            title: "Run to Cursor Line",
+            symbol: "arrow.right.to.line",
+            toolTip: "Run until the line the cursor is on",
+            action: #selector(MainWindowController.debugRunToCursor(_:))
+        )
+    ]
 
     override init() {
         super.init()
@@ -40,7 +103,7 @@ final class MainToolbar: NSObject, NSToolbarDelegate {
     // MARK: - NSToolbarDelegate
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Item.build, Item.flash, .flexibleSpace, Item.board]
+        [Item.build, Item.flash, .space] + debugButtons.map(\.identifier) + [.flexibleSpace, Item.board]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -78,7 +141,14 @@ final class MainToolbar: NSObject, NSToolbarDelegate {
             item.view = stack
             return item
         default:
-            return nil
+            guard let debug = debugButtons.first(where: { $0.identifier == itemIdentifier }) else { return nil }
+            return button(
+                itemIdentifier,
+                title: debug.title,
+                symbol: debug.symbol,
+                toolTip: debug.toolTip,
+                action: debug.action
+            )
         }
     }
 

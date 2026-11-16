@@ -18,12 +18,14 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
 
     /// Called when `isModified` flips.
     var onModifiedChanged: ((Bool) -> Void)?
+    /// Evaluates a C identifier hovered in the editor while debugging.
+    var onHoverIdentifier: ((String) async -> String?)?
 
     let textView: NSTextView
     let intelligence = EditorCodeIntelligenceState()
     private let scrollView = NSScrollView()
     private let editorStack = NSStackView()
-    private var ruler: LineNumberRulerView?
+    private(set) var ruler: LineNumberRulerView?
     private let placeholderLabel = NSTextField(labelWithString: "")
     private lazy var openFolderButton = NSButton(
         title: "Open Folder…",
@@ -201,6 +203,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         lineIndex = LineIndex(loaded.text)
         clearLiveDiagnostics()
         setMarkers([:])
+        clearDebugMarks()
         editorStack.isHidden = false
         placeholder.isHidden = true
         scheduleHighlighting(delay: .zero)
@@ -235,6 +238,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         lineIndex = LineIndex("")
         clearLiveDiagnostics()
         setMarkers([:])
+        clearDebugMarks()
         showPlaceholder(hasFolder: hasFolder)
         scheduleHighlighting(delay: .zero)
         if let closedURL {

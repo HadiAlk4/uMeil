@@ -36,6 +36,9 @@ enum EditorTheme {
     static let inlineErrorColor = NSColor.systemRed
     static let inlineWarningColor = NSColor.systemOrange
 
+    /// Behind the line the stopped program will run next.
+    static let executionLineColor = NSColor.systemGreen.withAlphaComponent(0.25)
+
     /// The attributes plain (unhighlighted) code is drawn with.
     static var textAttributes: [NSAttributedString.Key: Any] {
         [
