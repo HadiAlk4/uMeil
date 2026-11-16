@@ -1,6 +1,6 @@
 # Agenda
 
-Open work that is not yet scheduled in the README milestones, and when it is recommended to do each item. Last updated 16 November 2026.
+Open work that is not yet scheduled in the README milestones, and when it is recommended to do each item. Last updated 17 November 2026.
 
 Status today: M0 to M4 are merged. M5 (flashing) is on the `m5-flashing` branch and has flashed a real board. Still open before M5 closes: items 6 to 8, and the CI runner for item 9.
 
@@ -31,6 +31,7 @@ Status today: M0 to M4 are merged. M5 (flashing) is on the `m5-flashing` branch 
 | 20 | Gutter: clicks, breakpoints, program counter arrow | M4 | Start of M6 |
 | 21 | Reword FR-7.2 (`States` and `Sec` counters) | Spec | Before M6 |
 | 22 | Command window showing build, flash and debug logs | M3, M5 | During M6 |
+| 24 | Integrated terminal panel (`⌘J`) | IDE | After M6 |
 
 ## Now: decisions and checks, no code
 
@@ -100,3 +101,7 @@ Note: the `Template` folder's `main.c` has a stray `}` after `while(true) {}` an
 **22. Command window (FR-8.2).** Builds and flashes both keep a full log, but nothing in the window shows it. Add a console that shows build, flash and debugger output.
 
 Already satisfied by M0 to M5, for reference: a build with errors blocks the next step and warnings do not (FR-1.1); every build compiles with `-g`; GDB is installed and checked by the toolchain manager; the M5 toolbar has room for the Start/Stop Debug button (FR-1.2).
+
+## After M6
+
+**24. Integrated terminal (`⌘J`).** Add a built-in shell terminal in the main window that toggles open and closed from the keyboard like other IDEs (`⌘J`, plus a menu item under a new `View` menu; `⌘J` is currently unused). Opening it should focus the terminal, and toggling it shut should return focus to the editor. Run the user's login shell in a pseudo-terminal (`openpty`) with the open project folder as its working directory, and keep it distinct from item 22's Command window (build, flash and debugger logs) and M8's Serial Monitor (board UART) — e.g. as tabs in `MainWindowController`'s collapsible bottom split (`editorSplit`, currently holding only `IssuesViewController`). Needs VT100/ANSI screen emulation (decide when picking this up whether to write a minimal AppKit terminal view or use a library such as SwiftTerm).
