@@ -4,6 +4,8 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindowController: MainWindowController?
     private lazy var toolchainWindowController = ToolchainWindowController()
+    /// What the app was launched to open, instead of the last folder.
+    private var launchItem: URL?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.make(appName: AppInfo.name)
@@ -11,10 +13,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = MainWindowController()
         controller.showWindow(nil)
         mainWindowController = controller
-        reopenLastFolder(in: controller)
+        if let launchItem {
+            controller.openItem(at: launchItem)
+        } else {
+            reopenLastFolder(in: controller)
+        }
+        launchItem = nil
 
         NSApp.activate()
         showToolchainStatusIfToolsAreMissing()
+    }
+
+    /// A folder or file dropped on the Dock icon, opened from Finder, or
+    /// passed to `open -a uMeil`. There is one window, so only the first
+    /// item is opened.
+    ///
+    /// When this is what launches the app, it is called before the window
+    /// exists, and the item is kept until launch finishes.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard let url = urls.first else { return }
+        if let mainWindowController {
+            mainWindowController.openItem(at: url)
+        } else {
+            launchItem = url
+        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

@@ -118,6 +118,35 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         }
     }
 
+    /// Opens a folder or file handed to the app from outside: dropped on the
+    /// Dock icon, opened from Finder, or passed to `open -a uMeil`.
+    ///
+    /// A folder is shown as it is. A project file opens its folder with the
+    /// project's first source showing. Any other file opens its folder with
+    /// that file showing.
+    func openItem(at url: URL) {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false), isDirectory: &isDirectory),
+              confirmDiscardingChanges()
+        else { return }
+
+        window?.makeKeyAndOrderFront(nil)
+        if isDirectory.boolValue {
+            openFolder(url)
+            return
+        }
+
+        let parent = url.deletingLastPathComponent()
+        openFolder(parent)
+        if url.pathExtension == ProjectFile.fileExtension,
+           let main = (try? ProjectFile.load(from: url))?.sources.first {
+            openFile(parent.appending(path: main))
+        } else {
+            // Also a project file that cannot be read, so it can be fixed.
+            openFile(url)
+        }
+    }
+
     // MARK: - Files
 
     /// Opens `url` in the editor and selects it in the navigator. Unsaved
