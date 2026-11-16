@@ -13,7 +13,7 @@ Status today: M0 to M4 are merged. M5 (flashing) is on the `m5-flashing` branch 
 | 3 | Check the licence of `TM4C129.h` | Keil support | Now (check only) |
 | 4 | Real flash of Blinky on the board | M5 | Done 16 November |
 | 5 | Replace reconstructed OpenOCD logs with real captures | M5 | Done 16 November, except two logs that could not be captured |
-| 6 | Locked-chip error message | M5 | With the board, before closing M5 |
+| 6 | Locked-chip error message | M5 | Done 17 November |
 | 7 | Check USB plug and unplug detection | M5 | With the board, before closing M5 |
 | 8 | Look at the board status dot in the running app | M5 | With the board, before closing M5 |
 | 9 | Hardware-in-the-loop flash test | M5 | Test done 17 November; the CI runner is still to set up |
@@ -53,7 +53,7 @@ Worth asking now even if route 1 is chosen, because the answer may take a while 
 
 **5. Replace reconstructed logs.** Done on 16 November for the success, verify-failed and "no board" logs in `uMeilTests/Flashing/FlashTestSupport.swift`. Two are still partly written from OpenOCD's message formats: wrong-chip (no TM4C123 board was to hand) and write-failed (could not be provoked on a healthy board).
 
-**6. Locked-chip message.** Still missing: nothing in `uMeil/Flashing` handles a locked chip, so it falls through to OpenOCD's own first error line. Capture the real output and add a plain-language message.
+**6. Locked-chip message.** Done on 17 November: captured the real OpenOCD output on the EK-TM4C1294XL with volatile page protection in `FMPPE0`, and added `FlashFailure.chipLocked` for write-protected flash pages and locked debug ports.
 
 **7. USB detection.** A plugged-in board is detected (checked by `HardwareInTheLoopTests` on 17 November). The toolbar's "Board connected" status has still never seen a real plug or unplug event while the app is running.
 

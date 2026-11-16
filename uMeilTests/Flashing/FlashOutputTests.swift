@@ -72,6 +72,17 @@ struct FlashOutputTests {
         #expect(FlashOutput.failure(in: FlashLog.verifyFailed, exitCode: 1, plan: plan) == .verifyFailed)
     }
 
+    @Test func aLockedOrWriteProtectedChipIsExplained() {
+        #expect(FlashOutput.failure(in: FlashLog.chipLocked, exitCode: 1, plan: plan) == .chipLocked)
+
+        let lockedDebugPort = """
+            Info : ICDI Firmware version: 1224
+            Error: SRST error
+            Error: [tm4c1294ncpdt.cpu] Examination failed
+            """
+        #expect(FlashOutput.failure(in: lockedDebugPort, exitCode: 1, plan: plan) == .chipLocked)
+    }
+
     @Test func aMissingImageIsReported() {
         let log = "uMeil: connected\nuMeil: writing\nError: couldn't open /tmp/Blinky/build/Blinky.elf\n"
 
@@ -122,6 +133,7 @@ struct FlashOutputTests {
             .wrongChip(found: "TM4C123GH6PM", expected: .tm4c1294ncpdt),
             .wrongChip(found: nil, expected: .tm4c1294ncpdt),
             .verifyFailed,
+            .chipLocked,
             .imageNotFound(plan.image),
             .stopped,
             .other("something odd")
@@ -131,7 +143,8 @@ struct FlashOutputTests {
         #expect(Set(messages).count == failures.count)
         #expect(messages[1].contains("DEBUG USB port"))
         #expect(messages[2].contains("TM4C123GH6PM") && messages[2].contains("TM4C1294NCPDT"))
-        #expect(messages[5].contains("Blinky.elf"))
-        #expect(messages[7] == "Flashing failed: something odd")
+        #expect(messages[5].contains("stellaris recover"))
+        #expect(messages[6].contains("Blinky.elf"))
+        #expect(messages[8] == "Flashing failed: something odd")
     }
 }

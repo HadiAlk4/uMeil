@@ -126,6 +126,22 @@ enum FlashLog {
         Error: error writing to flash at address 0x00000000 at offset 0x00000000
 
         """
+
+    /// Page 0 was write-protected in the flash controller's `FMPPE0`
+    /// register (`0x400FE400`), so erasing it failed with an access
+    /// violation (`flash_cris 0x1`). Exit code 1. A real capture.
+    static let chipLocked = banner
+        + chipInfo.replacing(
+            "#  0: 0x00000000 (0x4000 16kB) not protected",
+            with: "#  0: 0x00000000 (0x4000 16kB) protected"
+        )
+        + """
+        uMeil: writing
+        auto erase enabled
+        Warn : Error erasing flash page 0,  flash_cris 0x1
+        Error: failed erasing sectors 0 to 0
+
+        """
 }
 
 private extension String {
