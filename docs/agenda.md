@@ -20,8 +20,8 @@ Status today: M0 to M4 are merged. M5 (flashing) is on the `m5-flashing` branch 
 | 10 | Check the "no board" test passes in CI | M5 | Done 16 November |
 | 11 | Flash an existing image (`.axf` / `.elf`) | M5 | Done 16 November |
 | 23 | Fix the timing test that fails in CI | M5 | Done 16 November |
-| 12 | Keil project import (`.uvprojx` to `.umeil`) | M2 | After M5, before M6 |
-| 13 | GNU startup file and linker script for Keil projects | M2, M3 | After M5, before M6 |
+| 12 | Keil project import (`.uvprojx` to `.umeil`) | M2 | Done 17 November |
+| 13 | GNU startup file and linker script for Keil projects | M2, M3 | Done 17 November |
 | 14 | Ship or download `TM4C129.h` | M2 | After M5, before M6 |
 | 15 | Link the course library | M3 | After M5, before M6 |
 | 16 | Build output reports Code, RO-data, RW-data, ZI-data | M3 | Done 17 November |
@@ -71,9 +71,9 @@ Worth asking now even if route 1 is chosen, because the answer may take a while 
 
 Recommended here because the debugger requirements (`docs/debugger-functional-requirements.md`) are written around debugging this kind of course project, so M6 needs to be able to build them. These items extend M2 (project model) and M3 (build system).
 
-**12. Keil project import.** uMeil only builds folders with a `.umeil` project file. Read the `.uvprojx` (source files, include paths, defines, chip) and create a `.umeil` project from it, leaving the Keil files untouched.
+**12. Keil project import.** Done on 17 November: File > Import Keil Project… reads a `.uvprojx` (source files, include paths, defines, chip, optimisation, C standard) and writes a `.umeil` project alongside it, leaving the Keil files untouched and listing anything that had to be skipped or is still missing.
 
-**13. GNU startup file and linker script.** Keil's `startup_TM4C129.s` uses Keil's assembler syntax and jumps to Keil's `__main`, so the GNU assembler cannot use it. Substitute a GNU startup with the same handler names (the labs define `SysTick_Handler` and others) that calls `SystemInit`, plus a linker script.
+**13. GNU startup file and linker script.** Done on 17 November: importing a Keil project writes `uMeil/startup_gcc.c`, generated from the handler names in Keil's `startup_TM4C129.s` and calling `SystemInit` before `main()`, plus `uMeil/tm4c1294ncpdt.ld`.
 
 **14. `TM4C129.h`.** Ship it or download it, depending on item 3.
 

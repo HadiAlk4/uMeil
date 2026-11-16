@@ -63,6 +63,11 @@ enum MainMenu {
             action: #selector(MainWindowController.chooseFolder(_:)),
             keyEquivalent: "o"
         )
+        menu.addItem(
+            withTitle: "Import Keil Project…",
+            action: #selector(MainWindowController.importKeilProject(_:)),
+            keyEquivalent: ""
+        )
         menu.addItem(.separator())
         menu.addItem(withTitle: "Save", action: #selector(MainWindowController.saveDocument(_:)), keyEquivalent: "s")
         return menu
