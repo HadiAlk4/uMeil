@@ -55,22 +55,23 @@ struct StreamingProcessRunnerTests {
     }
 
     @Test func reportsLinesWhileTheProcessIsStillRunning() async throws {
-        let firstLineArrived = OSAllocatedUnfairLock(initialState: Date?.none)
-        let started = Date()
+        // When each line was reported. Measured between the two lines, not
+        // from launch: starting a process can take a while on a busy machine.
+        let arrivals = OSAllocatedUnfairLock(initialState: [String: Date]())
 
         _ = try await StreamingProcessRunner().run(
             shell,
             arguments: ["-c", "echo early; sleep 1; echo late"],
             currentDirectory: nil
         ) { line in
-            if line == "early" {
-                firstLineArrived.withLock { $0 = Date() }
-            }
+            arrivals.withLock { $0[line] = Date() }
         }
 
-        let arrived = try #require(firstLineArrived.withLock { $0 })
-        // Well before the process finished, a second later.
-        #expect(arrived.timeIntervalSince(started) < 0.7)
+        let early = try #require(arrivals.withLock { $0["early"] })
+        let late = try #require(arrivals.withLock { $0["late"] })
+        // A runner that waited for the process to exit would report both
+        // lines together. The process sleeps a second between them.
+        #expect(late.timeIntervalSince(early) > 0.5)
     }
 
     @Test func runsInTheGivenFolder() async throws {
