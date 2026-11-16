@@ -24,7 +24,7 @@ Status today: M0 to M4 are merged. M5 (flashing) is on the `m5-flashing` branch 
 | 13 | GNU startup file and linker script for Keil projects | M2, M3 | After M5, before M6 |
 | 14 | Ship or download `TM4C129.h` | M2 | After M5, before M6 |
 | 15 | Link the course library | M3 | After M5, before M6 |
-| 16 | Build output reports Code, RO-data, RW-data, ZI-data | M3 | Before M6 |
+| 16 | Build output reports Code, RO-data, RW-data, ZI-data | M3 | Done 17 November |
 | 17 | Decide `-O0` or `-Og` for debug builds | M2 | Before M6 |
 | 18 | XCUITest target and typing performance test | M4 | Before M6 |
 | 19 | Tabbed source viewer | M4 | Before M6 |
@@ -83,7 +83,7 @@ Note: the `Template` folder's `main.c` has a stray `}` after `while(true) {}` an
 
 ## Before M6: gaps the debugger requirements expose in earlier milestones
 
-**16. Size metrics (FR-1.1, M3).** The build reports flash and RAM totals from `size`'s text, data and bss. The requirement asks for Code, RO-data, RW-data and ZI-data, which needs the per-section output to split code from read-only data.
+**16. Size metrics (FR-1.1, M3).** Done on 17 November: a build reports Code, RO-data, RW-data and ZI-data in the status line and the build log, read from the image's sections. The Blinky template's linker script now gives constants their own `.rodata` section so they count as RO-data; projects made before this, and Keil-built images, keep constants inside the code section, so theirs are counted as Code.
 
 **17. Optimisation level for debugging (FR-5.2, M2).** The Blinky template builds with `-Og`, where some locals can show as optimised out. Decide whether debug builds should use `-O0`.
 

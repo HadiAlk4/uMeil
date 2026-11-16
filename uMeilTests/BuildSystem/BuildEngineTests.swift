@@ -56,6 +56,37 @@ struct BuildEngineTests {
         #expect(size.text > 200)
         #expect(size.flash < 1024 * 1024)
         #expect(size.ram < 256 * 1024)
+
+        // The same bytes, split the way Keil reports them.
+        let sections = try #require(result.sections)
+        #expect(sections.code > 200)
+        #expect(sections.code + sections.readOnlyData == size.text)
+        #expect(sections.readWriteData == size.data)
+        #expect(sections.zeroInitializedData == size.bss)
+        #expect(result.log.contains(sections.keilSummary))
+    }
+
+    @Test func constantsAreReportedAsReadOnlyData() async throws {
+        let folder = try TemporaryFolder()
+        let (_, plan) = try makeBlinky(in: folder)
+        let main = plan.projectDirectory.appending(path: "src/main.c")
+        let before = try #require(try await BuildEngine().build(plan).sections)
+
+        // A 400-byte table of constants that the program reads. It has to be
+        // used, or the linker leaves it out.
+        var source = try String(contentsOf: main, encoding: .utf8)
+        source = """
+        const unsigned char table[400] = { 1, 2, 3 };
+        volatile unsigned int tableIndex;
+
+        """ + source.replacing("int main(void)\n{\n", with: "int main(void)\n{\n    tableIndex = table[tableIndex];\n")
+        #expect(source.contains("tableIndex = table[tableIndex];"))
+        try source.write(to: main, atomically: true, encoding: .utf8)
+        let after = try #require(try await BuildEngine().build(plan).sections)
+
+        #expect(after.readOnlyData - before.readOnlyData == 400)
+        #expect(after.code - before.code < 100)
+        #expect(after.zeroInitializedData - before.zeroInitializedData == 4)
     }
 
     @Test func theImageStartsWithAValidVectorTable() async throws {
