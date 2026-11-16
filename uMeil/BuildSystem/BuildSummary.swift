@@ -20,7 +20,8 @@ enum BuildSummary {
         return markers
     }
 
-    /// For example "Build succeeded: 1.4 KB flash, 16 bytes RAM" or
+    /// For example "Build succeeded: 1.4 KB flash, 16 bytes RAM
+    /// (Code=1300 RO-data=96 RW-data=8 ZI-data=16)" or
     /// "Build failed: 2 errors, 1 warning".
     static func statusText(for result: BuildResult) -> String {
         let errors = result.diagnostics.filter { $0.severity == .error }.count
@@ -42,7 +43,12 @@ enum BuildSummary {
         if let size = result.size {
             let flash = ByteCountFormatter.string(fromByteCount: Int64(size.flash), countStyle: .memory)
             let ram = ByteCountFormatter.string(fromByteCount: Int64(size.ram), countStyle: .memory)
-            parts.append("\(flash) flash, \(ram) RAM")
+            var text = "\(flash) flash, \(ram) RAM"
+            if let sections = result.sections {
+                text += " (Code=\(sections.code) RO-data=\(sections.readOnlyData)"
+                    + " RW-data=\(sections.readWriteData) ZI-data=\(sections.zeroInitializedData))"
+            }
+            parts.append(text)
         }
         parts += counts
         return "Build succeeded" + (parts.isEmpty ? "" : ": " + parts.joined(separator: ", "))

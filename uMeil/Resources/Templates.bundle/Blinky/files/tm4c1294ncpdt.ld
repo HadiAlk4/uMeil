@@ -10,11 +10,18 @@ ENTRY(Reset_Handler)
 
 SECTIONS
 {
-    /* Code and constants. The vector table must come first. */
+    /* Code. The vector table must come first. */
     .text :
     {
         KEEP(*(.isr_vector))
         *(.text*)
+        . = ALIGN(4);
+    } > FLASH
+
+    /* Constants. A section of their own, so the build can report code and
+       read-only data separately. */
+    .rodata :
+    {
         *(.rodata*)
         . = ALIGN(4);
     } > FLASH

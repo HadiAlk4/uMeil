@@ -18,7 +18,8 @@ struct BuildSummaryTests {
     private func result(
         succeeded: Bool,
         _ diagnostics: [Diagnostic] = [],
-        size: ProgramSize? = nil
+        size: ProgramSize? = nil,
+        sections: SectionSizes? = nil
     ) -> BuildResult {
         BuildResult(
             succeeded: succeeded,
@@ -26,6 +27,7 @@ struct BuildSummaryTests {
             compiledSources: [],
             didLink: false,
             size: size,
+            sections: sections,
             log: ""
         )
     }
@@ -87,6 +89,15 @@ struct BuildSummaryTests {
         #expect(text.hasPrefix("Build succeeded: "))
         #expect(text.contains("flash"))
         #expect(text.hasSuffix("RAM"))
+    }
+
+    @Test func addsTheKeilStyleBreakdownWhenItIsKnown() {
+        let size = ProgramSize(text: 1396, data: 8, bss: 16)
+        let sections = SectionSizes(code: 1300, readOnlyData: 96, readWriteData: 8, zeroInitializedData: 16)
+
+        let text = BuildSummary.statusText(for: result(succeeded: true, size: size, sections: sections))
+
+        #expect(text.hasSuffix("RAM (Code=1300 RO-data=96 RW-data=8 ZI-data=16)"))
     }
 
     @Test func mentionsWarningsOnASuccessfulBuild() {
