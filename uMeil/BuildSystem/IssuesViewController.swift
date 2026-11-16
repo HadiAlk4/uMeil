@@ -1,7 +1,8 @@
 import AppKit
 
 /// The panel under the editor that lists the errors and warnings from the
-/// last build. Clicking one takes the editor to that line.
+/// last build, and shows how a flash is going. Clicking a message takes the
+/// editor to that line.
 final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     /// Called when the user picks a message that points at a file.
     var onSelect: ((Diagnostic) -> Void)?
@@ -11,6 +12,8 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
     let tableView = NSTableView()
     let statusLabel = NSTextField(labelWithString: "No build yet")
     private let spinner = NSProgressIndicator()
+    /// Fills up as a flash moves through its stages. Hidden otherwise.
+    let progressBar = NSProgressIndicator()
 
     private enum Column: String, CaseIterable {
         case message, location
@@ -25,6 +28,8 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
 
     init() {
         super.init(nibName: nil, bundle: nil)
+        // Hidden from the start, not just once the view loads.
+        progressBar.isHidden = true
     }
 
     @available(*, unavailable)
@@ -58,7 +63,15 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.lineBreakMode = .byTruncatingTail
 
-        let statusBar = NSStackView(views: [spinner, statusLabel, NSView()])
+        progressBar.style = .bar
+        progressBar.controlSize = .small
+        progressBar.isIndeterminate = false
+        progressBar.minValue = 0
+        progressBar.maxValue = 1
+        progressBar.widthAnchor.constraint(equalToConstant: 160).isActive = true
+        statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        let statusBar = NSStackView(views: [spinner, statusLabel, NSView(), progressBar])
         statusBar.orientation = .horizontal
         statusBar.edgeInsets = NSEdgeInsets(top: 5, left: 10, bottom: 5, right: 10)
 
@@ -100,9 +113,30 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
         show(status: "Build failed", diagnostics: [Diagnostic(severity: .error, message: message)])
     }
 
+    /// Shows that a flash has reached `stage`. The messages from the build
+    /// that came before it stay listed.
+    func showFlashing(_ stage: FlashStage) {
+        loadViewIfNeeded()
+        spinner.stopAnimation(nil)
+        statusLabel.stringValue = stage.title
+        progressBar.isHidden = false
+        progressBar.doubleValue = stage.progress
+    }
+
+    /// Shows the outcome of a flash. A failure is listed first, above any
+    /// warnings from the build.
+    func show(_ result: FlashResult) {
+        var diagnostics = self.diagnostics
+        if let failure = result.failure {
+            diagnostics.insert(Diagnostic(severity: .error, message: failure.localizedDescription), at: 0)
+        }
+        show(status: FlashSummary.statusText(for: result), diagnostics: diagnostics)
+    }
+
     private func show(status: String, diagnostics: [Diagnostic]) {
         loadViewIfNeeded()
         spinner.stopAnimation(nil)
+        progressBar.isHidden = true
         statusLabel.stringValue = status
         self.diagnostics = diagnostics
         tableView.reloadData()

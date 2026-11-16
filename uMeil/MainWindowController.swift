@@ -2,8 +2,9 @@ import AppKit
 
 /// The main IDE window: a file navigator on the left, the code editor on the
 /// right, and the build issues under the editor. Debugger views arrive in
-/// later milestones.
-final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation {
+/// later milestones. Flashing lives in `MainWindowController+Flashing.swift`.
+final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation,
+    NSToolbarItemValidation {
     let navigator = FileNavigatorViewController()
     let editor = EditorViewController()
     let issues = IssuesViewController()
@@ -14,9 +15,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     /// have been installed since the last one.
     var makeToolLocator: () -> ToolLocator = { .standard() }
 
+    /// Writes firmware to the board. Replaceable so tests can flash without one.
+    var flasher = Flasher()
+    /// Watches for the board on USB, for the toolbar's status.
+    let boardMonitor: any BoardMonitoring
+    let toolbar = MainToolbar()
+
     /// The outcome of the most recent build of the open folder.
     private(set) var lastBuild: BuildResult?
-    private var isBuilding = false
+    private(set) var isBuilding = false
+    /// True from the moment Build and Flash is chosen until it finishes,
+    /// including the build that comes first.
+    var isFlashing = false
+    /// The Build and Flash in progress, kept so it can be stopped.
+    var flashTask: Task<Void, Never>?
     private let issuesItem: NSSplitViewItem
 
     /// Whether the issues panel under the editor is showing.
@@ -30,8 +42,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     static let lastFolderDefaultsKey = "LastOpenedFolder"
     private let defaults: UserDefaults
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, boardMonitor: any BoardMonitoring = USBBoardMonitor()) {
         self.defaults = defaults
+        self.boardMonitor = boardMonitor
 
         let split = NSSplitViewController()
         let sidebar = NSSplitViewItem(sidebarWithViewController: navigator)
@@ -67,6 +80,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         navigator.onSelectFile = { [weak self] url in self?.userSelectedFile(url) }
         editor.onModifiedChanged = { [weak self] _ in self?.updateTitle() }
         issues.onSelect = { [weak self] diagnostic in self?.show(diagnostic) }
+        window.toolbar = toolbar.toolbar
+        window.toolbarStyle = .unified
+        startWatchingForBoard()
         updateTitle()
     }
 
@@ -99,6 +115,35 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         panel.message = "Choose a project folder"
         if panel.runModal() == .OK, let url = panel.url {
             openFolder(url)
+        }
+    }
+
+    /// Opens a folder or file handed to the app from outside: dropped on the
+    /// Dock icon, opened from Finder, or passed to `open -a uMeil`.
+    ///
+    /// A folder is shown as it is. A project file opens its folder with the
+    /// project's first source showing. Any other file opens its folder with
+    /// that file showing.
+    func openItem(at url: URL) {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false), isDirectory: &isDirectory),
+              confirmDiscardingChanges()
+        else { return }
+
+        window?.makeKeyAndOrderFront(nil)
+        if isDirectory.boolValue {
+            openFolder(url)
+            return
+        }
+
+        let parent = url.deletingLastPathComponent()
+        openFolder(parent)
+        if url.pathExtension == ProjectFile.fileExtension,
+           let main = (try? ProjectFile.load(from: url))?.sources.first {
+            openFile(parent.appending(path: main))
+        } else {
+            // Also a project file that cannot be read, so it can be fixed.
+            openFile(url)
         }
     }
 
@@ -146,13 +191,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        if menuItem.action == #selector(saveDocument(_:)) {
-            return editor.document != nil
+        isEnabled(menuItem.action)
+    }
+
+    func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        isEnabled(item.action)
+    }
+
+    /// Whether the command a menu or toolbar item sends can run right now.
+    private func isEnabled(_ action: Selector?) -> Bool {
+        switch action {
+        case #selector(saveDocument(_:)):
+            editor.document != nil
+        case #selector(buildProject(_:)), #selector(flashProject(_:)):
+            folder != nil && !isBuilding && !isFlashing
+        case #selector(stopFlashing(_:)):
+            isFlashing
+        default:
+            true
         }
-        if menuItem.action == #selector(buildProject(_:)) {
-            return folder != nil && !isBuilding
-        }
-        return true
     }
 
     // MARK: - New projects

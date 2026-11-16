@@ -98,7 +98,7 @@ An editor with syntax highlighting, line numbers, error markers, find and replac
 
 One button to build and flash the board, with a progress bar and clear errors (board not connected, wrong chip, flash failed).
 
-- **What we use:** OpenOCD with `interface/ti-icdi.cfg` and `target/ti_tm4c.cfg`, run with `Process`. IOKit to detect when a board is plugged in over USB.
+- **What we use:** OpenOCD with its `board/ek-tm4c1294xl.cfg` script (the ICDI probe, `interface/ti-icdi.cfg`, plus the Tiva target, `target/stellaris.cfg`), run with `Process`. IOKit to detect when a board is plugged in over USB.
 - **How we test it:**
   - Unit tests for parsing OpenOCD output, using saved logs (including failures).
   - **Hardware-in-the-loop (HIL):** a LaunchPad connected to a Mac (a self-hosted CI runner). It flashes a test firmware that prints a known message over UART, and the test reads that message to confirm the flash worked.
