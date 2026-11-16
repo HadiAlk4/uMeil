@@ -83,6 +83,17 @@ struct FlashOutputTests {
             == .other("error 4 executing stellaris flash write algorithm"))
     }
 
+    @Test func theProbesResetComplaintIsNeverReportedAsTheCause() {
+        let log = "Error: SRST error\nuMeil: connected\nError: SRST error\nuMeil: writing\n"
+
+        let timedOut = log + "Error: timed out while waiting for target halted\n"
+
+        #expect(FlashOutput.failure(in: timedOut, exitCode: 1, plan: plan)
+            == .other("timed out while waiting for target halted"))
+        #expect(FlashOutput.failure(in: log, exitCode: 1, plan: plan)
+            == .other("OpenOCD stopped unexpectedly (exit code 1)."))
+    }
+
     @Test func anOpenFailureAfterConnectingIsNotMistakenForAMissingBoard() {
         let log = "uMeil: connected\nuMeil: writing\nError: open failed\n"
 

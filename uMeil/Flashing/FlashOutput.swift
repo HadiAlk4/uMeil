@@ -86,7 +86,7 @@ enum FlashOutput {
     }
 
     /// The part number OpenOCD found, from the line
-    /// "TI/LMI Stellaris information: Chip is class 10 (Snowflake) TM4C1294NCPDT rev A1".
+    /// "TI/LMI Stellaris information: Chip is class 10 (Snowflake) TM4C1294NCPDT rev A2".
     static func chipName(in output: String) -> String? {
         guard let match = output.firstMatch(of: #/Chip is class \d+ \([^)]*\) (.+?) rev \S+/#) else {
             return nil
@@ -95,7 +95,8 @@ enum FlashOutput {
     }
 
     /// How many bytes were written, from the line
-    /// "wrote 1396 bytes from file /proj/build/Blinky.elf in 0.52s (2.6 KiB/s)".
+    /// "wrote 16384 bytes from file /proj/build/Blinky.elf in 1.313867s (12.178 KiB/s)".
+    /// The count is whole 16 kB flash pages, not the size of the program.
     static func bytesWritten(in output: String) -> Int? {
         output.firstMatch(of: #/wrote (\d+) bytes from file/#).flatMap { Int($0.1) }
     }
@@ -122,6 +123,9 @@ enum FlashOutput {
         let errors = lines.compactMap { line in
             line.wholeMatch(of: #/Error: (.*)/#).map { String($0.1) }
         }
+        // The ICDI probe cannot drive the chip's reset pin and says so at
+        // every reset, in flashes that work too. It is never the cause.
+        .filter { $0 != "SRST error" }
         // The debug probe never answered: OpenOCD could not open it over USB.
         if !stages.contains(.connected), errors.contains(where: isProbeMissing) {
             return .boardNotConnected
