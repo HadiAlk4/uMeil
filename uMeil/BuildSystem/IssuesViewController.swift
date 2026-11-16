@@ -113,6 +113,11 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
         show(status: "Build failed", diagnostics: [Diagnostic(severity: .error, message: message)])
     }
 
+    /// Empties the list, for work that has nothing to do with the last build.
+    func clear() {
+        show(status: "", diagnostics: [])
+    }
+
     /// Shows that a flash has reached `stage`. The messages from the build
     /// that came before it stay listed.
     func showFlashing(_ stage: FlashStage) {

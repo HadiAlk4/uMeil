@@ -4,6 +4,7 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindowController: MainWindowController?
     private lazy var toolchainWindowController = ToolchainWindowController()
+    private lazy var serialMonitorWindowController = SerialMonitorWindowController()
     /// What the app was launched to open, instead of the last folder.
     private var launchItem: URL?
 
@@ -54,6 +55,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Window > Toolchain Status
     @objc func showToolchainStatus(_ sender: Any?) {
         toolchainWindowController.showWindow(sender)
+    }
+
+    /// Window > Serial Monitor
+    @objc func showSerialMonitor(_ sender: Any?) {
+        serialMonitorWindowController.showWindow(sender)
     }
 
     /// Reopens the folder from the previous session, if it still exists.

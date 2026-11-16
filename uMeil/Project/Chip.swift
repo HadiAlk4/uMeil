@@ -21,6 +21,11 @@ enum Chip: String, Codable, CaseIterable, Sendable {
         ["PART_\(rawValue)"]
     }
 
+    /// How many interrupts the chip has, on top of the 16 Cortex-M exceptions.
+    var interruptCount: Int {
+        114
+    }
+
     var flash: MemoryRegion {
         MemoryRegion(origin: 0x0000_0000, length: 1024 * 1024)
     }

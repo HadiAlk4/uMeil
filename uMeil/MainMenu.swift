@@ -64,6 +64,11 @@ enum MainMenu {
             action: #selector(MainWindowController.chooseFolder(_:)),
             keyEquivalent: "o"
         )
+        menu.addItem(
+            withTitle: "Import Keil Project…",
+            action: #selector(MainWindowController.importKeilProject(_:)),
+            keyEquivalent: ""
+        )
         menu.addItem(.separator())
         menu.addItem(withTitle: "Save", action: #selector(MainWindowController.saveDocument(_:)), keyEquivalent: "s")
         return menu
@@ -76,6 +81,11 @@ enum MainMenu {
             withTitle: "Build and Flash",
             action: #selector(MainWindowController.flashProject(_:)),
             keyEquivalent: "r"
+        )
+        menu.addItem(
+            withTitle: "Flash Image…",
+            action: #selector(MainWindowController.flashImage(_:)),
+            keyEquivalent: ""
         )
         menu.addItem(.separator())
         menu.addItem(withTitle: "Stop", action: #selector(MainWindowController.stopFlashing(_:)), keyEquivalent: ".")
@@ -171,6 +181,12 @@ enum MainMenu {
             action: #selector(AppDelegate.showToolchainStatus(_:)),
             keyEquivalent: ""
         )
+        let serialMonitor = menu.addItem(
+            withTitle: "Serial Monitor",
+            action: #selector(AppDelegate.showSerialMonitor(_:)),
+            keyEquivalent: "m"
+        )
+        serialMonitor.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(.separator())
         menu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         return menu

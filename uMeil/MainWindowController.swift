@@ -32,7 +32,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     var isFlashing = false
     /// The Build and Flash in progress, kept so it can be stopped.
     var flashTask: Task<Void, Never>?
-    private let issuesItem: NSSplitViewItem
+    let issuesItem: NSSplitViewItem
 
     /// Whether the issues panel under the editor is showing.
     var isIssuesPanelVisible: Bool { !issuesItem.isCollapsed }
@@ -206,6 +206,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
             editor.document != nil
         case #selector(buildProject(_:)), #selector(flashProject(_:)):
             folder != nil && !isBuilding && !isFlashing && !debugger.isActive
+        case #selector(flashImage(_:)):
+            !isBuilding && !isFlashing && !debugger.isActive
         case #selector(stopFlashing(_:)):
             isFlashing
         default:
@@ -254,9 +256,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     // MARK: - Building
 
     /// Product > Build
-    @objc func buildProject(_ sender: Any?) {
-        Task { await build() }
-    }
+    @objc func buildProject(_ sender: Any?) { Task { await build() } }
 
     /// Saves the open file, builds the project in the open folder, and shows
     /// the outcome in the issues panel and the editor's gutter.

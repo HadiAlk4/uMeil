@@ -1,8 +1,8 @@
 # Agenda
 
-Open work that is not yet scheduled in the README milestones, and when it is recommended to do each item. Last updated 16 November 2026.
+Open work that is not yet scheduled in the README milestones, and when it is recommended to do each item. Last updated 17 November 2026.
 
-Status today: M0 to M4 are merged. M5 (flashing) is on the `m5-flashing` branch and has flashed a real board. Still open before M5 closes: items 6 to 9, 11 and 23.
+Status today: M0 to M4 are merged. M5 (flashing) is on the `m5-flashing` branch and has flashed a real board. Still open before M5 closes: items 6 to 8, and the CI runner for item 9.
 
 ## Summary
 
@@ -13,24 +13,25 @@ Status today: M0 to M4 are merged. M5 (flashing) is on the `m5-flashing` branch 
 | 3 | Check the licence of `TM4C129.h` | Keil support | Now (check only) |
 | 4 | Real flash of Blinky on the board | M5 | Done 16 November |
 | 5 | Replace reconstructed OpenOCD logs with real captures | M5 | Done 16 November, except two logs that could not be captured |
-| 6 | Locked-chip error message | M5 | With the board, before closing M5 |
+| 6 | Locked-chip error message | M5 | Done 17 November |
 | 7 | Check USB plug and unplug detection | M5 | With the board, before closing M5 |
 | 8 | Look at the board status dot in the running app | M5 | With the board, before closing M5 |
-| 9 | Hardware-in-the-loop flash test | M5 | With the board, before closing M5 |
+| 9 | Hardware-in-the-loop flash test | M5 | Test done 17 November; the CI runner is still to set up |
 | 10 | Check the "no board" test passes in CI | M5 | Done 16 November |
-| 11 | Flash an existing image (`.axf` / `.elf`) | M5 | Before closing M5 |
-| 23 | Fix the timing test that fails in CI | M5 | Before merging `m5-flashing` |
-| 12 | Keil project import (`.uvprojx` to `.umeil`) | M2 | After M5, before M6 |
-| 13 | GNU startup file and linker script for Keil projects | M2, M3 | After M5, before M6 |
+| 11 | Flash an existing image (`.axf` / `.elf`) | M5 | Done 16 November |
+| 23 | Fix the timing test that fails in CI | M5 | Done 16 November |
+| 12 | Keil project import (`.uvprojx` to `.umeil`) | M2 | Done 17 November |
+| 13 | GNU startup file and linker script for Keil projects | M2, M3 | Done 17 November |
 | 14 | Ship or download `TM4C129.h` | M2 | After M5, before M6 |
 | 15 | Link the course library | M3 | After M5, before M6 |
-| 16 | Build output reports Code, RO-data, RW-data, ZI-data | M3 | Before M6 |
+| 16 | Build output reports Code, RO-data, RW-data, ZI-data | M3 | Done 17 November |
 | 17 | Decide `-O0` or `-Og` for debug builds | M2 | Before M6 |
 | 18 | XCUITest target and typing performance test | M4 | Before M6 |
 | 19 | Tabbed source viewer | M4 | Before M6 |
 | 20 | Gutter: clicks, breakpoints, program counter arrow | M4 | Start of M6 |
 | 21 | Reword FR-7.2 (`States` and `Sec` counters) | Spec | Before M6 |
 | 22 | Command window showing build, flash and debug logs | M3, M5 | During M6 |
+| 24 | Integrated terminal panel (`⌘J`) | IDE | After M6 |
 
 ## Now: decisions and checks, no code
 
@@ -53,27 +54,27 @@ Worth asking now even if route 1 is chosen, because the answer may take a while 
 
 **5. Replace reconstructed logs.** Done on 16 November for the success, verify-failed and "no board" logs in `uMeilTests/Flashing/FlashTestSupport.swift`. Two are still partly written from OpenOCD's message formats: wrong-chip (no TM4C123 board was to hand) and write-failed (could not be provoked on a healthy board).
 
-**6. Locked-chip message.** Still missing: nothing in `uMeil/Flashing` handles a locked chip, so it falls through to OpenOCD's own first error line. Capture the real output and add a plain-language message.
+**6. Locked-chip message.** Done on 17 November: captured the real OpenOCD output on the EK-TM4C1294XL with volatile page protection in `FMPPE0`, and added `FlashFailure.chipLocked` for write-protected flash pages and locked debug ports.
 
-**7. USB detection.** The toolbar's "Board connected" status has never seen a real plug or unplug event.
+**7. USB detection.** A plugged-in board is detected (checked by `HardwareInTheLoopTests` on 17 November). The toolbar's "Board connected" status has still never seen a real plug or unplug event while the app is running.
 
 **8. Status dot.** The dot was changed to draw green when connected and was not looked at again afterwards.
 
-**9. Hardware-in-the-loop test.** The README's M5 test: flash a firmware that prints a known message over UART and read it back, on a self-hosted Mac runner. Not written yet, and CI has no self-hosted runner job.
+**9. Hardware-in-the-loop test.** The test is written and passes on an EK-TM4C1294XL: `HardwareInTheLoopTests` builds firmware that prints a one-off message over UART0, flashes it with the real OpenOCD, and reads the message back from the board's serial port. It only runs when `UMEIL_HIL=1` is set (`TEST_RUNNER_UMEIL_HIL=1` with `xcodebuild`), because it writes to the board. Still to do: register a Mac with a board as a self-hosted runner labelled `launchpad` and set the repository variable `HIL_RUNNER` to `true`; the CI job is in place and skipped until then.
 
 **10. CI check.** Done: `RealOpenOCDWithoutABoardTests` passes in CI against Homebrew's OpenOCD.
 
-**11. Flash an existing image.** A command that writes a Keil-built `.axf` or any `.elf` straight to the board, without a uMeil project. It is small, it reuses the M5 flasher, and it already covers the `L4` lab folders, which contain built images. Recommended inside M5 because it is flashing work and gives Keil users something useful before the importer exists.
+**11. Flash an existing image.** Done on 16 November: Product > Flash Image… writes a Keil-built `.axf` or any `.elf` straight to the board, without a uMeil project. A file that is not a 32-bit Arm program is refused before anything is sent. Checked on the board with `L4Q1`'s `Template.axf`.
 
-**23. Timing test that fails in CI.** `StreamingProcessRunnerTests/reportsLinesWhileTheProcessIsStillRunning()` has failed in the last three CI runs on `m5-flashing`. It expects the first line within 0.7 s of launch, which does not hold on a loaded CI runner. Change it to check that the early line arrives well before the late one, instead of timing from launch.
+**23. Timing test that fails in CI.** Done on 16 November: `StreamingProcessRunnerTests/reportsLinesWhileTheProcessIsStillRunning()` now measures the gap between its two lines instead of timing from launch.
 
 ## After M5, before M6: Keil project support
 
 Recommended here because the debugger requirements (`docs/debugger-functional-requirements.md`) are written around debugging this kind of course project, so M6 needs to be able to build them. These items extend M2 (project model) and M3 (build system).
 
-**12. Keil project import.** uMeil only builds folders with a `.umeil` project file. Read the `.uvprojx` (source files, include paths, defines, chip) and create a `.umeil` project from it, leaving the Keil files untouched.
+**12. Keil project import.** Done on 17 November: File > Import Keil Project… reads a `.uvprojx` (source files, include paths, defines, chip, optimisation, C standard) and writes a `.umeil` project alongside it, leaving the Keil files untouched and listing anything that had to be skipped or is still missing.
 
-**13. GNU startup file and linker script.** Keil's `startup_TM4C129.s` uses Keil's assembler syntax and jumps to Keil's `__main`, so the GNU assembler cannot use it. Substitute a GNU startup with the same handler names (the labs define `SysTick_Handler` and others) that calls `SystemInit`, plus a linker script.
+**13. GNU startup file and linker script.** Done on 17 November: importing a Keil project writes `uMeil/startup_gcc.c`, generated from the handler names in Keil's `startup_TM4C129.s` and calling `SystemInit` before `main()`, plus `uMeil/tm4c1294ncpdt.ld`.
 
 **14. `TM4C129.h`.** Ship it or download it, depending on item 3.
 
@@ -83,7 +84,7 @@ Note: the `Template` folder's `main.c` has a stray `}` after `while(true) {}` an
 
 ## Before M6: gaps the debugger requirements expose in earlier milestones
 
-**16. Size metrics (FR-1.1, M3).** The build reports flash and RAM totals from `size`'s text, data and bss. The requirement asks for Code, RO-data, RW-data and ZI-data, which needs the per-section output to split code from read-only data.
+**16. Size metrics (FR-1.1, M3).** Done on 17 November: a build reports Code, RO-data, RW-data and ZI-data in the status line and the build log, read from the image's sections. The Blinky template's linker script now gives constants their own `.rodata` section so they count as RO-data; projects made before this, and Keil-built images, keep constants inside the code section, so theirs are counted as Code.
 
 **17. Optimisation level for debugging (FR-5.2, M2).** The Blinky template builds with `-Og`, where some locals can show as optimised out. Decide whether debug builds should use `-O0`.
 
@@ -100,3 +101,7 @@ Note: the `Template` folder's `main.c` has a stray `}` after `while(true) {}` an
 **22. Command window (FR-8.2).** Builds and flashes both keep a full log, but nothing in the window shows it. Add a console that shows build, flash and debugger output.
 
 Already satisfied by M0 to M5, for reference: a build with errors blocks the next step and warnings do not (FR-1.1); every build compiles with `-g`; GDB is installed and checked by the toolchain manager; the M5 toolbar has room for the Start/Stop Debug button (FR-1.2).
+
+## After M6
+
+**24. Integrated terminal (`⌘J`).** Add a built-in shell terminal in the main window that toggles open and closed from the keyboard like other IDEs (`⌘J`, plus a menu item under a new `View` menu; `⌘J` is currently unused). Opening it should focus the terminal, and toggling it shut should return focus to the editor. Run the user's login shell in a pseudo-terminal (`openpty`) with the open project folder as its working directory, and keep it distinct from item 22's Command window (build, flash and debugger logs) and M8's Serial Monitor (board UART) — e.g. as tabs in `MainWindowController`'s collapsible bottom split (`editorSplit`, currently holding only `IssuesViewController`). Needs VT100/ANSI screen emulation (decide when picking this up whether to write a minimal AppKit terminal view or use a library such as SwiftTerm).

@@ -44,7 +44,7 @@ struct ProjectTemplateTests {
         #expect(files == [
             "MyBlinky/src/main.c": "0dc51c01011657d9ba98c5cb00dbccb5bbd5d3adf74a6e84efe4713512531db2",
             "MyBlinky/startup/startup.c": "01254a674093fd9dac2f825154be8384b1db8824e39b309e6a3575980adfce9c",
-            "MyBlinky/tm4c1294ncpdt.ld": "309ace3c70568e47522d6f0d5eff184efd82f962501c3f92a404cc8a2438ef10"
+            "MyBlinky/tm4c1294ncpdt.ld": "2aa656c76402b57e421301aef43056da3cf4ff04e9ccbd604573d0e0f9f0e527"
         ])
 
         #expect(try ProjectFile.load(from: projectFile) == Project(

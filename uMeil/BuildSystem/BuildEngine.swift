@@ -42,6 +42,8 @@ struct BuildResult: Sendable {
     var elf: URL?
     var binary: URL?
     var size: ProgramSize?
+    /// The size split into code, constants and variables, as Keil reports it.
+    var sections: SectionSizes?
     /// Every command that ran, with its output, for showing to the user.
     var log: String
 }
@@ -133,6 +135,10 @@ struct BuildEngine: Sendable {
 
         let size = try await run(plan.environment.size, plan.sizeArguments, in: plan, log: &result.log)
         result.size = ProgramSize.parse(size.standardOutput)
+        result.sections = SectionSizes.read(from: plan.url(for: plan.elf))
+        if let sections = result.sections {
+            result.log += sections.keilSummary + "\n"
+        }
         result.elf = plan.url(for: plan.elf)
         result.binary = plan.url(for: plan.binary)
         result.succeeded = true
