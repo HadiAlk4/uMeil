@@ -49,6 +49,8 @@ enum FlashFailure: Error, Equatable, LocalizedError {
     /// The firmware read back from the chip differs from what was written.
     case verifyFailed
     case imageNotFound(URL)
+    /// The chosen file is not a program for an Arm chip.
+    case notAnImage(URL)
     case stopped
     /// Anything else, with OpenOCD's own error message.
     case other(String)
@@ -60,14 +62,17 @@ enum FlashFailure: Error, Equatable, LocalizedError {
         case .boardNotConnected:
             "No board found. Plug the LaunchPad's DEBUG USB port into this Mac, then try again."
         case .wrongChip(let found?, let expected):
-            "This board has a \(found) chip, but the project is for the \(expected.rawValue). Nothing was written."
+            "This board has a \(found) chip, but this firmware is for the \(expected.rawValue). Nothing was written."
         case .wrongChip(nil, let expected):
-            "The chip on this board is not a \(expected.rawValue), which the project is for. Nothing was written."
+            "The chip on this board is not a \(expected.rawValue), which this firmware is for. Nothing was written."
         case .verifyFailed:
             "The firmware was written, but reading it back did not match. "
                 + "Flash again; if it keeps failing, try another USB cable."
         case .imageNotFound(let url):
             "The firmware image \(url.lastPathComponent) is missing. Build the project, then flash again."
+        case .notAnImage(let url):
+            "\(url.lastPathComponent) is not a firmware image for an Arm chip. "
+                + "Choose the .axf or .elf file that a build produced."
         case .stopped:
             "Flashing was stopped. The board may hold part of a program, so flash again before using it."
         case .other(let message):

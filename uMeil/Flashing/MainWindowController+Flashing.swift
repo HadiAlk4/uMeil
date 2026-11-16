@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 /// Turns flash results into the one-line status under the issues list.
 enum FlashSummary {
@@ -57,6 +58,55 @@ extension MainWindowController {
             result = FlashResult(failure: .other(error.localizedDescription), log: "")
         }
         // Set before showing the result, so a stage that arrives late cannot replace it.
+        isFlashing = false
+        issues.show(result)
+        return result
+    }
+
+    // MARK: - Flashing a ready-made image
+
+    /// Product > Flash Image…
+    @objc func flashImage(_ sender: Any?) {
+        guard !isFlashing, !isBuilding else { return }
+
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = FirmwareImage.fileExtensions.compactMap { UTType(filenameExtension: $0) }
+        panel.prompt = "Flash"
+        panel.message = "Choose a firmware image (.axf or .elf) to write to the board"
+        guard panel.runModal() == .OK, let image = panel.url else { return }
+
+        flashTask = Task { await flash(image: image) }
+    }
+
+    /// Writes `image`, a firmware file that is already built, to the board.
+    /// Nothing is built and no project needs to be open. Progress and the
+    /// outcome go to the issues panel.
+    @discardableResult
+    func flash(image: URL) async -> FlashResult? {
+        guard !isFlashing, !isBuilding else { return nil }
+        isFlashing = true
+        defer {
+            isFlashing = false
+            flashTask = nil
+        }
+        issuesItem.isCollapsed = false
+        // Messages from an earlier build are about a different program.
+        issues.clear()
+
+        let result: FlashResult
+        do {
+            let plan = try Flasher.plan(forImage: image, locator: makeToolLocator())
+            result = await flasher.flash(plan) { [weak self] stage in
+                Task { @MainActor in self?.flashReached(stage) }
+            }
+        } catch let failure as FlashFailure {
+            result = FlashResult(failure: failure, log: "")
+        } catch {
+            result = FlashResult(failure: .other(error.localizedDescription), log: "")
+        }
         isFlashing = false
         issues.show(result)
         return result

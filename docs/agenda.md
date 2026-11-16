@@ -2,7 +2,7 @@
 
 Open work that is not yet scheduled in the README milestones, and when it is recommended to do each item. Last updated 16 November 2026.
 
-Status today: M0 to M4 are merged. M5 (flashing) is on the `m5-flashing` branch and has flashed a real board. Still open before M5 closes: items 6 to 9, 11 and 23.
+Status today: M0 to M4 are merged. M5 (flashing) is on the `m5-flashing` branch and has flashed a real board. Still open before M5 closes: items 6 to 9.
 
 ## Summary
 
@@ -18,8 +18,8 @@ Status today: M0 to M4 are merged. M5 (flashing) is on the `m5-flashing` branch 
 | 8 | Look at the board status dot in the running app | M5 | With the board, before closing M5 |
 | 9 | Hardware-in-the-loop flash test | M5 | With the board, before closing M5 |
 | 10 | Check the "no board" test passes in CI | M5 | Done 16 November |
-| 11 | Flash an existing image (`.axf` / `.elf`) | M5 | Before closing M5 |
-| 23 | Fix the timing test that fails in CI | M5 | Before merging `m5-flashing` |
+| 11 | Flash an existing image (`.axf` / `.elf`) | M5 | Done 16 November |
+| 23 | Fix the timing test that fails in CI | M5 | Done 16 November |
 | 12 | Keil project import (`.uvprojx` to `.umeil`) | M2 | After M5, before M6 |
 | 13 | GNU startup file and linker script for Keil projects | M2, M3 | After M5, before M6 |
 | 14 | Ship or download `TM4C129.h` | M2 | After M5, before M6 |
@@ -63,9 +63,9 @@ Worth asking now even if route 1 is chosen, because the answer may take a while 
 
 **10. CI check.** Done: `RealOpenOCDWithoutABoardTests` passes in CI against Homebrew's OpenOCD.
 
-**11. Flash an existing image.** A command that writes a Keil-built `.axf` or any `.elf` straight to the board, without a uMeil project. It is small, it reuses the M5 flasher, and it already covers the `L4` lab folders, which contain built images. Recommended inside M5 because it is flashing work and gives Keil users something useful before the importer exists.
+**11. Flash an existing image.** Done on 16 November: Product > Flash Image… writes a Keil-built `.axf` or any `.elf` straight to the board, without a uMeil project. A file that is not a 32-bit Arm program is refused before anything is sent. Checked on the board with `L4Q1`'s `Template.axf`.
 
-**23. Timing test that fails in CI.** `StreamingProcessRunnerTests/reportsLinesWhileTheProcessIsStillRunning()` has failed in the last three CI runs on `m5-flashing`. It expects the first line within 0.7 s of launch, which does not hold on a loaded CI runner. Change it to check that the early line arrives well before the late one, instead of timing from launch.
+**23. Timing test that fails in CI.** Done on 16 November: `StreamingProcessRunnerTests/reportsLinesWhileTheProcessIsStillRunning()` now measures the gap between its two lines instead of timing from launch.
 
 ## After M5, before M6: Keil project support
 
