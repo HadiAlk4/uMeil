@@ -144,6 +144,12 @@ enum MainMenu {
             action: #selector(AppDelegate.showToolchainStatus(_:)),
             keyEquivalent: ""
         )
+        let serialMonitor = menu.addItem(
+            withTitle: "Serial Monitor",
+            action: #selector(AppDelegate.showSerialMonitor(_:)),
+            keyEquivalent: "m"
+        )
+        serialMonitor.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(.separator())
         menu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         return menu
