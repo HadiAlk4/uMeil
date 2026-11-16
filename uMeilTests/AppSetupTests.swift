@@ -15,7 +15,7 @@ struct AppSetupTests {
     @Test func mainMenuHasTheStandardMenus() {
         let menu = MainMenu.make(appName: "uMeil")
         let titles = menu.items.compactMap { $0.submenu?.title }
-        #expect(titles == ["uMeil", "File", "Edit", "View", "Product", "Window"])
+        #expect(titles == ["uMeil", "File", "Edit", "View", "Product", "Debug", "Window"])
     }
 
     @Test func appMenuCanQuit() throws {

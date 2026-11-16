@@ -48,6 +48,8 @@ enum FlashFailure: Error, Equatable, LocalizedError {
     case wrongChip(found: String?, expected: Chip)
     /// The firmware read back from the chip differs from what was written.
     case verifyFailed
+    /// The chip's flash is write-protected, or its debug port is locked.
+    case chipLocked
     case imageNotFound(URL)
     /// The chosen file is not a program for an Arm chip.
     case notAnImage(URL)
@@ -68,6 +70,9 @@ enum FlashFailure: Error, Equatable, LocalizedError {
         case .verifyFailed:
             "The firmware was written, but reading it back did not match. "
                 + "Flash again; if it keeps failing, try another USB cable."
+        case .chipLocked:
+            "The chip on this board is locked or write-protected, so new firmware cannot be written. "
+                + "Unlock it with OpenOCD's “stellaris recover” command or TI UniFlash, then try again."
         case .imageNotFound(let url):
             "The firmware image \(url.lastPathComponent) is missing. Build the project, then flash again."
         case .notAnImage(let url):
@@ -135,6 +140,9 @@ enum FlashOutput {
         if !stages.contains(.connected), errors.contains(where: isProbeMissing) {
             return .boardNotConnected
         }
+        if isChipLocked(lines: lines, errors: errors, stages: stages) {
+            return .chipLocked
+        }
         if errors.contains(where: { $0.hasPrefix("couldn't open ") }) {
             return .imageNotFound(plan.image)
         }
@@ -162,5 +170,32 @@ enum FlashOutput {
     private static func isVerifyMismatch(_ line: String) -> Bool {
         line.contains("checksum mismatch") || line.contains("contents differ")
             || line.wholeMatch(of: #/(?:Error: )?diff \d+ address 0x.*/#) != nil
+    }
+
+    /// Whether the output says the chip refused the flash because its pages
+    /// are write-protected or its debug port is locked.
+    private static func isChipLocked(
+        lines: [String],
+        errors: [String],
+        stages: [FlashStage]
+    ) -> Bool {
+        // A write-protected page sets the access-violation bit (0x1) in the
+        // flash controller's CRIS register when OpenOCD tries to erase or
+        // write it, and `flash info 0` lists the page as "protected".
+        let hasAccessViolation = lines.contains {
+            $0.contains("flash_cris 0x1") || $0.contains("CRIS: 0x1")
+        }
+        let hasProtectedPage = lines.contains { $0.hasSuffix(") protected") }
+        let eraseFailed = errors.contains { $0.hasPrefix("failed erasing sectors") }
+        if hasAccessViolation || (hasProtectedPage && eraseFailed) {
+            return true
+        }
+        // When the debug port itself is locked, the ICDI probe answers over
+        // USB ("ICDI Firmware version: …") but cannot examine the CPU.
+        let probeAnswered = lines.contains { $0.contains("ICDI Firmware version:") }
+        let examinationFailed = errors.contains {
+            $0.contains("Examination failed") || $0.contains("examination failed")
+        }
+        return !stages.contains(.connected) && probeAnswered && examinationFailed
     }
 }

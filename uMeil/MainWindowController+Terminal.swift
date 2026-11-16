@@ -9,6 +9,7 @@ extension MainWindowController {
     static func makeMainWindow(
         navigator: FileNavigatorViewController,
         editor: EditorViewController,
+        editorSplit: NSSplitViewController,
         bottomPanelItem: NSSplitViewItem
     ) -> NSWindow {
         let split = NSSplitViewController()
@@ -17,7 +18,6 @@ extension MainWindowController {
         sidebar.maximumThickness = 420
         split.addSplitViewItem(sidebar)
 
-        let editorSplit = NSSplitViewController()
         editorSplit.splitView.isVertical = false
         editorSplit.addSplitViewItem(NSSplitViewItem(viewController: editor))
         editorSplit.addSplitViewItem(bottomPanelItem)

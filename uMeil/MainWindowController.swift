@@ -22,6 +22,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     /// Watches for the board on USB, for the toolbar's status.
     let boardMonitor: any BoardMonitoring
     let toolbar = MainToolbar()
+    /// Runs debug sessions and keeps the breakpoints.
+    let debugger = DebugController()
+    let debugPanels = DebugPanelsController()
 
     /// The outcome of the most recent build of the open folder.
     private(set) var lastBuild: BuildResult?
@@ -32,6 +35,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     /// The Build and Flash in progress, kept so it can be stopped.
     var flashTask: Task<Void, Never>?
     let bottomPanelItem: NSSplitViewItem
+    let editorSplit = NSSplitViewController()
 
     /// The folder open in the navigator, or `nil` before one is chosen.
     private(set) var folder: URL?
@@ -59,6 +63,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         let window = Self.makeMainWindow(
             navigator: navigator,
             editor: editor,
+            editorSplit: editorSplit,
             bottomPanelItem: bottomPanelItem
         )
 
@@ -72,6 +77,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         window.toolbar = toolbar.toolbar
         window.toolbarStyle = .unified
         startWatchingForBoard()
+        setUpDebugging()
         updateTitle()
     }
 
@@ -84,6 +90,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
 
     /// Shows `url` in the navigator and closes whatever file was open.
     func openFolder(_ url: URL) {
+        // A session belongs to the project it was started from.
+        Task { await debugger.stop() }
         folder = url
         lastBuild = nil
         navigator.showFolder(url)
@@ -146,6 +154,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
             try editor.open(url)
             navigator.select(url)
             refreshMarkers()
+            refreshDebugMarks()
         } catch {
             navigator.select(editor.document?.url)
             presentError(error)
@@ -164,9 +173,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     }
 
     /// File > Save
-    @objc func saveDocument(_ sender: Any?) {
-        save()
-    }
+    @objc func saveDocument(_ sender: Any?) { save() }
 
     /// Saves the open file. Returns false, after telling the user, if it fails.
     @discardableResult
@@ -185,9 +192,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         return isEnabled(menuItem.action)
     }
 
-    func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
-        isEnabled(item.action)
-    }
+    func validateToolbarItem(_ item: NSToolbarItem) -> Bool { isEnabled(item.action) }
 
     /// Whether the command a menu or toolbar item sends can run right now.
     private func isEnabled(_ action: Selector?) -> Bool {
@@ -195,13 +200,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         case #selector(saveDocument(_:)):
             editor.document != nil
         case #selector(buildProject(_:)), #selector(flashProject(_:)):
-            folder != nil && !isBuilding && !isFlashing
+            folder != nil && !isBuilding && !isFlashing && !debugger.isActive
         case #selector(flashImage(_:)):
-            !isBuilding && !isFlashing
+            !isBuilding && !isFlashing && !debugger.isActive
         case #selector(stopFlashing(_:)):
             isFlashing
         default:
-            true
+            isDebugActionEnabled(action)
         }
     }
 
@@ -246,9 +251,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     // MARK: - Building
 
     /// Product > Build
-    @objc func buildProject(_ sender: Any?) {
-        Task { await build() }
-    }
+    @objc func buildProject(_ sender: Any?) { Task { await build() } }
 
     /// Saves the open file, builds the project in the open folder, and shows
     /// the outcome in the issues panel and the editor's gutter.
@@ -328,6 +331,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard confirmDiscardingChanges() else { return false }
         terminal.terminate()
+        Task { await debugger.stop() }
         return true
     }
 
