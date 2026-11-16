@@ -146,4 +146,36 @@ struct HardwareInTheLoopTests {
 
         #expect(received.contains(message), "The board sent:\n\(received.suffix(400))")
     }
+
+    /// Imports a Keil project, builds it with the GNU startup file uMeil
+    /// generated, and checks that `SystemInit` and `SysTick_Handler` both run
+    /// on the board.
+    @Test func anImportedKeilProjectRunsItsStartupAndInterruptsOnTheBoard() async throws {
+        let folder = try TemporaryFolder()
+        let message = "uMeil Keil \(UUID().uuidString)"
+        let keilFile = try KeilFixture.make(in: folder.url, message: message)
+        let imported = try KeilImporter.importProject(at: keilFile)
+
+        let build = try await BuildEngine().build(try BuildEngine.plan(forProjectFile: imported.projectFile))
+        try #require(build.succeeded, "Build failed:\n\(build.log)")
+        let image = try #require(build.elf)
+
+        let plan = try Flasher.plan(forProjectFile: imported.projectFile, image: image)
+        let result = await Flasher().flash(plan) { _ in }
+        try #require(result.succeeded, "Flash failed:\n\(result.log)")
+
+        let path = try #require(
+            ProcessInfo.processInfo.environment["UMEIL_HIL_SERIAL_PORT"] ?? SerialPort.launchPadPorts().first,
+            "No /dev/cu.usbmodem… serial port was found for the board."
+        )
+        let port = try SerialPort(path: path, baudRate: 115200)
+        var received = ""
+        let deadline = Date().addingTimeInterval(10)
+        while !received.contains(message), Date() < deadline {
+            received += port.readAvailable()
+            try await Task.sleep(for: .milliseconds(50))
+        }
+
+        #expect(received.contains(message), "The board sent:\n\(received.suffix(400))")
+    }
 }
