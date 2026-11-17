@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import uMeil
 
@@ -54,17 +55,27 @@ struct SerialPortTests {
         #expect(terminal.receive(4) == Array("pong".utf8))
     }
 
-    @Test func sendsALargeBlockCompletely() async throws {
+    @Test func sendsALargeBlockCompletely() throws {
         let terminal = try PseudoTerminal()
         let port = try SerialRecorder().open(terminal)
         defer { port.close() }
         let block = (0..<50_000).map { UInt8(truncatingIfNeeded: $0) }
 
-        // More than the terminal buffers, so the write has to wait for the reader.
-        let reader = Task.detached { terminal.receive(block.count) }
-        try await Task.detached { try port.write(Data(block)) }.value
+        // More than the terminal buffers, so the write has to wait for the
+        // reader. Both block, so the reader gets a thread of its own: as a
+        // task it could wait for a free thread behind blocked ones (on CI's
+        // three cores it did) and the write would time out.
+        let received = OSAllocatedUnfairLock<[UInt8]>(initialState: [])
+        let readerFinished = DispatchSemaphore(value: 0)
+        Thread.detachNewThread {
+            let bytes = terminal.receive(block.count)
+            received.withLock { $0 = bytes }
+            readerFinished.signal()
+        }
+        try port.write(Data(block))
+        readerFinished.wait()
 
-        #expect(await reader.value == block)
+        #expect(received.withLock { $0 } == block)
     }
 
     @Test(arguments: [9600, 115_200, 230_400])
