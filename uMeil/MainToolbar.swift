@@ -138,6 +138,15 @@ final class MainToolbar: NSObject, NSToolbarDelegate {
             let stack = NSStackView(views: [boardDot, boardLabel])
             stack.orientation = .horizontal
             stack.spacing = 5
+            // The toolbar sizes the item once, while it still says "No board",
+            // so reserve room for the longer text or it is clipped at the edge.
+            boardLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+            let longest = NSTextField(labelWithString: "Board connected")
+            longest.font = boardLabel.font
+            let dotWidth = boardDot.intrinsicContentSize.width
+            stack.widthAnchor.constraint(
+                greaterThanOrEqualToConstant: ceil(dotWidth + stack.spacing + longest.fittingSize.width)
+            ).isActive = true
             item.view = stack
             return item
         default:
