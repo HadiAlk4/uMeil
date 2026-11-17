@@ -38,6 +38,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     let bottomPanelItem: NSSplitViewItem
     let editorSplit = NSSplitViewController()
 
+    /// Tells the user what to know after a Keil project is imported: files
+    /// left out or replaced. Replaceable so tests do not show an alert.
+    var showImportNotes: (_ notes: [String], _ projectName: String) -> Void = { notes, name in
+        MainWindowController.alertImportNotes(notes, for: name)
+    }
+
     /// The folder open in the navigator, or `nil` before one is chosen.
     private(set) var folder: URL?
 
@@ -123,7 +129,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     /// Dock icon, opened from Finder, or passed to `open -a uMeil`.
     ///
     /// A folder is shown as it is. A project file opens its folder with the
-    /// project's first source showing. Any other file opens its folder with
+    /// project's first source showing. A Keil project is opened as a uMeil
+    /// project, imported the first time. Any other file opens its folder with
     /// that file showing.
     func openItem(at url: URL) {
         var isDirectory: ObjCBool = false
@@ -134,6 +141,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         window?.makeKeyAndOrderFront(nil)
         if isDirectory.boolValue {
             openFolder(url)
+            return
+        }
+
+        if url.pathExtension == KeilImporter.fileExtension {
+            openKeilProjectShowingNotes(at: url)
             return
         }
 
@@ -273,8 +285,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         }
         showIssuesPanel()
 
-        guard let projectFile = BuildSummary.projectFile(in: folder) else {
-            issues.show(failure: "This folder has no uMeil project file (.umeil) to build.")
+        let projectFile: URL
+        do {
+            guard let found = try projectFileImportingKeil(in: folder) else {
+                issues.show(failure: "This folder has no uMeil project file (.umeil) or Keil project (.uvprojx) "
+                    + "to build.")
+                return nil
+            }
+            projectFile = found
+        } catch {
+            issues.show(failure: error.localizedDescription)
             return nil
         }
 
@@ -311,6 +331,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         navigate(to: file, line: diagnostic.line, column: diagnostic.column, columnUnit: .utf8)
     }
 
+}
+
+// Kept out of the class body to keep it short. Same file, so the private
+// members above are still in reach.
+extension MainWindowController {
     // MARK: - Unsaved changes
 
     /// If the open file has unsaved changes, asks whether to save them.

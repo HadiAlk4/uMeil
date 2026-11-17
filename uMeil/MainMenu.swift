@@ -61,10 +61,16 @@ enum MainMenu {
         )
         newProject.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(
+            withTitle: "Open…",
+            action: #selector(MainWindowController.openDocument(_:)),
+            keyEquivalent: "o"
+        )
+        let openFolder = menu.addItem(
             withTitle: "Open Folder…",
             action: #selector(MainWindowController.chooseFolder(_:)),
             keyEquivalent: "o"
         )
+        openFolder.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(
             withTitle: "Import Keil Project…",
             action: #selector(MainWindowController.importKeilProject(_:)),

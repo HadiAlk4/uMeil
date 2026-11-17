@@ -80,10 +80,111 @@ struct OpenFromOutsideTests {
         let info = try #require(Bundle.main.infoDictionary)
         let documentTypes = try #require(info["CFBundleDocumentTypes"] as? [[String: Any]])
         let opened = documentTypes.flatMap { $0["LSItemContentTypes"] as? [String] ?? [] }
-        #expect(opened.sorted() == ["io.github.hadialk4.umeil-project", "public.folder"])
+        #expect(opened.sorted() == ["com.keil.uvprojx", "io.github.hadialk4.umeil-project", "public.folder"])
 
         let exported = try #require(info["UTExportedTypeDeclarations"] as? [[String: Any]])
         let tags = try #require(exported.first?["UTTypeTagSpecification"] as? [String: [String]])
         #expect(tags["public.filename-extension"] == [ProjectFile.fileExtension])
+
+        let imported = try #require(info["UTImportedTypeDeclarations"] as? [[String: Any]])
+        let keilTags = try #require(imported.first?["UTTypeTagSpecification"] as? [String: [String]])
+        #expect(keilTags["public.filename-extension"] == [KeilImporter.fileExtension])
     }
+
+    // MARK: - Keil projects
+
+    /// A window that records import notes instead of showing an alert.
+    private func makeWindow(collectingNotesIn notes: NotesBox) throws -> MainWindowController {
+        let controller = try makeWindow()
+        controller.showImportNotes = { found, _ in notes.notes += found }
+        return controller
+    }
+
+    @Test func aKeilProjectIsImportedTheFirstTimeItIsOpened() throws {
+        let folder = try TemporaryFolder()
+        let keilFile = try KeilFixture.make(in: folder.url)
+        let notes = NotesBox()
+        let controller = try makeWindow(collectingNotesIn: notes)
+
+        controller.openItem(at: keilFile)
+
+        #expect(controller.folder == folder.url)
+        #expect(controller.editor.document?.url.lastPathComponent == "main.c")
+        #expect(FileManager.default.fileExists(atPath: folder.url.appending(path: "Template.umeil").path))
+        #expect(notes.notes.contains { $0.contains("Lib4.lib was replaced") })
+    }
+
+    @Test func reopeningAKeilProjectKeepsItsSettingsAndRefreshesGeneratedFiles() throws {
+        let folder = try TemporaryFolder()
+        let keilFile = try KeilFixture.make(in: folder.url)
+        let notes = NotesBox()
+        let controller = try makeWindow(collectingNotesIn: notes)
+        controller.openItem(at: keilFile)
+
+        // The user changed a setting; an older uMeil wrote an older library
+        // and the header, which the user then edited.
+        let projectFile = folder.url.appending(path: "Template.umeil")
+        var project = try ProjectFile.load(from: projectFile)
+        project.build.defines.append("MINE")
+        try ProjectFile.save(project, to: projectFile)
+        let library = folder.url.appending(path: "uMeil/es_lib.c")
+        try "// Course support library for the GNU toolchain, written by uMeil (old)\n"
+            .write(to: library, atomically: true, encoding: .utf8)
+        let header = folder.url.appending(path: "uMeil/TM4C129.h")
+        try "// my own header\n".write(to: header, atomically: true, encoding: .utf8)
+        notes.notes = []
+
+        controller.openItem(at: keilFile)
+
+        #expect(try ProjectFile.load(from: projectFile).build.defines.contains("MINE"))
+        #expect(try String(contentsOf: library, encoding: .utf8).contains("ES_WEAK void ES_Serial"))
+        #expect(try String(contentsOf: header, encoding: .utf8) == "// my own header\n")
+        #expect(notes.notes == ["uMeil/TM4C129.h was not updated, because it has been edited."])
+        #expect(controller.editor.document?.url.lastPathComponent == "main.c")
+    }
+
+    @Test func reopeningAddsTheCourseLibraryAnOlderImportLeftOut() throws {
+        let folder = try TemporaryFolder()
+        let keilFile = try KeilFixture.make(in: folder.url)
+        let first = try KeilImporter.importProject(at: keilFile)
+        var project = first.project
+        project.sources.removeAll { $0 == "uMeil/es_lib.c" }
+        try ProjectFile.save(project, to: first.projectFile)
+
+        let reopened = try KeilImporter.openProject(at: keilFile)
+
+        #expect(reopened.project.sources.suffix(2) == ["uMeil/es_lib.c", "uMeil/startup_gcc.c"])
+        #expect(try ProjectFile.load(from: first.projectFile) == reopened.project)
+    }
+
+    @Test func buildingAFolderWithOnlyAKeilProjectImportsIt() throws {
+        let folder = try TemporaryFolder()
+        try KeilFixture.make(in: folder.url)
+        let controller = try makeWindow()
+        controller.openItem(at: folder.url)
+
+        let projectFile = try controller.projectFileImportingKeil(in: folder.url)
+
+        #expect(projectFile?.lastPathComponent == "Template.umeil")
+        #expect(controller.navigator.root?.children.map(\.name).contains("Template.umeil") == true)
+
+        let empty = try TemporaryFolder()
+        #expect(try controller.projectFileImportingKeil(in: empty.url) == nil)
+    }
+
+    @Test func fileOpenAcceptsFoldersAndBothKindsOfProject() throws {
+        let menu = MainMenu.make(appName: "uMeil")
+        let fileMenu = try #require(menu.items.compactMap(\.submenu).first { $0.title == "File" })
+        let open = try #require(fileMenu.items.first { $0.title == "Open…" })
+        #expect(open.action == #selector(MainWindowController.openDocument(_:)))
+        #expect(open.keyEquivalent == "o")
+        let openFolder = try #require(fileMenu.items.first { $0.title == "Open Folder…" })
+        #expect(openFolder.keyEquivalentModifierMask == [.command, .shift])
+    }
+}
+
+/// Collects what a window would have shown in an alert.
+@MainActor
+private final class NotesBox {
+    var notes: [String] = []
 }
