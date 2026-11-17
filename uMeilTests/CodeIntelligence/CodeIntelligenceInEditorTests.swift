@@ -116,10 +116,15 @@ struct CodeIntelligenceInEditorTests {
         let callRange = (text as NSString).range(of: "GPIOPinWrite(")
         controller.editor.textView.setSelectedRange(NSRange(location: callRange.location + 2, length: 0))
 
-        controller.jumpToDefinitionMenuAction(nil)
-
-        let navigated = await waitUntil {
-            controller.editor.document?.url.lastPathComponent == "gpio.h"
+        // clangd answers nothing until it has parsed main.c, which on a slow
+        // CI runner can outlast the first request, so ask again as a person
+        // would.
+        var navigated = false
+        for _ in 0..<7 where !navigated {
+            controller.jumpToDefinitionMenuAction(nil)
+            navigated = await waitUntil(timeout: .seconds(3)) {
+                controller.editor.document?.url.lastPathComponent == "gpio.h"
+            }
         }
         #expect(navigated)
         #expect(controller.editor.document?.url.pathComponents.contains("driverlib") == true)
