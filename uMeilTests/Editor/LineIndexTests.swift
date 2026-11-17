@@ -83,4 +83,11 @@ struct LineIndexTests {
         let lastFullLine = index.range(ofLine: 10_000)
         #expect(lastFullLine.map { index.lineNumber(atOffset: $0.location) } == 10_000)
     }
+
+    @Test func gccByteColumnsBecomeEditorColumnsOnLinesWithNonASCIIText() {
+        // `;` is byte column 17 (µ takes two bytes) but UTF-16 column 16.
+        #expect(EditorViewController.utf16Column(fromUTF8Column: 17, in: "/* 5 µs */ x = ;") == 16)
+        #expect(EditorViewController.utf16Column(fromUTF8Column: 5, in: "int x;") == 5)
+        #expect(EditorViewController.utf16Column(fromUTF8Column: 1, in: "µ") == 1)
+    }
 }

@@ -120,8 +120,10 @@ extension MainWindowController {
             editor.showExecutionLine(nil)
             return
         }
-        if !isShowing(file) {
-            openFile(file)
+        if !isShowing(file), !openFile(file) {
+            // Do not mark a line of whichever file stayed open.
+            editor.showExecutionLine(nil)
+            return
         }
         editor.showExecutionLine(line)
         showExecutableLines()

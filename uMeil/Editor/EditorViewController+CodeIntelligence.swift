@@ -36,6 +36,9 @@ extension EditorViewController {
         editorTextView?.onCommandClick = { [weak self] offset in
             self?.requestDefinition(atUTF16Offset: offset)
         }
+        editorTextView?.onHoverCharacter = { [weak self] offset in
+            self?.hoverMoved(toCharacterIndex: offset)
+        }
         editorTextView?.onRequestCompletion = { [weak self] in
             self?.triggerCompletion(nil)
         }
@@ -252,7 +255,7 @@ extension EditorViewController {
         return slice
     }
 
-    private static func isIdentifierCodeUnit(_ unit: UInt16) -> Bool {
+    static func isIdentifierCodeUnit(_ unit: UInt16) -> Bool {
         (0x61...0x7A).contains(unit) || (0x41...0x5A).contains(unit) || (0x30...0x39).contains(unit) || unit == 0x5F
     }
 

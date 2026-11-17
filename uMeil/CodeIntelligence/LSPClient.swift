@@ -22,6 +22,10 @@ actor LSPClient {
     private var nextRequestID = 1
     private var pending: [Int: CheckedContinuation<Data, Error>] = [:]
     private var isShutDown = false
+    /// The most recent write to the server. Each write waits for the one
+    /// before it, so messages reach `clangd` in the order they were made: a
+    /// request never overtakes the `didChange` that came before it.
+    private var lastWrite: Task<Void, Never>?
 
     private let decoder = JSONDecoder()
 
@@ -197,9 +201,10 @@ actor LSPClient {
                     return
                 }
                 pending[requestID] = continuation
+                let write = enqueueWrite(payload)
                 Task { [weak self] in
                     do {
-                        try await self?.transport.send(payload)
+                        try await write.value
                     } catch {
                         await self?.failPending(requestID: requestID, error: error)
                     }
@@ -221,7 +226,7 @@ actor LSPClient {
             message["params"] = params
         }
         let payload = try JSONSerialization.data(withJSONObject: message)
-        try await transport.send(payload)
+        try await enqueueWrite(payload).value
     }
 
     private func sendResponse(requestID: Any, result: Any) async {
@@ -231,7 +236,7 @@ actor LSPClient {
             "result": result
         ]
         guard let payload = try? JSONSerialization.data(withJSONObject: message) else { return }
-        try? await transport.send(payload)
+        try? await enqueueWrite(payload).value
     }
 
     private func readLoop(stream: AsyncStream<Data>) async {
@@ -295,5 +300,20 @@ actor LSPClient {
 
     private func isJSONNull(_ data: Data) -> Bool {
         data == Data("null".utf8)
+    }
+}
+
+extension LSPClient {
+    /// Queues `payload` behind every earlier write. The queue position is
+    /// taken now, synchronously on the actor, so ordering follows call order
+    /// even though the write itself happens later.
+    private func enqueueWrite(_ payload: Data) -> Task<Void, Error> {
+        let previous = lastWrite
+        let write = Task { [transport] in
+            await previous?.value
+            try await transport.send(payload)
+        }
+        lastWrite = Task { _ = try? await write.value }
+        return write
     }
 }

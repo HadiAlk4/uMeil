@@ -40,30 +40,24 @@ final class GDBProcess: DebuggerConnection {
 
         let (lines, continuation) = AsyncStream.makeStream(of: String.self)
         self.lines = lines
-        // The pipe only closes when every process holding it has quit, so
-        // the stream is also ended when GDB itself exits.
-        process.terminationHandler = { _ in continuation.finish() }
+        // The stream normally ends when the pipe reaches end of file, after
+        // every last line GDB printed has been read. But the pipe only closes
+        // once every process holding it has quit, and OpenOCD, which GDB
+        // starts, can outlive GDB. So once GDB exits, give the reader a moment
+        // to drain what is left, then end the stream anyway.
+        process.terminationHandler = { _ in
+            DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(1)) {
+                continuation.finish()
+            }
+        }
 
         try process.run()
 
-        let output = outputPipe.fileHandleForReading
-        DispatchQueue.global(qos: .userInitiated).async {
-            var pending = Data()
-            let newline = UInt8(ascii: "\n")
-            while true {
-                let chunk = output.availableData
-                if chunk.isEmpty { break }
-                pending.append(chunk)
-                while let end = pending.firstIndex(of: newline) {
-                    // swiftlint:disable:next optional_data_string_conversion
-                    var line = String(decoding: pending[pending.startIndex..<end], as: UTF8.self)
-                    if line.hasSuffix("\r") { line.removeLast() }
-                    continuation.yield(line)
-                    pending.removeSubrange(pending.startIndex...end)
-                }
-            }
-            continuation.finish()
-        }
+        PipeLineReader.start(
+            outputPipe.fileHandleForReading,
+            onLine: { continuation.yield($0) },
+            onEnd: { _ in continuation.finish() }
+        )
     }
 
     func send(_ line: String) {

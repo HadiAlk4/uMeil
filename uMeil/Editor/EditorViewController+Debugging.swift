@@ -67,22 +67,40 @@ extension EditorViewController {
 
     /// Extracts the C identifier at `characterIndex` in the editor's text.
     func identifier(atCharacterIndex characterIndex: Int) -> String? {
-        let chars = Array(textView.string.utf16)
-        guard chars.indices.contains(characterIndex),
-              Self.isIdentifierChar(chars[characterIndex])
+        let text = textView.string as NSString
+        guard characterIndex >= 0, characterIndex < text.length,
+              Self.isIdentifierCodeUnit(text.character(at: characterIndex))
         else { return nil }
 
-        var start = characterIndex
-        while start > 0 && Self.isIdentifierChar(chars[start - 1]) {
-            start -= 1
-        }
-        guard !Self.isDigitChar(chars[start]) else { return nil }
+        let start = Self.identifierPrefixRange(in: textView.string, atUTF16Offset: characterIndex).location
+        guard !(0x30...0x39).contains(text.character(at: start)) else { return nil }
 
         var end = characterIndex + 1
-        while end < chars.count && Self.isIdentifierChar(chars[end]) {
+        while end < text.length, Self.isIdentifierCodeUnit(text.character(at: end)) {
             end += 1
         }
-        return String(utf16CodeUnits: Array(chars[start..<end]), count: end - start)
+        return text.substring(with: NSRange(location: start, length: end - start))
+    }
+
+    /// Shows the value of whatever is under the mouse after it rests there
+    /// briefly. Values are only found while the debugger is stopped.
+    func hoverMoved(toCharacterIndex characterIndex: Int?) {
+        hoverTask?.cancel()
+        guard let characterIndex,
+              let name = identifier(atCharacterIndex: characterIndex),
+              onHoverIdentifier != nil
+        else {
+            clearHoverValue()
+            return
+        }
+        // Still over the same name: keep its value showing.
+        if textView.toolTip?.hasPrefix("\(name) = ") == true { return }
+        clearHoverValue()
+        hoverTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            await self?.showHoverValue(atCharacterIndex: characterIndex)
+        }
     }
 
     /// Evaluates the identifier at `characterIndex` and puts `"name = value"`
@@ -92,7 +110,7 @@ extension EditorViewController {
         guard let name = identifier(atCharacterIndex: characterIndex),
               let value = await onHoverIdentifier?(name)
         else {
-            textView.toolTip = nil
+            clearHoverValue()
             return nil
         }
         let tip = "\(name) = \(value)"
@@ -100,14 +118,9 @@ extension EditorViewController {
         return tip
     }
 
-    private static func isIdentifierChar(_ unit: UInt16) -> Bool {
-        (unit >= 0x41 && unit <= 0x5A)
-            || (unit >= 0x61 && unit <= 0x7A)
-            || (unit >= 0x30 && unit <= 0x39)
-            || unit == 0x5F
-    }
-
-    private static func isDigitChar(_ unit: UInt16) -> Bool {
-        unit >= 0x30 && unit <= 0x39
+    private func clearHoverValue() {
+        if textView.toolTip != nil {
+            textView.toolTip = nil
+        }
     }
 }

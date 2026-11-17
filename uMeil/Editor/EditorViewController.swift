@@ -20,6 +20,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
     var onModifiedChanged: ((Bool) -> Void)?
     /// Evaluates a C identifier hovered in the editor while debugging.
     var onHoverIdentifier: ((String) async -> String?)?
+    /// Waits for the mouse to rest before asking the debugger for a value.
+    var hoverTask: Task<Void, Never>?
 
     let textView: NSTextView
     let intelligence = EditorCodeIntelligenceState()
@@ -301,8 +303,13 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
 
     /// Moves the cursor to a line and column (both 1-based, as the compiler
     /// reports them) and scrolls it into view.
-    func goTo(line: Int, column: Int?) {
-        guard let offset = lineIndex.offset(line: line, column: column ?? 1) else { return }
+    func goTo(line: Int, column: Int?, unit: ColumnUnit = .utf16) {
+        var column = column ?? 1
+        if unit == .utf8, let range = lineIndex.range(ofLine: line) {
+            let lineText = (textView.string as NSString).substring(with: range)
+            column = Self.utf16Column(fromUTF8Column: column, in: lineText)
+        }
+        guard let offset = lineIndex.offset(line: line, column: column) else { return }
         let range = NSRange(location: min(offset, lineIndex.length), length: 0)
         textView.setSelectedRange(range)
         textView.scrollRangeToVisible(range)

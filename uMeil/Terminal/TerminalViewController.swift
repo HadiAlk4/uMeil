@@ -221,7 +221,8 @@ final class TerminalViewController: NSViewController {
     /// Starts the shell on the first open (or when requested with no live shell).
     func startIfNeeded(folder: URL?) {
         currentFolder = folder
-        guard !hasStarted else { return }
+        // A shell that has exited (the user typed `exit`) is replaced too.
+        guard !hasStarted || !session.isRunning else { return }
         launch(in: folder)
     }
 

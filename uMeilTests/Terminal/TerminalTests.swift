@@ -232,6 +232,23 @@ struct TerminalWindowTests {
         session.simulateExit(code: 2)
         #expect(controller.statusText == "Shell exited (2)")
     }
+
+    @Test func reopeningTheTerminalAfterTheShellExitedStartsANewShell() throws {
+        let temp = try TemporaryDirectory()
+        let project = try temp.directory("Blinky")
+        let session = FakeTerminalSessionView()
+        let controller = TerminalViewController(session: session)
+        controller.loadViewIfNeeded()
+
+        controller.startIfNeeded(folder: project)
+        controller.startIfNeeded(folder: project)
+        #expect(session.startedConfigs.count == 1)
+
+        session.simulateExit(code: 0)
+        controller.startIfNeeded(folder: project)
+        #expect(session.startedConfigs.count == 2)
+        #expect(controller.isRunning)
+    }
 }
 
 @MainActor
