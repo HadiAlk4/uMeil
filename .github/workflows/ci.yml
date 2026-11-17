@@ -47,14 +47,16 @@ jobs:
           xcrun xcresulttool get test-results tests --path TestResults.xcresult \
             | python3 -c '
           import json, sys
-          def walk(node, path):
+          def walk(node, path, failed):
               name = node.get("name", "")
-              if node.get("nodeType") == "Failure Message":
+              if node.get("nodeType") == "Test Case":
+                  path, failed = name, node.get("result") == "Failed"
+              elif node.get("nodeType") == "Failure Message" and failed:
                   print(f"{path}: {name}")
               for child in node.get("children", []):
-                  walk(child, name if node.get("nodeType") == "Test Case" else path)
+                  walk(child, path, failed)
           for node in json.load(sys.stdin)["testNodes"]:
-              walk(node, "")
+              walk(node, "", False)
           '
 
       - name: Keep the test results
