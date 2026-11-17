@@ -72,10 +72,7 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
         scrollView.hasVerticalScroller = true
         scrollView.borderType = .noBorder
 
-        let stack = NSStackView(views: [topBar, scrollView])
-        stack.orientation = .vertical
-        stack.spacing = 0
-        view = stack
+        view = PanelLayout.view(bar: topBar, content: scrollView)
     }
 
     private func addColumn(identifier: String, title: String, width: CGFloat) {

@@ -3,9 +3,9 @@ import AppKit
 /// Builds the menu bar in code, since the app has no storyboard or nib.
 @MainActor
 enum MainMenu {
-    static func make(appName: String) -> NSMenu {
+    static func make(appName: String, updater: SoftwareUpdater? = nil) -> NSMenu {
         let mainMenu = NSMenu()
-        mainMenu.addItem(submenuItem(appMenu(appName: appName)))
+        mainMenu.addItem(submenuItem(appMenu(appName: appName, updater: updater)))
         mainMenu.addItem(submenuItem(fileMenu()))
         mainMenu.addItem(submenuItem(editMenu()))
         mainMenu.addItem(submenuItem(viewMenu()))
@@ -25,13 +25,16 @@ enum MainMenu {
         return item
     }
 
-    private static func appMenu(appName: String) -> NSMenu {
+    private static func appMenu(appName: String, updater: SoftwareUpdater?) -> NSMenu {
         let menu = NSMenu(title: appName)
         menu.addItem(
             withTitle: "About \(appName)",
             action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
             keyEquivalent: ""
         )
+        if let checkForUpdates = updater?.makeMenuItem() {
+            menu.addItem(checkForUpdates)
+        }
         menu.addItem(.separator())
         menu.addItem(withTitle: "Hide \(appName)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
 

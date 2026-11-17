@@ -6,9 +6,18 @@
   project files, so all three can be dropped on the Dock icon, opened from
   Finder, or passed to `open -a uMeil`.
   Xcode merges these with the keys it generates.
+
+  SUFeedURL and SUPublicEDKey configure Sparkle's updates. The public key
+  comes from the SPARKLE_PUBLIC_ED_KEY build setting; while it is empty,
+  the app does not check for updates (see SoftwareUpdater.swift and
+  docs/releasing.md).
 -->
 <plist version="1.0">
 <dict>
+	<key>SUFeedURL</key>
+	<string>https://hadialk4.github.io/uMeil/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>$(SPARKLE_PUBLIC_ED_KEY)</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>

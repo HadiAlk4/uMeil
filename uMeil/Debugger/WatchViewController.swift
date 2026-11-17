@@ -65,10 +65,7 @@ final class WatchViewController: NSViewController, NSTableViewDataSource, NSTabl
         scrollView.hasVerticalScroller = true
         scrollView.borderType = .noBorder
 
-        let stack = NSStackView(views: [topBar, scrollView])
-        stack.orientation = .vertical
-        stack.spacing = 0
-        view = stack
+        view = PanelLayout.view(bar: topBar, content: scrollView)
     }
 
     /// Adds a watched expression if it is not already in the list.

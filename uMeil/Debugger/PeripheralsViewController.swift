@@ -89,10 +89,7 @@ final class PeripheralsViewController: NSViewController {
         scrollView.hasVerticalScroller = true
         scrollView.borderType = .noBorder
 
-        let stack = NSStackView(views: [topBar, scrollView])
-        stack.orientation = .vertical
-        stack.spacing = 0
-        view = stack
+        view = PanelLayout.view(bar: topBar, content: scrollView)
         if device != nil {
             rebuildMenu()
         }

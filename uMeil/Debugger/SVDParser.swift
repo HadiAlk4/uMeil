@@ -144,7 +144,7 @@ enum SVDParser {
     ) -> [SVDRegister] {
         let defaults = defaults.reading(element)
         let name = element.childText("name") ?? ""
-        let fields = (element.child("fields")?.children(named: "field") ?? [])
+        let registerFields = (element.child("fields")?.children(named: "field") ?? [])
             .flatMap { fields(from: $0, access: defaults.access) }
             .sorted { $0.bitOffset < $1.bitOffset }
         let registerOffset = element.childText("addressOffset").flatMap(number) ?? 0
@@ -158,7 +158,7 @@ enum SVDParser {
                 access: defaults.access,
                 resetValue: defaults.resetValue,
                 readHasSideEffects: element.childText("readAction") != nil,
-                fields: fields
+                fields: registerFields
             )
         }
     }
