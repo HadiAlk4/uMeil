@@ -45,10 +45,24 @@ struct ToolVersionTests {
         #expect(ToolVersion.parse(versionOutput: output, for: .openOCD) == expected)
     }
 
+    @Test(arguments: [
+        ("Apple clangd version 21.0.0 (clang-2100.4.1.1)", ToolVersion(21, 0, 0)),
+        ("clangd version 23.1.0 (https://github.com/llvm/llvm-project 123abc)", ToolVersion(23, 1, 0)),
+        ("Homebrew clangd version 19.1.7", ToolVersion(19, 1, 7))
+    ])
+    func parsesClangdVersions(banner: String, expected: ToolVersion) {
+        let output = banner + "\nFeatures: mac+xpc\nPlatform: arm64-apple-darwin27.2.0\n"
+        #expect(ToolVersion.parse(versionOutput: output, for: .clangd) == expected)
+    }
+
     @Test func rejectsOutputWithoutAVersion() {
         #expect(ToolVersion.parse(versionOutput: "", for: .compiler) == nil)
         #expect(ToolVersion.parse(versionOutput: "command not found", for: .compiler) == nil)
         #expect(ToolVersion.parse(versionOutput: "some other program 1.2.3", for: .openOCD) == nil)
+        #expect(ToolVersion.parse(
+            versionOutput: "xcode-select: error: no developer tools were found",
+            for: .clangd
+        ) == nil)
     }
 
     @Test func comparesNumerically() {

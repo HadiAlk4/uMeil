@@ -34,6 +34,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     var isFlashing = false
     /// The Build and Flash in progress, kept so it can be stopped.
     var flashTask: Task<Void, Never>?
+    var codeIntelligence: CodeIntelligenceController?
     let bottomPanelItem: NSSplitViewItem
     let editorSplit = NSSplitViewController()
 
@@ -73,6 +74,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         navigator.onSelectFile = { [weak self] url in self?.userSelectedFile(url) }
         editor.onModifiedChanged = { [weak self] _ in self?.updateTitle() }
         issues.onSelect = { [weak self] diagnostic in self?.show(diagnostic) }
+        configureCodeIntelligence()
         configureBottomPanelCallbacks()
         window.toolbar = toolbar.toolbar
         window.toolbarStyle = .unified
@@ -94,6 +96,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         Task { await debugger.stop() }
         folder = url
         lastBuild = nil
+        codeIntelligence?.folderOpened(url)
         navigator.showFolder(url)
         editor.close(hasFolder: true)
         terminal.updateFolder(url)
@@ -199,6 +202,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         switch action {
         case #selector(saveDocument(_:)):
             editor.document != nil
+        case #selector(jumpToDefinitionMenuAction(_:)):
+            editor.document.map { SourceLanguage(url: $0.url) == .c } ?? false
         case #selector(buildProject(_:)), #selector(flashProject(_:)):
             folder != nil && !isBuilding && !isFlashing && !debugger.isActive
         case #selector(flashImage(_:)):
@@ -278,6 +283,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
             lastBuild = result
             issues.show(result)
             refreshMarkers()
+            codeIntelligence?.buildFinished(in: folder)
             return result
         } catch {
             lastBuild = nil
@@ -296,15 +302,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     /// Takes the editor to the place a build message points at.
     private func show(_ diagnostic: Diagnostic) {
         guard let file = diagnostic.file else { return }
-
-        let isOpen = editor.document?.url.resolvingSymlinksInPath() == file.resolvingSymlinksInPath()
-        if !isOpen {
-            guard confirmDiscardingChanges() else { return }
-            openFile(file)
-        }
-        if let line = diagnostic.line {
-            editor.goTo(line: line, column: diagnostic.column)
-        }
+        navigate(to: file, line: diagnostic.line, column: diagnostic.column)
     }
 
     // MARK: - Unsaved changes

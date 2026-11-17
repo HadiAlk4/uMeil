@@ -87,7 +87,7 @@ struct BuildEngine: Sendable {
     func build(_ plan: BuildPlan) async throws -> BuildResult {
         var result = BuildResult(succeeded: false, diagnostics: [], compiledSources: [], didLink: false, log: "")
         try prepareDirectories(for: plan)
-        try writeCompileCommands(for: plan)
+        _ = try Self.writeCompileCommands(for: plan)
 
         // Compile what is out of date.
         let outdated = plan.compileSteps.indices.filter { needsCompile(plan.compileSteps[$0], in: plan) }
@@ -252,15 +252,39 @@ struct BuildEngine: Sendable {
         }
     }
 
+    /// Writes `build/compile_commands.json` for `projectFile` without running
+    /// the compiler, so `clangd` works as soon as a project opens.
+    ///
+    /// When `arm-none-eabi-gcc` is not installed yet, falls back to a generic
+    /// `clang --target=arm-none-eabi` command so TivaWare headers still resolve.
+    @discardableResult
+    static func prepareCompileCommands(
+        forProjectFile projectFile: URL,
+        locator: ToolLocator = .standard(),
+        tivaWareDirectory: URL = TivaWare.bundledDirectory
+    ) throws -> URL {
+        let project = try ProjectFile.load(from: projectFile)
+        let directory = projectFile.deletingLastPathComponent()
+        let compiler = locator.locate(.compiler)
+        let environment = BuildEnvironment(
+            compiler: compiler ?? URL(filePath: "clang"),
+            tivaWareDirectory: tivaWareDirectory
+        )
+        let plan = BuildPlan(project: project, projectDirectory: directory, environment: environment)
+        return try writeCompileCommands(for: plan, fallbackTarget: compiler == nil ? "arm-none-eabi" : nil)
+    }
+
     /// Writes `build/compile_commands.json`, the standard file that tells
     /// `clangd` how each source is compiled.
-    private func writeCompileCommands(for plan: BuildPlan) throws {
-        let compiler = plan.environment.compiler.path(percentEncoded: false)
+    @discardableResult
+    static func writeCompileCommands(for plan: BuildPlan, fallbackTarget: String? = nil) throws -> URL {
+        let compiler = fallbackTarget == nil ? plan.environment.compiler.path(percentEncoded: false) : "clang"
+        let targetFlags = fallbackTarget.map { ["--target=\($0)"] } ?? []
         let entries: [[String: Any]] = plan.compileSteps.map { step in
             [
                 "directory": plan.projectDirectory.path(percentEncoded: false),
                 "file": step.source,
-                "arguments": [compiler] + step.arguments,
+                "arguments": [compiler] + targetFlags + step.clangdArguments,
                 "output": step.object
             ]
         }
@@ -269,10 +293,15 @@ struct BuildEngine: Sendable {
             options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         )
         let url = plan.url(for: "\(BuildPlan.buildDirectoryName)/compile_commands.json")
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
         // Only rewrite it when it changes, so clangd does not re-index for nothing.
         if (try? Data(contentsOf: url)) != data {
             try data.write(to: url, options: .atomic)
         }
+        return url
     }
 
     private func run(

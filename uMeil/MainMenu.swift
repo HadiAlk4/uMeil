@@ -184,6 +184,21 @@ enum MainMenu {
 
         let find = menu.addItem(withTitle: "Find", action: nil, keyEquivalent: "")
         find.submenu = findMenu()
+
+        menu.addItem(.separator())
+        let complete = menu.addItem(
+            withTitle: "Complete",
+            action: #selector(EditorViewController.triggerCompletion(_:)),
+            keyEquivalent: " "
+        )
+        complete.keyEquivalentModifierMask = [.control]
+
+        let jump = menu.addItem(
+            withTitle: "Jump to Definition",
+            action: #selector(MainWindowController.jumpToDefinitionMenuAction(_:)),
+            keyEquivalent: "j"
+        )
+        jump.keyEquivalentModifierMask = [.control, .command]
         return menu
     }
 

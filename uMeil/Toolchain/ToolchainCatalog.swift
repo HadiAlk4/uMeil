@@ -50,7 +50,20 @@ enum ToolchainCatalog {
         )
     )
 
-    static let entries = [armGNUToolchain, openOCD]
+    /// `clangd`, downloaded on demand when neither Xcode nor the Command Line Tools is installed.
+    static let clangd = ToolchainCatalogEntry(
+        displayName: "clangd",
+        provides: [.clangd],
+        downloadSize: 100_060_151,
+        package: ToolchainPackage(
+            name: "clangd",
+            version: "23.1.0",
+            url: URL(string: "https://github.com/clangd/clangd/releases/download/23.1.0/clangd-mac-23.1.0.zip")!,
+            sha256: "1082e6638223b785ca2daf0939f13afcd0bb95c84ee9a4bbaff4745365159253"
+        )
+    )
+
+    static let entries = [armGNUToolchain, openOCD, clangd]
 
     /// The packages to download so that every tool is installed. A package is
     /// needed if any tool it provides is not currently installed and working.

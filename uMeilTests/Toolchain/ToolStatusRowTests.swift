@@ -47,8 +47,10 @@ struct ToolStatusRowTests {
     @Test func listsEveryToolInOrderAndTreatsUnknownAsMissing() {
         let rows = ToolStatusRow.rows(for: [.compiler: .installed(gcc)])
 
-        #expect(rows.map(\.name) == ["Compiler (GCC)", "Debugger (GDB)", "OpenOCD"])
-        #expect(rows.map(\.state) == ["Installed", "Not found", "Not found"])
+        #expect(rows.map(\.name) == [
+            "Compiler (GCC)", "Debugger (GDB)", "OpenOCD", "Code Intelligence (clangd)"
+        ])
+        #expect(rows.map(\.state) == ["Installed", "Not found", "Not found", "Not found"])
     }
 
     @Test func describesEachStageOfAnInstall() {
@@ -62,12 +64,12 @@ struct ToolStatusRowTests {
     }
 
     @Test func summarizesHowManyToolsWereFound() {
-        #expect(ToolStatusRow.summary(for: [:]) == "0 of 3 tools found")
-        #expect(ToolStatusRow.summary(for: [.compiler: .installed(gcc)]) == "1 of 3 tools found")
+        #expect(ToolStatusRow.summary(for: [:]) == "0 of 4 tools found")
+        #expect(ToolStatusRow.summary(for: [.compiler: .installed(gcc)]) == "1 of 4 tools found")
 
         let all = Dictionary(uniqueKeysWithValues: Tool.allCases.map { tool in
             (tool, ToolStatus.installed(InstalledTool(tool: tool, url: gcc.url, version: gcc.version)))
         })
-        #expect(ToolStatusRow.summary(for: all) == "All 3 tools found")
+        #expect(ToolStatusRow.summary(for: all) == "All 4 tools found")
     }
 }

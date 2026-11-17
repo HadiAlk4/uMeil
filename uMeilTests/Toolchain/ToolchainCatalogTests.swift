@@ -19,8 +19,10 @@ struct ToolchainCatalogTests {
         for entry in ToolchainCatalog.entries {
             let package = entry.package
             #expect(package.url.scheme == "https")
-            #expect(package.url.lastPathComponent.contains("darwin-arm64"))
-            #expect(package.url.lastPathComponent.contains(package.version))
+            // clangd ships a universal Apple Silicon + Intel macOS zip (`clangd-mac-<ver>.zip`).
+            let fileName = package.url.lastPathComponent
+            #expect(fileName.contains("darwin-arm64") || fileName.contains("-mac-"))
+            #expect(fileName.contains(package.version))
             #expect(package.sha256.wholeMatch(of: #/[0-9a-f]{64}/#) != nil)
             #expect(entry.downloadSize > 0)
         }
@@ -29,7 +31,7 @@ struct ToolchainCatalogTests {
     @Test func packagesInstallIntoSeparateFolders() {
         let folders = ToolchainCatalog.entries.map(\.package.installDirectoryName)
 
-        #expect(folders == ["arm-gnu-toolchain-15.2.rel1", "xpack-openocd-0.12.0-7"])
+        #expect(folders == ["arm-gnu-toolchain-15.2.rel1", "xpack-openocd-0.12.0-7", "clangd-23.1.0"])
     }
 
     @Test func nothingIsNeededWhenEverythingIsInstalled() {
@@ -46,7 +48,8 @@ struct ToolchainCatalogTests {
         let statuses: [Tool: ToolStatus] = [
             .compiler: installed(.compiler),
             .debugger: installed(.debugger),
-            .openOCD: .missing
+            .openOCD: .missing,
+            .clangd: installed(.clangd)
         ]
 
         #expect(ToolchainCatalog.entriesNeeded(for: statuses) == [ToolchainCatalog.openOCD])
@@ -57,7 +60,8 @@ struct ToolchainCatalogTests {
         let statuses: [Tool: ToolStatus] = [
             .compiler: installed(.compiler),
             .debugger: broken,
-            .openOCD: installed(.openOCD)
+            .openOCD: installed(.openOCD),
+            .clangd: installed(.clangd)
         ]
 
         #expect(ToolchainCatalog.entriesNeeded(for: statuses) == [ToolchainCatalog.armGNUToolchain])

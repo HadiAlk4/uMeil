@@ -24,6 +24,7 @@ struct ToolVersion: Hashable, Comparable, Sendable, CustomStringConvertible {
     /// - `arm-none-eabi-gcc (Arm GNU Toolchain 13.2.Rel1 (Build arm-13.7)) 13.2.1 20231009`
     /// - `GNU gdb (GDB) 15.2`
     /// - `Open On-Chip Debugger 0.12.0+dev-01685-gb9224c0c0 (2024-08-02-19:51)`
+    /// - `Apple clangd version 21.0.0 (clang-2100.4.1.1)`
     static func parse(versionOutput: String, for tool: Tool) -> ToolVersion? {
         guard let text = versionText(in: versionOutput, for: tool),
               let match = text.firstMatch(of: #/(\d+)\.(\d+)(?:\.(\d+))?/#),
@@ -53,6 +54,21 @@ struct ToolVersion: Hashable, Comparable, Sendable, CustomStringConvertible {
             for line in lines {
                 if let range = line.range(of: marker) {
                     return line[range.upperBound...]
+                }
+            }
+            return nil
+
+        case .clangd:
+            // "Apple clangd version 21.0.0 (clang-2100.4.1.1)" or "clangd version 23.1.0 (...)".
+            // Stop before "(" so Apple's internal clang build tag is not read instead.
+            let marker = "clangd version"
+            for line in lines {
+                if let range = line.range(of: marker) {
+                    let after = line[range.upperBound...]
+                    if let paren = after.firstIndex(of: "(") {
+                        return after[..<paren]
+                    }
+                    return after
                 }
             }
             return nil

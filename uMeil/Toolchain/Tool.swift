@@ -5,6 +5,7 @@ enum Tool: String, CaseIterable, Sendable {
     case compiler
     case debugger
     case openOCD
+    case clangd
 
     /// The file name of the tool's executable.
     var executableName: String {
@@ -12,6 +13,7 @@ enum Tool: String, CaseIterable, Sendable {
         case .compiler: "arm-none-eabi-gcc"
         case .debugger: "arm-none-eabi-gdb"
         case .openOCD: "openocd"
+        case .clangd: "clangd"
         }
     }
 
@@ -21,6 +23,7 @@ enum Tool: String, CaseIterable, Sendable {
         case .compiler: "Compiler (GCC)"
         case .debugger: "Debugger (GDB)"
         case .openOCD: "OpenOCD"
+        case .clangd: "Code Intelligence (clangd)"
         }
     }
 

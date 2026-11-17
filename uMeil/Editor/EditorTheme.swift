@@ -32,6 +32,10 @@ enum EditorTheme {
         }
     }
 
+    /// Underline colors for live diagnostics reported while typing.
+    static let inlineErrorColor = NSColor.systemRed
+    static let inlineWarningColor = NSColor.systemOrange
+
     /// Behind the line the stopped program will run next.
     static let executionLineColor = NSColor.systemGreen.withAlphaComponent(0.25)
 

@@ -1,8 +1,9 @@
 import AppKit
 
 /// The code editor: a plain AppKit text view with line numbers, undo, and
-/// the system find-and-replace bar.
-final class EditorViewController: NSViewController, NSTextViewDelegate {
+/// the system find-and-replace bar. Code intelligence wiring lives in
+/// `EditorViewController+CodeIntelligence.swift`.
+final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuItemValidation {
     /// The file being edited, or `nil` when the editor is empty.
     private(set) var document: TextDocument?
 
@@ -21,7 +22,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
     var onHoverIdentifier: ((String) async -> String?)?
 
     let textView: NSTextView
+    let intelligence = EditorCodeIntelligenceState()
     private let scrollView = NSScrollView()
+    private let editorStack = NSStackView()
     private(set) var ruler: LineNumberRulerView?
     private let placeholderLabel = NSTextField(labelWithString: "")
     private lazy var openFolderButton = NSButton(
@@ -33,14 +36,14 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
 
     /// True while the editor itself is replacing the text, so that loading a
     /// file is not mistaken for the user editing it.
-    private var isLoading = false
+    var isLoading = false
 
     /// `nil` if the C grammar failed to load; the editor then shows plain text.
     private let highlighter = try? CSyntaxHighlighter()
     private var highlights = HighlightMap.empty
     private var highlightTask: Task<Void, Never>?
     /// Counts edits, so that highlights computed for older text are dropped.
-    private var textVersion = 0
+    private(set) var textVersion = 0
 
     /// Line positions for the current text, shared with the gutter.
     private(set) var lineIndex = LineIndex("") {
@@ -73,7 +76,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         container.widthTracksTextView = false
         layoutManager.addTextContainer(container)
 
-        let textView = NSTextView(frame: .zero, textContainer: container)
+        let textView = EditorTextView(frame: .zero, textContainer: container)
         textView.minSize = .zero
         textView.maxSize = unlimited
         textView.isVerticallyResizable = true
@@ -142,21 +145,27 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         placeholder.orientation = .vertical
         placeholder.spacing = 12
 
+        editorStack.orientation = .vertical
+        editorStack.spacing = 0
+        editorStack.addArrangedSubview(scrollView)
+        editorStack.addArrangedSubview(diagnosticBar)
+
         let container = NSView()
-        for subview in [scrollView, placeholder] {
+        for subview in [editorStack, placeholder] {
             subview.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(subview)
         }
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: container.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            editorStack.topAnchor.constraint(equalTo: container.topAnchor),
+            editorStack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            editorStack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            editorStack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             placeholder.centerXAnchor.constraint(equalTo: container.centerXAnchor),
             placeholder.centerYAnchor.constraint(equalTo: container.centerYAnchor)
         ])
         view = container
 
+        configureCodeIntelligence()
         showPlaceholder(hasFolder: false)
     }
 
@@ -173,6 +182,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         let loaded = try TextDocument.load(from: url)
         loadViewIfNeeded()
 
+        completionPanel.dismiss()
+        intelligence.completionTask?.cancel()
+        intelligence.completionAnchorOffset = nil
+
         isLoading = true
         textView.string = loaded.text
         textView.textStorage?.setAttributes(
@@ -188,11 +201,13 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         document = loaded
         isModified = false
         lineIndex = LineIndex(loaded.text)
+        clearLiveDiagnostics()
         setMarkers([:])
         clearDebugMarks()
-        scrollView.isHidden = false
+        editorStack.isHidden = false
         placeholder.isHidden = true
         scheduleHighlighting(delay: .zero)
+        intelligence.onDocumentOpened?(loaded.url, loaded.text)
     }
 
     /// Writes the editor's text to the file it was opened from.
@@ -202,11 +217,17 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         try current.save()
         document = current
         isModified = false
+        intelligence.onDocumentSaved?(current.url, current.text)
     }
 
     /// Empties the editor and shows a hint in its place.
     func close(hasFolder: Bool) {
         loadViewIfNeeded()
+        let closedURL = document?.url
+        completionPanel.dismiss()
+        intelligence.completionTask?.cancel()
+        intelligence.completionAnchorOffset = nil
+
         isLoading = true
         textView.string = ""
         textView.undoManager?.removeAllActions()
@@ -215,16 +236,20 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         document = nil
         isModified = false
         lineIndex = LineIndex("")
+        clearLiveDiagnostics()
         setMarkers([:])
         clearDebugMarks()
         showPlaceholder(hasFolder: hasFolder)
         scheduleHighlighting(delay: .zero)
+        if let closedURL {
+            intelligence.onDocumentClosed?(closedURL)
+        }
     }
 
     private func showPlaceholder(hasFolder: Bool) {
         placeholderLabel.stringValue = hasFolder ? "Select a file to edit" : "Open a folder to get started"
         openFolderButton.isHidden = hasFolder
-        scrollView.isHidden = true
+        editorStack.isHidden = true
         placeholder.isHidden = false
     }
 
@@ -238,19 +263,39 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
             // Lines moved, so the markers from the last build no longer line up.
             setMarkers([:])
         }
+        clearLiveDiagnostics()
         isModified = true
         // Wait for a short pause in typing before parsing again.
         scheduleHighlighting(delay: .milliseconds(40))
+        if let url = document?.url {
+            intelligence.onDocumentChanged?(url, textView.string)
+        }
+        handleTypingCompletionTrigger()
     }
 
     // MARK: - Build messages
 
-    /// The lines currently flagged in the gutter.
-    private(set) var markers: [Int: Diagnostic.Severity] = [:]
+    /// The lines currently flagged in the gutter, combining the last build and live diagnostics.
+    var markers: [Int: Diagnostic.Severity] {
+        var combined = intelligence.buildMarkers
+        for diagnostic in intelligence.liveDiagnostics {
+            let severity = diagnostic.diagnosticSeverity
+            guard severity != .note else { continue }
+            let line = diagnostic.range.start.line + 1
+            if combined[line] != .error {
+                combined[line] = severity
+            }
+        }
+        return combined
+    }
 
     /// Flags lines in the gutter with the errors and warnings from a build.
     func setMarkers(_ markers: [Int: Diagnostic.Severity]) {
-        self.markers = markers
+        intelligence.buildMarkers = markers
+        refreshRulerMarkers()
+    }
+
+    func refreshRulerMarkers() {
         ruler?.lineMarkers = markers
     }
 
@@ -263,9 +308,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         textView.scrollRangeToVisible(range)
         textView.window?.makeFirstResponder(textView)
     }
+}
 
-    // MARK: - Syntax highlighting
+// MARK: - Syntax highlighting
 
+extension EditorViewController {
     /// Starts highlighting the current text in the background, replacing any
     /// run that is still in progress.
     private func scheduleHighlighting(delay: Duration) {

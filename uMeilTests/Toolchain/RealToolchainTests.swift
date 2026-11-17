@@ -29,6 +29,11 @@ struct RealToolchainTests {
         await expectInstalled(.openOCD)
     }
 
+    @Test(.enabled(if: shouldTest(.clangd)))
+    func clangdRunsAndReportsItsVersion() async {
+        await expectInstalled(.clangd)
+    }
+
     private func expectInstalled(_ tool: Tool) async {
         let status = await ToolchainChecker(locator: .standard()).status(of: tool)
 
