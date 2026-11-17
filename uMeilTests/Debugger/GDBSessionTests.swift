@@ -313,6 +313,26 @@ struct GDBSessionTests {
         #expect(gdb.commands == ["-data-read-memory-bytes 0x20000000 16"])
     }
 
+    @Test func memoryIsWrittenAsHexBytesInAddressOrder() async throws {
+        let gdb = FakeDebugger()
+        let session = GDBSession(connection: gdb)
+
+        // 0x00000002 stored little-endian at GPIO_PORTN_DATA: LED D1 on.
+        try await session.writeMemory(at: 0x4006_43FC, bytes: [0x02, 0x00, 0x00, 0x00])
+        try await session.writeMemory(at: 0x2000_0000, bytes: [])
+
+        #expect(gdb.commands == ["-data-write-memory-bytes 0x400643fc 02000000"])
+    }
+
+    @Test func aRefusedMemoryReadThrowsGDBsReason() async throws {
+        let gdb = FakeDebugger { _ in [#"^error,msg="Unable to read memory.""#] }
+        let session = GDBSession(connection: gdb)
+
+        await #expect(throws: DebugError.refused("Unable to read memory.")) {
+            try await session.readMemory(at: 0x4006_4400, count: 4)
+        }
+    }
+
     @Test func resetReportsWhereTheChipStopped() async throws {
         let frame = try BlinkySession.line(startingWith: "^done,frame=")
         let gdb = FakeDebugger { command in
