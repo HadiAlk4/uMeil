@@ -124,4 +124,51 @@ struct ClangdIntegrationTests {
         #expect(cleared.diagnostics.isEmpty)
         await harness.close()
     }
+
+    @Test(.timeLimit(.minutes(1)))
+    func editBeforeClangdFinishesBootingIsNotOverwrittenByInitialOpen() async throws {
+        let clangd = try #require(ToolLocator.standard().locate(.clangd))
+        let temp = try TemporaryDirectory()
+        let template = try #require(try ProjectTemplate.all().first { $0.identifier == "Blinky" })
+        let projectFile = try template.createProject(named: "Blinky", in: temp.url)
+        try BuildEngine.prepareCompileCommands(forProjectFile: projectFile)
+
+        let folder = projectFile.deletingLastPathComponent()
+        let mainC = folder.appending(path: "src/main.c")
+        let original = try String(contentsOf: mainC, encoding: .utf8)
+        let broken = original.replacingOccurrences(
+            of: "GPIOPinWrite(GPIO_PORTN_BASE, GPIO_PIN_1, 0);",
+            with: "edit_during_boot_symbol();"
+        )
+
+        let (stream, continuation) = AsyncStream.makeStream(of: LSPPublishDiagnosticsParams.self)
+        let session = ClangdSession(
+            clangdExecutable: clangd,
+            workspaceDirectory: folder,
+            compileCommandsDirectory: folder.appending(path: "build"),
+            changeDebounce: .milliseconds(20)
+        ) { params in
+            continuation.yield(params)
+        }
+
+        let openTask = Task {
+            try await session.openDocument(url: mainC, text: original)
+        }
+        try await Task.sleep(for: .milliseconds(10))
+        await session.updateDocument(url: mainC, text: broken)
+        try await openTask.value
+
+        let wanted = ClangdSession.normalize(mainC)
+        var sawBroken = false
+        for await params in stream {
+            if params.url.map(ClangdSession.normalize) == wanted,
+               params.diagnostics.contains(where: { $0.message.contains("edit_during_boot_symbol") }) {
+                sawBroken = true
+                break
+            }
+        }
+        #expect(sawBroken)
+        await session.stop()
+        continuation.finish()
+    }
 }

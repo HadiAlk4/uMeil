@@ -10,6 +10,7 @@ final class CodeIntelligenceController {
     private let onNavigateToLocation: (LSPLocation) -> Void
 
     private var folder: URL?
+    private var documentVersions: [URL: Int] = [:]
     private let sessionBox = OSAllocatedUnfairLock<ClangdSession?>(uncheckedState: nil)
     private let openFileTaskBox = OSAllocatedUnfairLock<Task<Void, Never>?>(uncheckedState: nil)
 
@@ -61,8 +62,9 @@ final class CodeIntelligenceController {
             startSessionIfAvailable(in: folder)
         }
         guard let session else { return }
+        let version = bumpDocumentVersion(for: url)
         let task: Task<Void, Never> = Task {
-            _ = try? await session.openDocument(url: url, text: text)
+            _ = try? await session.openDocument(url: url, text: text, version: version)
         }
         openFileTaskBox.withLockUnchecked { previous in
             previous?.cancel()
@@ -72,8 +74,9 @@ final class CodeIntelligenceController {
 
     func textChanged(in url: URL, text: String) {
         guard SourceLanguage(url: url) == .c, let session else { return }
+        let version = bumpDocumentVersion(for: url)
         Task {
-            await session.updateDocument(url: url, text: text)
+            await session.updateDocument(url: url, text: text, version: version)
         }
     }
 
@@ -83,19 +86,21 @@ final class CodeIntelligenceController {
             return
         }
         guard SourceLanguage(url: url) == .c, let session else { return }
+        let version = documentVersions[ClangdSession.normalize(url)]
         Task {
-            try? await session.saveDocument(url: url, text: text)
+            try? await session.saveDocument(url: url, text: text, version: version)
         }
     }
 
     func fileClosed(_ url: URL) {
         guard SourceLanguage(url: url) == .c, let session else { return }
+        let version = bumpDocumentVersion(for: url)
         openFileTaskBox.withLockUnchecked { task in
             task?.cancel()
             task = nil
         }
         Task {
-            await session.closeDocument(url: url)
+            await session.closeDocument(url: url, version: version)
         }
     }
 
@@ -123,6 +128,7 @@ final class CodeIntelligenceController {
     }
 
     func stop() {
+        documentVersions.removeAll()
         openFileTaskBox.withLockUnchecked { task in
             task?.cancel()
             task = nil
@@ -162,9 +168,22 @@ final class CodeIntelligenceController {
     private func handlePublishedDiagnostics(_ params: LSPPublishDiagnosticsParams) {
         guard let editor,
               let openURL = editor.document?.url,
-              let targetURL = params.url,
-              ClangdSession.normalize(openURL) == ClangdSession.normalize(targetURL)
+              let targetURL = params.url
         else { return }
+        let normalizedTarget = ClangdSession.normalize(targetURL)
+        guard ClangdSession.normalize(openURL) == normalizedTarget else { return }
+        if let publishedVersion = params.version,
+           let currentVersion = documentVersions[normalizedTarget],
+           publishedVersion != currentVersion {
+            return
+        }
         editor.applyLiveDiagnostics(params.diagnostics)
+    }
+
+    private func bumpDocumentVersion(for url: URL) -> Int {
+        let normalized = ClangdSession.normalize(url)
+        let next = (documentVersions[normalized] ?? 0) + 1
+        documentVersions[normalized] = next
+        return next
     }
 }

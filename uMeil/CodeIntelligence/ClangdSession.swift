@@ -13,6 +13,7 @@ actor ClangdSession {
     private var startTask: Task<LSPClient, Error>?
 
     private var versions: [URL: Int] = [:]
+    private var generations: [URL: Int] = [:]
     private var openDocuments: Set<URL> = []
     private var lastSyncedText: [URL: String] = [:]
     private var pendingChanges: [URL: (version: Int, text: String)] = [:]
@@ -63,6 +64,7 @@ actor ClangdSession {
         openDocuments.removeAll()
         lastSyncedText.removeAll()
         versions.removeAll()
+        generations.removeAll()
 
         let pendingStart = startTask
         let existingClient = client
@@ -78,30 +80,41 @@ actor ClangdSession {
 
     // MARK: - Document synchronization
 
-    func openDocument(url: URL, text: String) async throws {
+    func openDocument(url: URL, text: String, version: Int? = nil) async throws {
         let normalized = Self.normalize(url)
-        let client = try await ensureClient()
-
+        if let existing = versions[normalized], let version, version < existing {
+            return
+        }
+        let generation = nextGeneration(for: normalized)
+        let resolvedVersion = resolveVersion(for: normalized, requested: version)
         debounceTasks[normalized]?.cancel()
         debounceTasks[normalized] = nil
         pendingChanges[normalized] = nil
 
+        let client = try await ensureClient()
+        // If an edit or close arrived while clangd was booting, do not overwrite it with stale text.
+        guard generations[normalized] == generation else { return }
+
         if openDocuments.contains(normalized) {
             if lastSyncedText[normalized] == text { return }
+            openDocuments.remove(normalized)
+            lastSyncedText[normalized] = nil
             try? await client.didClose(url: normalized)
+            guard generations[normalized] == generation else { return }
         }
-        let version = 1
-        versions[normalized] = version
         openDocuments.insert(normalized)
         lastSyncedText[normalized] = text
-        try await client.didOpen(url: normalized, languageID: "c", version: version, text: text)
+        try await client.didOpen(url: normalized, languageID: "c", version: resolvedVersion, text: text)
     }
 
-    func updateDocument(url: URL, text: String) async {
+    func updateDocument(url: URL, text: String, version: Int? = nil) async {
         let normalized = Self.normalize(url)
-        let version = (versions[normalized] ?? 0) + 1
-        versions[normalized] = version
-        pendingChanges[normalized] = (version, text)
+        if let existing = versions[normalized], let version, version < existing {
+            return
+        }
+        _ = nextGeneration(for: normalized)
+        let resolvedVersion = resolveVersion(for: normalized, requested: version)
+        pendingChanges[normalized] = (resolvedVersion, text)
 
         debounceTasks[normalized]?.cancel()
         let delay = changeDebounce
@@ -114,15 +127,19 @@ actor ClangdSession {
         }
     }
 
-    func saveDocument(url: URL, text: String) async throws {
+    func saveDocument(url: URL, text: String, version: Int? = nil) async throws {
         let normalized = Self.normalize(url)
-        try await ensureSynced(url: normalized, currentText: text)
+        try await ensureSynced(url: normalized, currentText: text, version: version)
         let client = try await ensureClient()
         try await client.didSave(url: normalized, text: text)
     }
 
-    func closeDocument(url: URL) async {
+    func closeDocument(url: URL, version: Int? = nil) async {
         let normalized = Self.normalize(url)
+        if let version {
+            versions[normalized] = max(versions[normalized] ?? 0, version)
+        }
+        _ = nextGeneration(for: normalized)
         debounceTasks[normalized]?.cancel()
         debounceTasks[normalized] = nil
         pendingChanges[normalized] = nil
@@ -203,17 +220,16 @@ actor ClangdSession {
         }
     }
 
-    private func ensureSynced(url: URL, currentText: String?) async throws {
+    private func ensureSynced(url: URL, currentText: String?, version: Int? = nil) async throws {
         if !openDocuments.contains(url), let currentText {
-            try await openDocument(url: url, text: currentText)
+            try await openDocument(url: url, text: currentText, version: version)
             return
         }
         if let currentText,
            pendingChanges[url] == nil,
            lastSyncedText[url] != currentText {
-            let version = (versions[url] ?? 0) + 1
-            versions[url] = version
-            pendingChanges[url] = (version, currentText)
+            let resolvedVersion = resolveVersion(for: url, requested: version)
+            pendingChanges[url] = (resolvedVersion, currentText)
         }
         try await flushPendingChange(for: url)
     }
@@ -221,8 +237,9 @@ actor ClangdSession {
     private func flushPendingChange(for url: URL) async throws {
         debounceTasks[url]?.cancel()
         debounceTasks[url] = nil
-        guard let pending = pendingChanges.removeValue(forKey: url) else { return }
+        guard pendingChanges[url] != nil else { return }
         let client = try await ensureClient()
+        guard let pending = pendingChanges.removeValue(forKey: url) else { return }
         lastSyncedText[url] = pending.text
         if !openDocuments.contains(url) {
             openDocuments.insert(url)
@@ -230,6 +247,18 @@ actor ClangdSession {
         } else {
             try await client.didChange(url: url, version: pending.version, text: pending.text)
         }
+    }
+
+    private func resolveVersion(for url: URL, requested: Int?) -> Int {
+        let next = requested ?? ((versions[url] ?? 0) + 1)
+        versions[url] = max(versions[url] ?? 0, next)
+        return next
+    }
+
+    private func nextGeneration(for url: URL) -> Int {
+        let next = (generations[url] ?? 0) + 1
+        generations[url] = next
+        return next
     }
 
     private func forwardDiagnostics(_ params: LSPPublishDiagnosticsParams) async {

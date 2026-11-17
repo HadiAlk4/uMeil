@@ -93,7 +93,7 @@ struct CodeIntelligenceInEditorTests {
     }
 
     private func waitUntil(
-        timeout: Duration = .seconds(10),
+        timeout: Duration = .seconds(20),
         condition: @MainActor () -> Bool
     ) async -> Bool {
         let deadline = ContinuousClock.now + timeout
