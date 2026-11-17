@@ -14,6 +14,7 @@ extension MainWindowController {
                 self?.navigate(to: location)
             }
         )
+        controller.isEnabled = isCodeIntelligenceEnabled
         codeIntelligence = controller
 
         editor.intelligence.onDocumentOpened = { [weak controller] url, text in
@@ -34,6 +35,30 @@ extension MainWindowController {
         editor.intelligence.onDefinitionRequested = { [weak controller] url, text, position in
             await controller?.jumpToDefinition(in: url, text: text, position: position)
         }
+    }
+
+    /// Where the Code Intelligence on/off choice is remembered.
+    static let codeIntelligenceDefaultsKey = "CodeIntelligenceEnabled"
+
+    /// Whether code intelligence is on, remembered between launches. On
+    /// unless the user has turned it off.
+    var isCodeIntelligenceEnabled: Bool {
+        get { defaults.object(forKey: Self.codeIntelligenceDefaultsKey) as? Bool ?? true }
+        set {
+            defaults.set(newValue, forKey: Self.codeIntelligenceDefaultsKey)
+            codeIntelligence?.isEnabled = newValue
+        }
+    }
+
+    /// Edit > Code Intelligence
+    @objc func toggleCodeIntelligence(_ sender: Any?) {
+        isCodeIntelligenceEnabled.toggle()
+    }
+
+    /// Whether Edit > Code Intelligence or Jump to Definition can run now.
+    func isCodeIntelligenceActionEnabled(_ action: Selector?) -> Bool {
+        guard action == #selector(jumpToDefinitionMenuAction(_:)) else { return true }
+        return isCodeIntelligenceEnabled && (editor.document.map { SourceLanguage(url: $0.url) == .c } ?? false)
     }
 
     /// Edit > Jump to Definition (`⌃⌘J`) or context menu.

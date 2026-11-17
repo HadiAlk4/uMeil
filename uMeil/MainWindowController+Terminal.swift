@@ -43,6 +43,8 @@ extension MainWindowController {
             menuItem.title = isTerminalVisible ? "Hide Terminal" : "Show Terminal"
         case #selector(toggleIssues(_:)):
             menuItem.title = isIssuesPanelVisible ? "Hide Issues" : "Show Issues"
+        case #selector(toggleCodeIntelligence(_:)):
+            menuItem.state = isCodeIntelligenceEnabled ? .on : .off
         default:
             break
         }

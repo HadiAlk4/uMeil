@@ -195,6 +195,11 @@ enum MainMenu {
         find.submenu = findMenu()
 
         menu.addItem(.separator())
+        menu.addItem(
+            withTitle: "Code Intelligence",
+            action: #selector(MainWindowController.toggleCodeIntelligence(_:)),
+            keyEquivalent: ""
+        )
         let complete = menu.addItem(
             withTitle: "Complete",
             action: #selector(EditorViewController.triggerCompletion(_:)),
