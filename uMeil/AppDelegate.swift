@@ -19,13 +19,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mainWindowController = controller
         if let launchItem {
             controller.openItem(at: launchItem)
-        } else {
+        } else if !Self.isTestHost {
             reopenLastFolder(in: controller)
         }
         launchItem = nil
 
         NSApp.activate()
-        showToolchainStatusIfToolsAreMissing()
+        if !Self.isTestHost {
+            showToolchainStatusIfToolsAreMissing()
+        }
+    }
+
+    /// True when the app was launched to host the unit tests. The tests make
+    /// their own windows and projects, so the user's last folder is not
+    /// reopened: reading it could wait on a permission prompt (for
+    /// ~/Downloads, say) and stop the tests from starting.
+    static var isTestHost: Bool {
+        ProcessInfo.processInfo.environment.keys.contains { $0.hasPrefix("XCTest") }
     }
 
     /// A folder or file dropped on the Dock icon, opened from Finder, or

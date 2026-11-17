@@ -129,7 +129,9 @@ fi
 
 # A framework the system refuses to load only shows when the app starts.
 log "Launching the app"
-"$APP/Contents/MacOS/uMeil" -ApplePersistenceIgnoreState YES >"$BUILD_DIR/launch.log" 2>&1 &
+# An empty LastOpenedFolder keeps it from opening the user's last project,
+# which could wait on a permission prompt.
+"$APP/Contents/MacOS/uMeil" -ApplePersistenceIgnoreState YES -LastOpenedFolder "" >"$BUILD_DIR/launch.log" 2>&1 &
 app_pid=$!
 sleep 5
 if ! kill -0 "$app_pid" 2>/dev/null; then
