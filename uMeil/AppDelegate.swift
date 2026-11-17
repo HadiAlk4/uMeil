@@ -44,6 +44,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mainWindowController?.confirmDiscardingChanges() == false ? .terminateCancel : .terminateNow
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        mainWindowController?.terminal.terminate()
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
     }
