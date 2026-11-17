@@ -189,6 +189,10 @@ final class DebugPanelsController {
         let readings = await PeripheralAccess.read(peripheral, from: memory)
         guard !Task.isCancelled else { return }
         peripherals.update(readings: readings, for: peripheral)
+        if let device = peripherals.device, let gate = PeripheralClock.gate(for: peripheral),
+           await PeripheralClock.isOn(peripheral, in: device, memory: memory) == false {
+            peripherals.showMessage(PeripheralClock.offMessage(for: peripheral, gate: gate))
+        }
     }
 
     func refreshPeripheral(using debugger: DebugController) async {
@@ -214,8 +218,8 @@ final class DebugPanelsController {
             if register.readHasSideEffects || !register.access.isReadable {
                 peripherals.update(reading: .value(value), for: register, of: peripheral)
             }
+            // Reading again also replaces any earlier failure message.
             await refreshPeripheral(using: memory, isStopped: true)
-            peripherals.showMessage("")
             return nil
         } catch {
             peripherals.showMessage(error.localizedDescription)

@@ -116,10 +116,11 @@ struct MemoryAndPeripheralPanelTests {
         #expect(chip.writes.isEmpty)
     }
 
-    @Test func anUnclockedPeripheralIsShownAsUnreadable() async throws {
+    @Test func registersTheChipRefusesAreShownAsUnreadable() async throws {
         let panels = try await loadedPanels()
         panels.peripherals.select(peripheralNamed: "UART3")
         let chip = FakeTargetMemory()
+        chip.store(0x08, at: 0x400F_EA18)  // PRUART: UART3 is on.
         chip.faulting = Set(stride(from: UInt64(0x4000_F000), to: 0x4001_0000, by: 4))
 
         await panels.refreshPeripheral(using: chip, isStopped: true)
@@ -129,8 +130,46 @@ struct MemoryAndPeripheralPanelTests {
         #expect(view.valueText(for: control) == "unreadable")
         let dataRegister = try #require(view.nodes.first { $0.name == "DR" })
         #expect(view.valueText(for: dataRegister) == "not read")
-        #expect(view.messageLabel.stringValue.contains("clock"))
+        #expect(view.messageLabel.stringValue == "Some registers could not be read. Is the peripheral's clock on?")
         #expect(!chip.reads.contains { $0.address == 0x4000_F000 })
+    }
+
+    @Test func aPeripheralWhoseClockIsOffIsCalledOut() async throws {
+        // On the board, an unclocked peripheral reads as zeros rather than failing.
+        let panels = try await loadedPanels()
+        panels.peripherals.select(peripheralNamed: "UART3")
+        let chip = FakeTargetMemory()
+
+        await panels.refreshPeripheral(using: chip, isStopped: true)
+        #expect(panels.peripherals.messageLabel.stringValue
+            == "UART3's clock is off, so its registers read as 0. The program turns it on with SYSCTL RCGCUART bit 3.")
+
+        chip.store(0x08, at: 0x400F_EA18)  // PRUART bit 3.
+        await panels.refreshPeripheral(using: chip, isStopped: true)
+        #expect(panels.peripherals.messageLabel.stringValue.isEmpty)
+    }
+
+    @Test func clockGatesFollowTheChipsBitOrder() throws {
+        let device = try SVDParser.parse(contentsOf: SVDDevice.bundledFile())
+        func gate(_ name: String) throws -> PeripheralClock.Gate? {
+            PeripheralClock.gate(for: try #require(device.peripheral(named: name)))
+        }
+        #expect(try gate("GPIO_PORTN") == PeripheralClock.Gate(readyRegister: "PRGPIO", bit: 12))
+        #expect(try gate("GPIO_PORTA_AHB") == PeripheralClock.Gate(readyRegister: "PRGPIO", bit: 0))
+        #expect(try gate("GPIO_PORTQ") == PeripheralClock.Gate(readyRegister: "PRGPIO", bit: 14))
+        #expect(try gate("UART7")?.gateRegister == "RCGCUART")
+        #expect(try gate("I2C9") == PeripheralClock.Gate(readyRegister: "PRI2C", bit: 9))
+        #expect(try gate("WATCHDOG1") == PeripheralClock.Gate(readyRegister: "PRWD", bit: 1))
+        #expect(try gate("COMP") == PeripheralClock.Gate(readyRegister: "PRACMP", bit: 0))
+        #expect(try gate("SYSCTL") == nil)
+        #expect(try gate("NVIC") == nil)
+        // Every ready register named exists in the SVD file.
+        let sysctl = try #require(device.peripheral(named: "SYSCTL"))
+        for peripheral in device.peripherals {
+            if let gate = PeripheralClock.gate(for: peripheral) {
+                #expect(sysctl.register(named: gate.readyRegister) != nil, "\(peripheral.name)")
+            }
+        }
     }
 
     @Test func aRegisterWithSideEffectsIsReadOnlyOnRequest() async throws {

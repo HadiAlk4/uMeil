@@ -195,4 +195,78 @@ struct RealDebuggerTests {
         #expect(controller.editor.executionLine == nil)
         #expect(controller.editor.breakpointLines == [28])
     }
+
+    /// M7 on the board: the `Peripherals` panel reads GPIO port N, writing
+    /// its `DATA` register turns LED D1 on and off (watch the board), and
+    /// GDB reads back what was written. `Memory 1` writes RAM the same way.
+    @MainActor
+    @Test(.enabled(if: hasBoard), .timeLimit(.minutes(2)))
+    func onTheBoardThePeripheralsPanelDrivesLEDD1AndMemory1WritesRAM() async throws {
+        UserDefaults.standard.removeObject(forKey: PeripheralsViewController.selectionKey)
+        let folder = try TemporaryFolder()
+        let suite = "uMeilTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+
+        let controller = MainWindowController(defaults: defaults, boardMonitor: FakeBoardMonitor())
+        controller.window?.setFrame(NSRect(x: 0, y: 0, width: 900, height: 600), display: false)
+        try controller.createProject(named: "Blinky", in: folder.url)
+        // Line 28 runs after port N is clocked and PN1 is an output.
+        controller.editor.onClickGutterLine?(28)
+        await waitUntil("the breakpoint is set") { controller.editor.breakpointLines == [28] }
+
+        #expect(await controller.startDebugging())
+        await waitUntil("the program stops at main") { controller.debugger.isStopped }
+        controller.debugContinue(nil)
+        await waitUntil("the program hits the breakpoint on line 28") { controller.editor.executionLine == 28 }
+
+        let panels = controller.debugPanels
+        let view = panels.peripherals
+        let port = try #require(view.selectedPeripheral)
+        #expect(port.name == "GPIO_PORTN")
+        await waitUntil("the Peripherals panel reads port N") {
+            if case .value = view.readings["DIR"] { true } else { false }
+        }
+        #expect(view.isEditable)
+        let direction = try #require(view.nodes.first { $0.name == "DIR" })
+        #expect(view.valueText(for: try #require(direction.children.first { $0.name == "P1" })) == "1")
+
+        let data = try #require(port.register(named: "DATA"))
+        let pin1 = try #require(data.fields.first { $0.name == "P1" })
+        let session = try #require(controller.debugger.session)
+
+        // LED D1 on.
+        #expect(await panels.writePeripheral(port, register: data, field: pin1, text: "1", using: controller.debugger)
+            == nil)
+        #expect(try await session.readMemory(at: 0x4006_43FC, count: 4) == [0x02, 0, 0, 0])
+        #expect(view.readings["DATA"] == .value(0x02))
+        try await Task.sleep(for: .milliseconds(500))
+
+        // LED D1 off.
+        #expect(await panels.writePeripheral(port, register: data, field: nil, text: "0x0", using: controller.debugger)
+            == nil)
+        #expect(try await session.readMemory(at: 0x4006_43FC, count: 4) == [0x00, 0, 0, 0])
+        #expect(view.readings["DATA"] == .value(0))
+
+        #expect(view.messageLabel.stringValue.isEmpty)
+
+        // Blinky never turns UART3's clock on. Its registers then read as
+        // zeros instead of failing, so the panel says why.
+        view.select(peripheralNamed: "UART3")
+        await waitUntil("the Peripherals panel reads UART3") {
+            view.messageLabel.stringValue.contains("clock is off")
+        }
+        #expect(view.readings["CTL"] == .value(0))
+
+        // Memory 1: write four bytes of RAM far below the stack and read them back.
+        let address: UInt64 = 0x2003_0000
+        #expect(await panels.writeMemory(at: address, bytes: [0x9D, 0xFF, 0xFF, 0xFF], using: controller.debugger)
+            == nil)
+        #expect(try await session.readMemory(at: address, count: 4) == [0x9D, 0xFF, 0xFF, 0xFF])
+        #expect(try await session.evaluate("*(int *)0x20030000") == "-99")
+
+        await controller.debugger.stop()
+        await waitUntil("the session is over") { !controller.debugger.isActive }
+        view.select(peripheralNamed: "GPIO_PORTN")
+    }
 }
