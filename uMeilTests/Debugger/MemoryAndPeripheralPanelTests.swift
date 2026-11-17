@@ -199,3 +199,30 @@ struct MemoryAndPeripheralPanelTests {
         #expect(chip.reads.isEmpty)
     }
 }
+
+/// The panels in the debugger's bottom-right tabs fill the tab, so their
+/// lists are as wide and tall as the space they are given.
+@MainActor
+struct DebugTabLayoutTests {
+    private func scrollView(in view: NSView) -> NSScrollView? {
+        if let scroll = view as? NSScrollView { return scroll }
+        return view.subviews.lazy.compactMap { scrollView(in: $0) }.first
+    }
+
+    @Test(arguments: ["Watch 1", "Memory 1", "Peripherals", "Command"])
+    func eachTabsListFillsTheTab(_ title: String) throws {
+        let panels = DebugPanelsController()
+        let tab = try #require(panels.auxiliaryTabs.tabViewItems.first { $0.label == title })
+        let panel = try #require(tab.viewController)
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 600, height: 300))
+        panel.view.frame = container.bounds
+        panel.view.autoresizingMask = [.width, .height]
+        container.addSubview(panel.view)
+        container.layoutSubtreeIfNeeded()
+
+        let list = try #require(scrollView(in: panel.view))
+        let frame = list.convert(list.bounds, to: container)
+        #expect(frame.width >= 590, "\(title) list is \(frame.width) wide")
+        #expect(frame.height >= 220, "\(title) list is \(frame.height) tall")
+    }
+}
