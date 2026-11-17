@@ -27,13 +27,15 @@ struct KeilImporterTests {
         #expect(result.project.sources == [
             "main.c",
             "RTE/Device/TM4C1294NCPDT/system_TM4C129.c",
+            "uMeil/es_lib.c",
             "uMeil/startup_gcc.c"
         ])
         #expect(result.project.includePaths == [
             ".",
             "inc",
             "RTE/Device/TM4C1294NCPDT",
-            "RTE/_Target_1"
+            "RTE/_Target_1",
+            "uMeil"
         ])
         #expect(result.project.build == .init(
             cStandard: "c11",
@@ -49,27 +51,28 @@ struct KeilImporterTests {
         let startupAfter = try Data(contentsOf: folder.url.appending(path: keilStartupPath))
         #expect(startupAfter == startupBefore)
 
-        // The GNU startup file was written from the Keil startup's vector table.
+        // The GNU startup file, TM4C129.h, course library, and linker script were written.
         let gnuStartup = try String(contentsOf: folder.url.appending(path: "uMeil/startup_gcc.c"), encoding: .utf8)
         #expect(gnuStartup.contains("UART0_Handler"))
+        #expect(FileManager.default.fileExists(atPath: folder.url.appending(path: "uMeil/TM4C129.h").path))
+        #expect(FileManager.default.fileExists(atPath: folder.url.appending(path: "uMeil/es_lib.c").path))
         #expect(FileManager.default.fileExists(atPath: folder.url.appending(path: "uMeil/tm4c1294ncpdt.ld").path))
 
-        // The user is told about the Arm Compiler library, the Windows path, and TM4C129.h.
-        #expect(result.notes.contains { $0.contains("Lib4.lib") })
+        // The user is told that Lib4.lib was replaced with uMeil/es_lib.c and about the Windows path.
+        #expect(result.notes.contains { $0.contains("Lib4.lib was replaced with uMeil/es_lib.c") })
         #expect(result.notes.contains { $0.contains("C:/Course/Common") })
-        #expect(result.notes.contains { $0.contains("TM4C129.h") })
+        #expect(!result.notes.contains { $0.contains("TM4C129.h") })
     }
 
-    @Test func doesNotWarnAboutTheDeviceHeaderWhenItIsPresent() throws {
+    @Test func warnsWhenACustomDeviceHeaderIsMissing() throws {
         let folder = try TemporaryFolder()
         let keilFile = try KeilFixture.make(in: folder.url)
-        let inc = folder.url.appending(path: "inc", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: inc, withIntermediateDirectories: true)
-        try Data("/* TM4C129 */\n".utf8).write(to: inc.appending(path: "TM4C129.h"))
+        let components = folder.url.appending(path: "RTE/_Target_1/RTE_Components.h")
+        try "#define CMSIS_device_header \"CustomDevice.h\"\n".write(to: components, atomically: true, encoding: .utf8)
 
         let result = try KeilImporter.importProject(at: keilFile)
 
-        #expect(!result.notes.contains { $0.contains("TM4C129.h") })
+        #expect(result.notes.contains { $0.contains("CustomDevice.h") })
     }
 
     @Test func fallsBackToCoreVectorsWhenKeilsStartupFileIsMissing() throws {
@@ -123,9 +126,11 @@ struct KeilImporterTests {
         let result = try await BuildEngine().build(plan)
 
         #expect(result.succeeded, "Build failed:\n\(result.log)")
+        #expect(result.diagnostics.filter { $0.severity == .error }.isEmpty)
         #expect(result.compiledSources == [
             "main.c",
             "RTE/Device/TM4C1294NCPDT/system_TM4C129.c",
+            "uMeil/es_lib.c",
             "uMeil/startup_gcc.c"
         ])
         #expect(result.elf != nil)
