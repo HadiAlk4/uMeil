@@ -1,348 +1,139 @@
 import Foundation
 
-/// Replaces the prebuilt Arm Compiler course libraries (`ES_Library.lib`,
-/// `Lib4.lib`) with C source that the GNU toolchain can compile.
+/// Replaces the prebuilt Arm Compiler course libraries with C source that the
+/// GNU toolchain can compile.
 ///
-/// The `.lib` archives shipped with the course labs contain `.ORC` objects
-/// from Arm Compiler 6, which the GNU linker cannot read. This file writes
-/// `uMeil/es_lib.c` implementing the serial, delay, clock, and Port N helpers
-/// declared in `ES_Lib.h` and `Lib4.h`.
+/// The `.lib` archives shipped with the course labs (`ES_Library.lib`,
+/// `Lib4.lib`, `Lab1A.lib`, `lib3.lib`, `Lab2_Wed.lib`) contain `.ORC`
+/// objects from Arm Compiler 6, which the GNU linker cannot read. Their symbol
+/// tables are ordinary `ar` ones, though, so uMeil reads which functions a
+/// library provides and writes `uMeil/es_lib.c` implementing them.
+///
+/// Each lab asks students to replace some library functions with their own
+/// of the same name. Keil's linker allows that because it only takes a
+/// function from an archive when nothing else defines it. Here every
+/// function is weak instead, which has the same effect. Interrupt handlers
+/// are the exception: they must override the startup file's weak defaults,
+/// so the parts that need one are only written when the library has them.
 enum KeilCourseLibrary {
     static let fileName = "es_lib.c"
 
-    /// Whether `path` names one of the course's prebuilt `.lib` files, such as
-    /// `ES_Library.lib` or `Lib4.lib`.
-    static func isCourseLibrary(_ path: String) -> Bool {
-        let name = URL(filePath: path).lastPathComponent.lowercased()
-        return name == "es_library.lib"
-            || name.wholeMatch(of: #/lib\d*\.lib/#) != nil
+    // MARK: - What each library provides
+
+    /// The functions of `ES_Library.lib` and `Lib4.lib`, and the Port F, J
+    /// and N helpers and UART0 serial functions of `Lab1A.lib`. All weak.
+    static let coreSymbols: Set<String> = [
+        "ES_Serial", "ES_echo", "ES_getchar", "ES_printf", "ES_putchar", "ES_utob", "PortN_LEDs", "readDec",
+        "msDelay", "setSysClk80MHz", "getSysClk",
+        "enablePF", "setPFOutput", "setPFInput", "writePFData", "readPFData",
+        "enablePJ", "setPJOutput", "setPJInput", "writePJData", "readPJData",
+        "enablePN", "setPNOutput", "setPNInput", "writePNData", "readPNData",
+        "enableSerial", "setBaudRate115200", "serialRead", "serialWrite"
+    ]
+
+    /// `lib3.lib` (Experiment 3, GPIO interrupts): UART0 functions and the
+    /// 3 Hz square wave on PK2, which needs `TIMER0A_Handler`.
+    static let lab3Symbols: Set<String> = [
+        "Setup_UART", "Read_UART", "Write_UART", "Test_UART", "PK2_3Hz_Clock", "Configure_Led_D4",
+        "TIMER0A_Handler"
+    ]
+
+    /// `Lab2_Wed.lib` (Experiment 2, UART3): the functions students rewrite,
+    /// and the redirection of UART3, wired to UART4, to the USB serial port
+    /// on UART0, which needs `UART0_Handler` and `UART4_Handler`.
+    static let lab2WednesdaySymbols: Set<String> = [
+        "setup_GPIO", "setup_UART", "read_UART", "write_UART", "banner", "RedirectOutput",
+        "UART0_Handler", "UART4_Handler"
+    ]
+
+    /// Names in the libraries' symbol tables that are their own internals,
+    /// such as lookup tables, and that no lab calls.
+    static let internalSymbols: Set<String> = ["Uvalues", "buf", "setSysClk", "startTimer0A"]
+
+    static var providedSymbols: Set<String> { coreSymbols.union(lab3Symbols).union(lab2WednesdaySymbols) }
+
+    /// Whether uMeil can stand in for any of a library's `symbols`.
+    static func coversAny(of symbols: Set<String>) -> Bool {
+        !symbols.isDisjoint(with: providedSymbols)
     }
 
-    static var source: String {
-        [serialAndDelaySource, printfAndClockSource]
-            .joined(separator: "\n")
+    /// The functions in `symbols` that uMeil's stand-in does not provide,
+    /// sorted.
+    static func missing(from symbols: Set<String>) -> [String] {
+        symbols.subtracting(providedSymbols).subtracting(internalSymbols).sorted()
     }
 
-    private static let serialAndDelaySource = """
-    // Course support library for the GNU toolchain, written by uMeil to
-    // replace Arm Compiler's ES_Library.lib / Lib4.lib.
+    /// The source for `es_lib.c`, providing at least `symbols`.
+    static func source(providing symbols: Set<String>) -> String {
+        var parts = [header, serialAndDelaySource, printfAndClockSource, portSource]
+        if !symbols.isDisjoint(with: lab3Symbols) {
+            parts.append(lab3Source)
+        }
+        if !symbols.isDisjoint(with: lab2WednesdaySymbols) {
+            parts.append(lab2WednesdaySource)
+        }
+        return parts.joined(separator: "\n")
+    }
 
-    #include <stdarg.h>
-    #include <stdbool.h>
-    #include <stdint.h>
+    // MARK: - Reading a library
 
-    #include "TM4C129.h"
+    /// The global symbols in the `ar` archive at `url`, or `nil` if it is
+    /// not one or cannot be read.
+    ///
+    /// Arm's `armar` writes the System V symbol table: a member named `/`
+    /// holding a big-endian count, that many offsets, then the names.
+    static func symbols(ofLibraryAt url: URL) -> Set<String>? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return symbols(inArchive: data)
+    }
 
-    typedef struct {
-        uint32_t rcgcUart;
-        uint32_t rcgcGpio;
-        uint32_t gpioPins;
-        UART0_Type *uart;
-        GPIOA_Type *gpio;
-        uint32_t pctl;
-    } es_uart_config_t;
+    static func symbols(inArchive data: Data) -> Set<String>? {
+        let bytes = [UInt8](data)
+        guard bytes.count >= 68, bytes.starts(with: Array("!<arch>\n".utf8)) else { return nil }
 
-    static const es_uart_config_t es_uarts[8] = {
-        { 0x01u, 0x0001u, 0x03u, UART0, GPIOA_AHB, 0x00000011u },
-        { 0x02u, 0x0002u, 0x03u, UART1, GPIOB_AHB, 0x00000011u },
-        { 0x04u, 0x0001u, 0xC0u, UART2, GPIOA_AHB, 0x11000000u },
-        { 0x08u, 0x0001u, 0x30u, UART3, GPIOA_AHB, 0x00110000u },
-        { 0x10u, 0x0200u, 0x03u, UART4, GPIOK,     0x00000011u },
-        { 0x20u, 0x0004u, 0xC0u, UART5, GPIOC_AHB, 0x11000000u },
-        { 0x40u, 0x2000u, 0x03u, UART6, GPIOP,     0x00000011u },
-        { 0x80u, 0x0004u, 0x30u, UART7, GPIOC_AHB, 0x00110000u }
-    };
+        let headerSize = 60
+        let start = 8
+        let name = String(bytes: bytes[start..<start + 16], encoding: .ascii)?.trimmingCharacters(in: .whitespaces)
+        let sizeText = String(bytes: bytes[start + 48..<start + 58], encoding: .ascii)?
+            .trimmingCharacters(in: .whitespaces)
+        guard name == "/", let size = sizeText.flatMap({ Int($0) }) else { return nil }
 
-    void msDelay(int msec)
-    {
-        for (int i = 0; i < msec; i++) {
-            // SysTick clocked by PIOSC / 4 (4 MHz): 4000 ticks is 1 ms.
-            SysTick->LOAD = 3999u;
-            SysTick->CTRL = 1u;
-            SysTick->VAL  = 0u;
-            while ((SysTick->CTRL & (1u << 16)) == 0u) {
+        let body = start + headerSize
+        guard size >= 4, body + size <= bytes.count else { return nil }
+        let count = bytes[body..<body + 4].reduce(0) { $0 << 8 | Int($1) }
+        var cursor = body + 4 + 4 * count
+        guard cursor <= body + size else { return nil }
+
+        var symbols = Set<String>()
+        while symbols.count < count, cursor < body + size {
+            let end = bytes[cursor..<body + size].firstIndex(of: 0) ?? body + size
+            if end > cursor, let symbol = String(bytes: bytes[cursor..<end], encoding: .utf8) {
+                symbols.insert(symbol)
             }
+            cursor = end + 1
+        }
+        return symbols
+    }
+
+    /// The symbols of a course library known by `name`, for when its file is
+    /// not in the folder.
+    static func symbols(forLibraryNamed name: String) -> Set<String>? {
+        switch name.lowercased() {
+        case "es_library.lib", "lib4.lib":
+            ["ES_Serial", "ES_getchar", "ES_putchar", "ES_printf", "ES_utob", "readDec", "msDelay",
+             "setSysClk80MHz", "PortN_LEDs", "enablePN", "setPNOutput", "setPNInput", "writePNData", "readPNData"]
+        case "lab1a.lib":
+            ["enablePF", "setPFOutput", "setPFInput", "writePFData", "readPFData",
+             "enablePJ", "setPJOutput", "setPJInput", "writePJData", "readPJData",
+             "enablePN", "setPNOutput", "setPNInput", "writePNData", "readPNData",
+             "enableSerial", "setBaudRate115200", "serialRead", "serialWrite", "msDelay"]
+        case "lib3.lib":
+            lab3Symbols.union(["msDelay"])
+        case "lab2_wed.lib":
+            lab2WednesdaySymbols.union(["msDelay", "setSysClk80MHz"])
+        default:
+            nil
         }
     }
 
-    char ES_getchar(int number)
-    {
-        UART0_Type *uart = es_uarts[number & 7].uart;
-        while ((uart->FR & 0x10u) != 0u) {
-        }
-        return (char)(uart->DR & 0xFFu);
-    }
-
-    void ES_putchar(int number, char c)
-    {
-        UART0_Type *uart = es_uarts[number & 7].uart;
-        while ((uart->FR & 0x20u) != 0u) {
-        }
-        uart->DR = (uint32_t)(uint8_t)c;
-    }
-
-    char ES_echo(int number)
-    {
-        char c = ES_getchar(number);
-        ES_putchar(0, c);
-        return c;
-    }
-
-    static uint32_t es_parse_uint(const char **cursor)
-    {
-        uint32_t value = 0u;
-        const char *p = *cursor;
-        while (*p >= '0' && *p <= '9') {
-            value = value * 10u + (uint32_t)(*p - '0');
-            p++;
-        }
-        if (*p == ',') {
-            p++;
-        }
-        *cursor = p;
-        return value;
-    }
-
-    void ES_Serial(int number, char line_format[20])
-    {
-        const es_uart_config_t *cfg = &es_uarts[number & 7];
-        const char *p = line_format;
-        uint32_t baud = es_parse_uint(&p);
-        uint32_t bits = es_parse_uint(&p);
-        char parity = *p ? *p++ : 'N';
-        if (*p == ',') {
-            p++;
-        }
-        uint32_t stop = es_parse_uint(&p);
-        if (baud == 0u) {
-            baud = 115200u;
-        }
-        if (bits < 5u || bits > 8u) {
-            bits = 8u;
-        }
-        if (stop < 1u || stop > 2u) {
-            stop = 1u;
-        }
-
-        uint32_t parityBits = 0u;
-        if (parity == 'E' || parity == 'e') {
-            parityBits = 3u;
-        } else if (parity == 'O' || parity == 'o') {
-            parityBits = 1u;
-        }
-        uint32_t lcrh = (bits << 5u) + (stop << 3u) + (parityBits << 1u) - 168u;
-        float brd = (float)SystemCoreClock / 16.0f / (float)baud;
-        uint32_t ibrd = (uint32_t)brd;
-        uint32_t fbrd = (uint32_t)((brd - (float)(int32_t)brd) * 64.0f);
-
-        SYSCTL->RCGCGPIO |= cfg->rcgcGpio;
-        while ((SYSCTL->PRGPIO & cfg->rcgcGpio) == 0u) {
-        }
-        cfg->gpio->PCTL  |= cfg->pctl;
-        cfg->gpio->AFSEL |= cfg->gpioPins;
-        cfg->gpio->DEN   |= cfg->gpioPins;
-
-        SYSCTL->RCGCUART |= cfg->rcgcUart;
-        while ((SYSCTL->PRUART & cfg->rcgcUart) == 0u) {
-        }
-        cfg->uart->CTL  = 0u;
-        cfg->uart->IBRD = ibrd;
-        cfg->uart->FBRD = fbrd;
-        cfg->uart->LCRH = lcrh;
-        cfg->uart->CC   = 0u;
-        cfg->uart->CTL  = 0x301u;
-        msDelay(1);
-    }
-    """
-}
-
-extension KeilCourseLibrary {
-    fileprivate static let printfAndClockSource = """
-    static void es_putc_cooked(char c)
-    {
-        if (c == '\\r' || c == '\\n' || c == 27) {
-            ES_putchar(0, '\\r');
-            ES_putchar(0, '\\n');
-        } else {
-            ES_putchar(0, c);
-        }
-    }
-
-    static void es_print_uint(uint32_t value, uint32_t base, bool uppercase)
-    {
-        char digits[32];
-        int count = 0;
-        if (value == 0u) {
-            ES_putchar(0, '0');
-            return;
-        }
-        const char *alphabet = uppercase ? "0123456789ABCDEF" : "0123456789abcdef";
-        while (value > 0u) {
-            digits[count++] = alphabet[value % base];
-            value /= base;
-        }
-        while (count > 0) {
-            ES_putchar(0, digits[--count]);
-        }
-    }
-
-    static void es_print_int(int32_t value)
-    {
-        if (value < 0) {
-            ES_putchar(0, '-');
-            uint32_t magnitude = (uint32_t)(-(value + 1)) + 1u;
-            es_print_uint(magnitude, 10u, false);
-        } else {
-            es_print_uint((uint32_t)value, 10u, false);
-        }
-    }
-
-    void ES_printf(const char *format, ...)
-    {
-        va_list args;
-        va_start(args, format);
-        for (const char *p = format; *p != '\\0'; p++) {
-            if (*p != '%') {
-                es_putc_cooked(*p);
-                continue;
-            }
-            p++;
-            if (*p == 'l') {
-                p++;
-            }
-            switch (*p) {
-            case 'd':
-            case 'i':
-                es_print_int(va_arg(args, int));
-                break;
-            case 'u':
-                es_print_uint(va_arg(args, unsigned int), 10u, false);
-                break;
-            case 'x':
-            case 'p':
-                es_print_uint(va_arg(args, unsigned int), 16u, false);
-                break;
-            case 'X':
-                es_print_uint(va_arg(args, unsigned int), 16u, true);
-                break;
-            case 'c':
-                es_putc_cooked((char)va_arg(args, int));
-                break;
-            case 's': {
-                const char *s = va_arg(args, const char *);
-                if (s != 0) {
-                    while (*s != '\\0') {
-                        es_putc_cooked(*s++);
-                    }
-                }
-                break;
-            }
-            case '%':
-                ES_putchar(0, '%');
-                break;
-            case '\\0':
-                va_end(args);
-                return;
-            default:
-                ES_putchar(0, '%');
-                es_putc_cooked(*p);
-                break;
-            }
-        }
-        va_end(args);
-    }
-
-    char *ES_utob(uint32_t value)
-    {
-        static char buf[42];
-        char *out = buf;
-        for (int bit = 31; bit >= 0; bit--) {
-            *out++ = (char)('0' + ((value >> (uint32_t)bit) & 1u));
-            if (bit % 4 == 0) {
-                *out++ = ' ';
-            }
-        }
-        *out = '\\0';
-        return buf;
-    }
-
-    int readDec(void)
-    {
-        int value = 0;
-        int sign = 1;
-        char c;
-        do {
-            c = ES_echo(0);
-        } while (c == ' ' || c == '\\t' || c == '\\r' || c == '\\n' || c == '\\v' || c == '\\f');
-
-        if (c == '-') {
-            sign = -1;
-            c = ES_echo(0);
-        } else if (c == '+') {
-            c = ES_echo(0);
-        }
-        while (c >= '0' && c <= '9') {
-            value = value * 10 + (c - '0');
-            c = ES_echo(0);
-        }
-        return sign * value;
-    }
-
-    void setSysClk80MHz(void)
-    {
-        SYSCTL->MOSCCTL |= 0x10u;
-        SYSCTL->MOSCCTL &= ~0x04u;
-        SYSCTL->MOSCCTL &= ~0x08u;
-        while ((SYSCTL->RIS & 0x100u) == 0u) {
-        }
-        SYSCTL->RSCLKCFG = (SYSCTL->RSCLKCFG & ~0x0FF00000u) | 0x03300000u;
-        SYSCTL->PLLFREQ0 = 0x60u;
-        SYSCTL->PLLFREQ1 = 0x04u;
-        SYSCTL->PLLFREQ0 |= 0x00800000u;
-        SYSCTL->MEMTIM0  = 0x01030103u | 0x00100010u;
-        while ((SYSCTL->PLLSTAT & 0x01u) == 0u) {
-        }
-        SYSCTL->RSCLKCFG |= 0xD0000005u;
-        SystemCoreClock = 80000000u;
-    }
-
-    void enablePN(void)
-    {
-        SYSCTL->RCGCGPIO |= 0x1000u;
-        while ((SYSCTL->PRGPIO & 0x1000u) == 0u) {
-        }
-    }
-
-    void setPNOutput(uint8_t pins)
-    {
-        GPION->DEN |= pins;
-        GPION->DIR |= pins;
-    }
-
-    void setPNInput(uint8_t pins)
-    {
-        GPION->DEN |= pins;
-        GPION->DIR &= ~(uint32_t)pins;
-        GPION->PUR &= ~(uint32_t)pins;
-    }
-
-    void writePNData(uint8_t data)
-    {
-        GPION->DATA = data;
-    }
-
-    uint8_t readPNData(void)
-    {
-        return (uint8_t)GPION->DATA;
-    }
-
-    void PortN_LEDs(void)
-    {
-        enablePN();
-        setPNOutput(0x03u);
-        writePNData(0x03u);
-        msDelay(250);
-        writePNData(0x00u);
-    }
-    """
 }

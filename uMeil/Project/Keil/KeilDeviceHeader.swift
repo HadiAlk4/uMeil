@@ -37,6 +37,13 @@ enum KeilDeviceHeader {
     #define __MPU_PRESENT 1
     #define __NVIC_PRIO_BITS 3
 
+    #define __ASM           __asm
+    #define __INLINE        inline
+    #define __STATIC_INLINE static inline
+    #define __I             volatile const
+    #define __O             volatile
+    #define __IO            volatile
+
     extern uint32_t SystemCoreClock;
     extern void SystemInit(void);
     extern void SystemCoreClockUpdate(void);
@@ -138,6 +145,8 @@ extension KeilDeviceHeader {
         volatile uint32_t PP, PC;
     } GPIOA_Type;
 
+    typedef GPIOA_Type GPIOA_AHB_Type;
+
     typedef struct {
         volatile uint32_t DR;
         union { volatile uint32_t ECR; volatile uint32_t RSR; };
@@ -172,15 +181,8 @@ extension KeilDeviceHeader {
         volatile uint32_t PP, PC, CC;
     } ADC0_Type;
 
-    #define GPIOA     ((GPIOA_Type *)0x40004000UL)
-    #define GPIOB     ((GPIOA_Type *)0x40005000UL)
-    #define GPIOC     ((GPIOA_Type *)0x40006000UL)
-    #define GPIOD     ((GPIOA_Type *)0x40007000UL)
-    #define GPIOE     ((GPIOA_Type *)0x40024000UL)
-    #define GPIOF     ((GPIOA_Type *)0x40025000UL)
-    #define GPIOG     ((GPIOA_Type *)0x40026000UL)
-    #define GPIOH     ((GPIOA_Type *)0x40027000UL)
-    #define GPIOJ     ((GPIOA_Type *)0x4003D000UL)
+    // As in Keil's TM4C129.h, ports A to J are only named with the _AHB
+    // suffix (their fast, AHB aperture). Ports K to Q have no suffix.
     #define GPIOA_AHB ((GPIOA_Type *)0x40058000UL)
     #define GPIOB_AHB ((GPIOA_Type *)0x40059000UL)
     #define GPIOC_AHB ((GPIOA_Type *)0x4005A000UL)

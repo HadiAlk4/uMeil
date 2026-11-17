@@ -35,13 +35,21 @@ enum KeilImporter {
             .min { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
     }
 
+    /// The uMeil project file that importing `keilFile` makes, next to it.
+    static func projectFile(for keilFile: URL) -> URL {
+        let baseName = keilFile.deletingPathExtension().lastPathComponent
+        return keilFile.deletingLastPathComponent().appending(path: "\(baseName).\(ProjectFile.fileExtension)")
+    }
+
+    static let defaultLinkerScript = ProjectTemplate.bundledDirectory.appending(path: "Blinky/files/tm4c1294ncpdt.ld")
+
     /// Imports the Keil project at `keilFile`.
     ///
     /// - Parameter linkerScript: The linker script to copy in. The default is
     ///   the one uMeil's own projects for the chip use.
     static func importProject(
         at keilFile: URL,
-        linkerScript: URL = ProjectTemplate.bundledDirectory.appending(path: "Blinky/files/tm4c1294ncpdt.ld")
+        linkerScript: URL = defaultLinkerScript
     ) throws -> KeilImport {
         let keil = try KeilProject.parse(Data(contentsOf: keilFile))
         guard let chip = Chip(rawValue: keil.device) else {
@@ -50,33 +58,19 @@ enum KeilImporter {
 
         let folder = keilFile.deletingLastPathComponent()
         let baseName = keilFile.deletingPathExtension().lastPathComponent
-        let projectFile = folder.appending(path: "\(baseName).\(ProjectFile.fileExtension)")
+        let projectFile = projectFile(for: keilFile)
         guard !FileManager.default.fileExists(atPath: projectFile.path(percentEncoded: false)) else {
             throw KeilImportError.alreadyImported(projectFile)
         }
 
         var notes: [String] = []
-        var usesCourseLibrary = false
-        var sources = sourceFiles(of: keil, in: folder, usesCourseLibrary: &usesCourseLibrary, notes: &notes)
-
-        // The startup file, register header, course library, and linker script,
-        // in a folder of their own.
-        let support = folder.appending(path: supportDirectoryName, directoryHint: .isDirectory)
-        let scriptName = linkerScript.lastPathComponent
-        let startup = try startupSource(for: keil, chip: chip, in: folder, notes: &notes)
-        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
-        try startup.write(to: support.appending(path: startupFileName), atomically: true, encoding: .utf8)
-        let headerURL = support.appending(path: KeilDeviceHeader.fileName)
-        try KeilDeviceHeader.source.write(to: headerURL, atomically: true, encoding: .utf8)
-        if usesCourseLibrary {
-            let libURL = support.appending(path: KeilCourseLibrary.fileName)
-            try KeilCourseLibrary.source.write(to: libURL, atomically: true, encoding: .utf8)
-            sources.append("\(supportDirectoryName)/\(KeilCourseLibrary.fileName)")
-        }
-        let scriptCopy = support.appending(path: scriptName)
-        try? FileManager.default.removeItem(at: scriptCopy)
-        try FileManager.default.copyItem(at: linkerScript, to: scriptCopy)
-        sources.append("\(supportDirectoryName)/\(startupFileName)")
+        var librarySymbols: Set<String>?
+        var sources = sourceFiles(of: keil, in: folder, librarySymbols: &librarySymbols, notes: &notes)
+        let context = ImportContext(
+            keil: keil, chip: chip, folder: folder, librarySymbols: librarySymbols, linkerScript: linkerScript
+        )
+        let support = try writeSupportFiles(for: context, overwriteEdited: true, notes: &notes)
+        sources += support.sources
 
         let includePaths = includePaths(of: keil, in: folder, notes: &notes)
         noteMissingDeviceHeader(of: keil, includePaths: includePaths, in: folder, notes: &notes)
@@ -92,7 +86,7 @@ enum KeilImporter {
                 defines: keil.defines,
                 compilerFlags: ["-Wall"],
                 linkerFlags: [],
-                linkerScript: "\(supportDirectoryName)/\(scriptName)",
+                linkerScript: support.linkerScript,
                 // Keil projects use Keil's register header, not TivaWare.
                 useDriverLib: false
             )
@@ -105,10 +99,13 @@ enum KeilImporter {
 
     /// The C files to build: the ones in the project's groups, plus C files
     /// Keil copied in from its device pack (the system file).
-    private static func sourceFiles(
+    ///
+    /// `librarySymbols` is set when the project links a course library uMeil
+    /// can stand in for, to the functions those libraries provide.
+    static func sourceFiles(
         of keil: KeilProject,
         in folder: URL,
-        usesCourseLibrary: inout Bool,
+        librarySymbols: inout Set<String>?,
         notes: inout [String]
     ) -> [String] {
         var sources: [String] = []
@@ -125,13 +122,20 @@ enum KeilImporter {
                 notes.append("\(name) was left out: it is written for Keil's assembler, which the GNU toolchain "
                     + "cannot read.")
             case .library:
-                if KeilCourseLibrary.isCourseLibrary(file.path) {
-                    usesCourseLibrary = true
-                    notes.append("\(name) was replaced with \(supportDirectoryName)/\(KeilCourseLibrary.fileName), "
-                        + "because the original library was built for Arm Compiler.")
-                } else {
+                let symbols = KeilCourseLibrary.symbols(ofLibraryAt: folder.appending(path: file.path))
+                    ?? KeilCourseLibrary.symbols(forLibraryNamed: name)
+                guard let symbols, KeilCourseLibrary.coversAny(of: symbols) else {
                     notes.append("\(name) was left out: it is a library built by Arm Compiler, which the GNU linker "
                         + "cannot read. The functions it provides will be reported as undefined when you build.")
+                    continue
+                }
+                librarySymbols = (librarySymbols ?? []).union(symbols)
+                notes.append("\(name) was replaced with \(supportDirectoryName)/\(KeilCourseLibrary.fileName), "
+                    + "because the original library was built for Arm Compiler.")
+                let missing = KeilCourseLibrary.missing(from: symbols)
+                if !missing.isEmpty {
+                    notes.append("uMeil's stand-in for \(name) does not provide "
+                        + missing.joined(separator: ", ") + ". Calls to them will be reported as undefined.")
                 }
             case .header, .other:
                 break
@@ -148,7 +152,7 @@ enum KeilImporter {
 
     /// The startup file to write, based on the Keil startup file's vector
     /// table when the project has one.
-    private static func startupSource(
+    static func startupSource(
         for keil: KeilProject,
         chip: Chip,
         in folder: URL,
@@ -180,7 +184,7 @@ enum KeilImporter {
     /// Where the compiler looks for headers: the project folder, the folders
     /// Keil was told about, and the folders of the project's own headers and
     /// pack files.
-    private static func includePaths(of keil: KeilProject, in folder: URL, notes: inout [String]) -> [String] {
+    static func includePaths(of keil: KeilProject, in folder: URL, notes: inout [String]) -> [String] {
         var paths = ["."]
         for path in keil.includePaths {
             if KeilProject.isWindowsAbsolute(path) {
@@ -206,7 +210,7 @@ enum KeilImporter {
 
     /// Keil projects include a register header, such as `TM4C129.h`, that
     /// lives in Keil's device pack on the PC and not in the project folder.
-    private static func noteMissingDeviceHeader(
+    static func noteMissingDeviceHeader(
         of keil: KeilProject,
         includePaths: [String],
         in folder: URL,
