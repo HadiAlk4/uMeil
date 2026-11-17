@@ -151,6 +151,15 @@ extension GDBSession {
         return bytes
     }
 
+    /// Writes `bytes` to the chip's memory starting at `address`, in address
+    /// order. A peripheral register takes the write as the program's own
+    /// store would, with the same effect on the hardware.
+    func writeMemory(at address: UInt64, bytes: [UInt8]) async throws {
+        guard !bytes.isEmpty else { return }
+        let contents = bytes.map { String(format: "%02x", $0) }.joined()
+        try await send("-data-write-memory-bytes 0x\(String(address, radix: 16)) \(contents)")
+    }
+
     /// The value of a C expression in the current frame, as GDB prints it.
     func evaluate(_ expression: String) async throws -> String {
         let command = "-data-evaluate-expression \(DebugPlan.cQuoted(expression))"

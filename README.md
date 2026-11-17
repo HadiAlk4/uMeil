@@ -37,7 +37,7 @@ Code style is checked with [SwiftLint](https://github.com/realm/SwiftLint) (`bre
 | Chip support | A trimmed TI TivaWare: TM4C129 headers, a prebuilt `driverlib`, startup code, and linker script only |
 | Flashing | OpenOCD (`ti_icdi` adapter) |
 | Debugging | `arm-none-eabi-gdb` over the GDB Machine Interface (MI), connected to OpenOCD's GDB server |
-| Peripheral registers | CMSIS-SVD file for the TM4C129 (from the Keil TM4C device pack) |
+| Peripheral registers | CMSIS-SVD file for the TM4C1294, generated from TivaWare's BSD-licensed register header (`Vendor/TivaWare/generate-svd.py`) |
 | Code intelligence | `clangd` over the Language Server Protocol (LSP), using the copy from Xcode or the Command Line Tools when present, downloaded on demand otherwise |
 | Distribution | Signed and notarized `.app` in a DMG on GitHub Releases, a download website on GitHub Pages, plus a Homebrew cask |
 | Tests | Swift Testing / XCTest, XCUITest, hardware-in-the-loop on a real LaunchPad, GitHub Actions (macOS runners) |
@@ -118,7 +118,7 @@ Start a debug session: breakpoints, step over, step into, step out, continue, pa
 
 A memory viewer (hex view) and a peripheral register view that shows named registers and bit fields, like Keil's peripheral windows.
 
-- **What we use:** CMSIS-SVD file for the TM4C129, a Swift SVD parser, GDB/MI memory read and write commands.
+- **What we use:** CMSIS-SVD file for the TM4C129, generated from TivaWare's `tm4c1294ncpdt.h` rather than copied from a vendor device pack, a Swift SVD parser, GDB/MI memory read and write commands.
 - **How we test it:**
   - Unit tests for the SVD parser and for decoding bit fields.
   - HIL test: write a GPIO register from the app and check that the LED on the LaunchPad changes, then read the register back.

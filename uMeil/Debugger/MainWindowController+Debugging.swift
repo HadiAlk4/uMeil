@@ -37,6 +37,15 @@ extension MainWindowController {
         debugPanels.callStackLocals.onDereference = { [weak self] expr in await self?.debugger.evaluate(expr) }
         debugPanels.watch.onExpressionsChanged = { [weak self] _ in self?.refreshWatchedExpressions() }
         debugPanels.memory.onRequestAddress = { [weak self] query in self?.inspectMemory(query) }
+        debugPanels.memory.onLengthChange = { [weak self] in self?.refreshMemoryView() }
+        debugPanels.memory.onWriteBytes = { [weak self] address, bytes in self?.writeMemory(bytes, at: address) }
+        debugPanels.peripherals.onSelectPeripheral = { [weak self] _ in self?.refreshPeripheralView() }
+        debugPanels.peripherals.onWrite = { [weak self] peripheral, register, field, text in
+            self?.writePeripheral(peripheral, register: register, field: field, text: text)
+        }
+        debugPanels.peripherals.onReadNow = { [weak self] peripheral, register in
+            self?.readPeripheralRegister(register, of: peripheral)
+        }
         debugPanels.command.onSendCommand = { [weak self] cmd in self?.sendConsoleCommand(cmd) }
     }
 
@@ -96,6 +105,7 @@ extension MainWindowController {
         if state != .idle || editor.isReadOnly {
             issues.showDebugging(DebugSummary.statusText(for: state), isBusy: state == .starting)
         }
+        debugPanels.setEditable(debugger.isStopped)
         switch state {
         case .idle:
             editor.isReadOnly = false
@@ -232,6 +242,34 @@ extension MainWindowController {
 
     private func inspectMemory(_ query: String) {
         Task { await debugPanels.inspectMemory(query: query, using: debugger) }
+    }
+
+    private func refreshMemoryView() {
+        Task { await debugPanels.refreshMemory(using: debugger) }
+    }
+
+    private func writeMemory(_ bytes: [UInt8], at address: UInt64) {
+        Task {
+            if let failure = await debugPanels.writeMemory(at: address, bytes: bytes, using: debugger) {
+                issues.showDebugging(failure)
+            }
+        }
+    }
+
+    private func refreshPeripheralView() {
+        Task { await debugPanels.refreshPeripheral(using: debugger) }
+    }
+
+    private func writePeripheral(_ peripheral: SVDPeripheral, register: SVDRegister, field: SVDField?, text: String) {
+        guard debugger.isStopped else { return }
+        Task {
+            await debugPanels.writePeripheral(peripheral, register: register, field: field, text: text, using: debugger)
+        }
+    }
+
+    private func readPeripheralRegister(_ register: SVDRegister, of peripheral: SVDPeripheral) {
+        guard debugger.isStopped else { return }
+        Task { await debugPanels.readPeripheralRegister(register, of: peripheral, using: debugger) }
     }
 
     private func sendConsoleCommand(_ command: String) {

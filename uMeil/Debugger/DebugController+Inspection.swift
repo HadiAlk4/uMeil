@@ -32,6 +32,20 @@ extension DebugController {
         return try? await session.readMemory(at: address, count: count)
     }
 
+    /// Reads `count` bytes, throwing GDB's reason if it cannot: a peripheral
+    /// whose clock is off cannot be read, for example.
+    func readMemoryOrThrow(at address: UInt64, count: Int) async throws -> [UInt8] {
+        guard isStopped, let session else { throw DebugError.refused("The program is not stopped.") }
+        return try await session.readMemory(at: address, count: count)
+    }
+
+    /// Writes `bytes` to the chip's memory starting at `address`. Only while
+    /// the program is stopped.
+    func writeMemory(at address: UInt64, bytes: [UInt8]) async throws {
+        guard isStopped, let session else { throw DebugError.refused("Stop the program to change memory.") }
+        try await session.writeMemory(at: address, bytes: bytes)
+    }
+
     /// Evaluates a C expression in the current frame, returning `nil` if GDB refuses it.
     func evaluate(_ expression: String) async -> String? {
         guard isStopped, let session else { return nil }

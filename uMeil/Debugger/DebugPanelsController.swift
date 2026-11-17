@@ -1,8 +1,8 @@
 import AppKit
 
 /// Coordinates the multi-pane debugging layout (`Regs`, `Call Stack + Locals`,
-/// `Disassembly`, `Watch 1`, `Memory 1`, `Command`) and refreshes them when
-/// the program stops.
+/// `Disassembly`, `Watch 1`, `Memory 1`, `Peripherals`, `Command`) and
+/// refreshes them when the program stops.
 @MainActor
 final class DebugPanelsController {
     let registers = RegistersViewController()
@@ -10,6 +10,7 @@ final class DebugPanelsController {
     let disassembly = DisassemblyViewController()
     let watch = WatchViewController()
     let memory = MemoryViewController()
+    let peripherals = PeripheralsViewController()
     let command = CommandViewController()
 
     let auxiliaryTabs = NSTabViewController()
@@ -19,9 +20,12 @@ final class DebugPanelsController {
 
     private(set) var isDebugLayoutVisible = false
     private var refreshTask: Task<Void, Never>?
+    private var deviceTask: Task<Void, Never>?
+    /// The SVD file the `Peripherals` panel describes. Replaceable for tests.
+    var svdFile = SVDDevice.bundledFile()
 
     init() {
-        for panel in [watch, memory, command] {
+        for panel in [watch, memory, peripherals, command] as [NSViewController] {
             let tab = NSTabViewItem(viewController: panel)
             tab.label = panel.title ?? ""
             auxiliaryTabs.addTabViewItem(tab)
@@ -53,6 +57,7 @@ final class DebugPanelsController {
         editorSplit: NSSplitViewController
     ) {
         if visible, !isDebugLayoutVisible {
+            loadDeviceIfNeeded()
             if !editorSplit.splitViewItems.contains(disassemblyItem) {
                 let index = min(1, editorSplit.splitViewItems.count)
                 editorSplit.insertSplitViewItem(disassemblyItem, at: index)
@@ -84,6 +89,35 @@ final class DebugPanelsController {
         callStackLocals.clear()
         disassembly.clear()
         memory.clear()
+        peripherals.clear()
+    }
+
+    /// Whether the user may type new values into memory and peripheral
+    /// registers: only while the program is stopped.
+    func setEditable(_ editable: Bool) {
+        memory.isEditable = editable
+        peripherals.isEditable = editable
+    }
+
+    /// Reads the SVD file in the background the first time the panels show.
+    /// It takes a moment: the TM4C1294's describes some 2,000 registers.
+    @discardableResult
+    func loadDeviceIfNeeded() -> Task<Void, Never>? {
+        guard peripherals.device == nil, deviceTask == nil else { return deviceTask }
+        let file = svdFile
+        deviceTask = Task { [weak self] in
+            let result = await Task.detached(priority: .userInitiated) {
+                Result { try SVDParser.parse(contentsOf: file) }
+            }.value
+            guard let self else { return }
+            switch result {
+            case .success(let device):
+                peripherals.setDevice(device)
+            case .failure(let error):
+                peripherals.showMessage("Cannot read the peripheral descriptions: \(error.localizedDescription)")
+            }
+        }
+        return deviceTask
     }
 
     /// Schedules a refresh of all inspection panels for the stopped program.
@@ -137,11 +171,81 @@ final class DebugPanelsController {
         }
 
         await refreshWatches(using: debugger)
-        if let address = memory.currentAddress, debugger.isStopped, !Task.isCancelled {
-            if let bytes = await debugger.readMemory(at: address, count: 64) {
-                memory.showMemory(at: address, bytes: bytes)
-            }
+        await refreshMemory(using: debugger)
+        await refreshPeripheral(using: debugger)
+    }
+
+    /// Reads `Memory 1` again at its address.
+    func refreshMemory(using debugger: DebugController) async {
+        guard let address = memory.currentAddress, debugger.isStopped, !Task.isCancelled else { return }
+        if let bytes = await debugger.readMemory(at: address, count: memory.byteCount) {
+            memory.showMemory(at: address, bytes: bytes)
         }
+    }
+
+    /// Reads the registers of the peripheral selected in `Peripherals`.
+    func refreshPeripheral(using memory: some TargetMemory, isStopped: Bool) async {
+        guard isStopped, let peripheral = peripherals.selectedPeripheral, !Task.isCancelled else { return }
+        let readings = await PeripheralAccess.read(peripheral, from: memory)
+        guard !Task.isCancelled else { return }
+        peripherals.update(readings: readings, for: peripheral)
+        if let device = peripherals.device, let gate = PeripheralClock.gate(for: peripheral),
+           await PeripheralClock.isOn(peripheral, in: device, memory: memory) == false {
+            peripherals.showMessage(PeripheralClock.offMessage(for: peripheral, gate: gate))
+        }
+    }
+
+    func refreshPeripheral(using debugger: DebugController) async {
+        await refreshPeripheral(using: debugger, isStopped: debugger.isStopped)
+    }
+
+    /// Writes a value typed into `Peripherals`, then reads the peripheral
+    /// again: a write can change other registers too, as setting a clock
+    /// gate makes the peripheral readable. Returns the reason it failed.
+    @discardableResult
+    func writePeripheral(
+        _ peripheral: SVDPeripheral,
+        register: SVDRegister,
+        field: SVDField?,
+        text: String,
+        using memory: some TargetMemory
+    ) async -> String? {
+        do {
+            let value = try await PeripheralAccess.apply(
+                text, to: register, field: field, of: peripheral,
+                known: peripherals.readings[register.name], in: memory
+            )
+            if register.readHasSideEffects || !register.access.isReadable {
+                peripherals.update(reading: .value(value), for: register, of: peripheral)
+            }
+            // Reading again also replaces any earlier failure message.
+            await refreshPeripheral(using: memory, isStopped: true)
+            return nil
+        } catch {
+            peripherals.showMessage(error.localizedDescription)
+            return error.localizedDescription
+        }
+    }
+
+    /// Reads a register whose read has side effects, because the user asked.
+    func readPeripheralRegister(
+        _ register: SVDRegister,
+        of peripheral: SVDPeripheral,
+        using memory: some TargetMemory
+    ) async {
+        let reading = await PeripheralAccess.read(register, of: peripheral, from: memory)
+        peripherals.update(reading: reading, for: register, of: peripheral)
+    }
+
+    /// Writes bytes typed into `Memory 1`, then reads the view again.
+    func writeMemory(at address: UInt64, bytes: [UInt8], using debugger: DebugController) async -> String? {
+        do {
+            try await debugger.writeMemory(at: address, bytes: bytes)
+        } catch {
+            return error.localizedDescription
+        }
+        await refreshMemory(using: debugger)
+        return nil
     }
 
     /// Evaluates every expression in the `Watch 1` panel.
@@ -157,14 +261,14 @@ final class DebugPanelsController {
         watch.updateValues(values)
     }
 
-    /// Resolves `query` as a hex address or C expression and loads 64 bytes into `Memory 1`.
+    /// Resolves `query` as a hex address or C expression and loads `Memory 1` from there.
     func inspectMemory(query: String, using debugger: DebugController) async {
         guard debugger.isStopped else { return }
         var address = DebugValueFormatter.parseAddress(query)
         if address == nil, let evaluated = await debugger.evaluate(query) {
             address = MIValue.address(evaluated) ?? DebugValueFormatter.parseAddress(evaluated)
         }
-        guard let address, let bytes = await debugger.readMemory(at: address, count: 64) else { return }
+        guard let address, let bytes = await debugger.readMemory(at: address, count: memory.byteCount) else { return }
         memory.showMemory(at: address, bytes: bytes)
     }
 
