@@ -10,6 +10,21 @@ final class CodeIntelligenceController {
     private let onNavigateToLocation: (LSPLocation) -> Void
 
     private var folder: URL?
+
+    /// Whether `clangd` runs at all. Turning it off stops the session and
+    /// clears the editor; turning it back on restarts it for the open folder
+    /// and reopens the file in the editor.
+    var isEnabled = true {
+        didSet {
+            guard isEnabled != oldValue else { return }
+            editor?.setCodeIntelligenceEnabled(isEnabled)
+            if isEnabled {
+                restart()
+            } else {
+                stop()
+            }
+        }
+    }
     private var documentVersions: [URL: Int] = [:]
     private let sessionBox = OSAllocatedUnfairLock<ClangdSession?>(uncheckedState: nil)
     private let openFileTaskBox = OSAllocatedUnfairLock<Task<Void, Never>?>(uncheckedState: nil)
@@ -49,11 +64,13 @@ final class CodeIntelligenceController {
     func folderOpened(_ folder: URL) {
         self.folder = folder
         stop()
+        guard isEnabled else { return }
         prepareCompileCommands(in: folder)
         startSessionIfAvailable(in: folder)
     }
 
     func fileOpened(_ url: URL, text: String) {
+        guard isEnabled else { return }
         guard SourceLanguage(url: url) == .c else {
             editor?.clearLiveDiagnostics()
             return
@@ -81,6 +98,7 @@ final class CodeIntelligenceController {
     }
 
     func fileSaved(_ url: URL, text: String) {
+        guard isEnabled else { return }
         if url.pathExtension == ProjectFile.fileExtension, let folder {
             folderOpened(folder)
             return
@@ -105,7 +123,7 @@ final class CodeIntelligenceController {
     }
 
     func buildFinished(in folder: URL) {
-        if session == nil {
+        if isEnabled, session == nil {
             startSessionIfAvailable(in: folder)
         }
     }
@@ -144,6 +162,14 @@ final class CodeIntelligenceController {
     }
 
     // MARK: - Helpers
+
+    private func restart() {
+        guard let folder else { return }
+        folderOpened(folder)
+        if let editor, let url = editor.document?.url {
+            fileOpened(url, text: editor.textView.string)
+        }
+    }
 
     private func prepareCompileCommands(in folder: URL) {
         guard let projectFile = BuildSummary.projectFile(in: folder) else { return }

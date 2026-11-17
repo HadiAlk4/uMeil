@@ -107,6 +107,42 @@ struct ClangdIntegrationTests {
         await harness.close()
     }
 
+    @MainActor
+    @Test(.timeLimit(.minutes(1)))
+    func disabledControllerAnswersNothingUntilTurnedBackOn() async throws {
+        let temp = try TemporaryDirectory()
+        let template = try #require(try ProjectTemplate.all().first { $0.identifier == "Blinky" })
+        let projectFile = try template.createProject(named: "Blinky", in: temp.url)
+        let folder = projectFile.deletingLastPathComponent()
+        let mainC = folder.appending(path: "src/main.c")
+        let edited = try String(contentsOf: mainC, encoding: .utf8).replacingOccurrences(
+            of: "GPIOPinWrite(GPIO_PORTN_BASE, GPIO_PIN_1, 0);",
+            with: "GPIOPin"
+        )
+        let prefixRange = (edited as NSString).range(of: "        GPIOPin\n")
+        let cursor = LineIndex(edited).lspPosition(atUTF16Offset: prefixRange.location + "        GPIOPin".utf16.count)
+
+        let editor = EditorViewController()
+        editor.loadViewIfNeeded()
+        let controller = CodeIntelligenceController(
+            makeToolLocator: { .standard() },
+            editor: editor,
+            onNavigateToLocation: { _ in }
+        )
+        controller.isEnabled = false
+        controller.folderOpened(folder)
+        controller.fileOpened(mainC, text: edited)
+        #expect(await controller.completion(in: mainC, text: edited, position: cursor).isEmpty)
+        #expect(!editor.intelligence.isEnabled)
+
+        controller.isEnabled = true
+        controller.fileOpened(mainC, text: edited)
+        let completions = await controller.completion(in: mainC, text: edited, position: cursor)
+        #expect(completions.contains { $0.insertionText == "GPIOPinWrite" })
+        #expect(editor.intelligence.isEnabled)
+        controller.stop()
+    }
+
     @Test(.timeLimit(.minutes(1)))
     func publishesAndClearsLiveDiagnosticsWhileTyping() async throws {
         let harness = try await startBlinkySession()
