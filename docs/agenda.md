@@ -2,7 +2,7 @@
 
 Open work that is not yet scheduled in the README milestones, and when it is recommended to do each item. Last updated 17 November 2026.
 
-Status today: M0 to M9 are merged. M10 (packaging and distribution) is on the `m10-packaging` branch; Developer ID signing and notarization wait on an Apple Developer Program membership (see `docs/releasing.md`). Still open from M5: item 7, and the CI runner for item 9.
+Status today: M0 to M10 are merged; M10 (packaging and distribution) went in with pull request #26. Developer ID signing and notarization wait on an Apple Developer Program membership (see `docs/releasing.md`). Still open from M5: item 7, and the CI runner for item 9.
 
 ## Summary
 
