@@ -199,3 +199,7 @@ JLinkSettings.ini
 openocd.log
 openocd_log.txt
 dist/
+
+# Local tooling
+.claude/
+__pycache__/

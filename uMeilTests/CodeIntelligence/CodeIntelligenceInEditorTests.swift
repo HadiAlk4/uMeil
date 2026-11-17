@@ -47,6 +47,39 @@ struct CodeIntelligenceEditorUnitTests {
         #expect(editor.diagnosticBar.isHidden)
     }
 
+    @Test func turningCodeIntelligenceOffClearsAndIgnoresDiagnostics() throws {
+        let temp = try TemporaryDirectory()
+        let file = temp.url.appending(path: "main.c")
+        try Data("int main(void) {\n    return missing_sym;\n}\n".utf8).write(to: file)
+
+        let editor = EditorViewController()
+        editor.loadViewIfNeeded()
+        try editor.open(file)
+
+        let range = LSPRange(start: LSPPosition(line: 1, character: 11), end: LSPPosition(line: 1, character: 22))
+        let diagnostic = LSPDiagnostic(range: range, severity: .error, message: "undeclared")
+        editor.applyLiveDiagnostics([diagnostic])
+        #expect(editor.markers == [2: .error])
+
+        editor.setCodeIntelligenceEnabled(false)
+        #expect(editor.liveDiagnostics.isEmpty)
+        #expect(editor.markers.isEmpty)
+        #expect(editor.diagnosticBar.isHidden)
+
+        // Diagnostics that arrive late from clangd are dropped while off.
+        editor.applyLiveDiagnostics([diagnostic])
+        #expect(editor.liveDiagnostics.isEmpty)
+
+        let complete = NSMenuItem(title: "Complete", action: #selector(EditorViewController.triggerCompletion(_:)),
+                                  keyEquivalent: "")
+        #expect(!editor.validateMenuItem(complete))
+
+        editor.setCodeIntelligenceEnabled(true)
+        #expect(editor.validateMenuItem(complete))
+        editor.applyLiveDiagnostics([diagnostic])
+        #expect(editor.markers == [2: .error])
+    }
+
     @Test func detectsCompletionPrefixAndAutoTriggerRules() {
         let editor = EditorViewController()
 
@@ -173,5 +206,65 @@ struct CodeIntelligenceInEditorTests {
         #expect(hasDriverLibMatch)
         controller.editor.completionPanel.dismiss()
         controller.codeIntelligence?.stop()
+    }
+}
+
+/// The Edit > Code Intelligence switch in the main window.
+@MainActor
+struct CodeIntelligenceToggleTests {
+    private func makeDefaults() throws -> UserDefaults {
+        let suite = "uMeilTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        return defaults
+    }
+
+    private func menuItem(_ action: Selector) -> NSMenuItem {
+        NSMenuItem(title: "", action: action, keyEquivalent: "")
+    }
+
+    @Test func isOnByDefaultAndShowsAsChecked() throws {
+        let controller = MainWindowController(defaults: try makeDefaults(), boardMonitor: FakeBoardMonitor())
+        let item = menuItem(#selector(MainWindowController.toggleCodeIntelligence(_:)))
+
+        #expect(controller.isCodeIntelligenceEnabled)
+        #expect(controller.codeIntelligence?.isEnabled == true)
+        #expect(controller.validateMenuItem(item))
+        #expect(item.state == .on)
+    }
+
+    @Test func togglingTurnsItOffAndIsRememberedForTheNextWindow() throws {
+        let defaults = try makeDefaults()
+        let controller = MainWindowController(defaults: defaults, boardMonitor: FakeBoardMonitor())
+        let item = menuItem(#selector(MainWindowController.toggleCodeIntelligence(_:)))
+
+        controller.toggleCodeIntelligence(nil)
+        _ = controller.validateMenuItem(item)
+        #expect(item.state == .off)
+        #expect(controller.codeIntelligence?.isEnabled == false)
+        #expect(!controller.editor.intelligence.isEnabled)
+
+        let next = MainWindowController(defaults: defaults, boardMonitor: FakeBoardMonitor())
+        #expect(!next.isCodeIntelligenceEnabled)
+        #expect(next.codeIntelligence?.isEnabled == false)
+        #expect(!next.editor.intelligence.isEnabled)
+
+        next.toggleCodeIntelligence(nil)
+        #expect(next.isCodeIntelligenceEnabled)
+        #expect(next.editor.intelligence.isEnabled)
+    }
+
+    @Test func jumpToDefinitionIsDisabledWhileOff() throws {
+        let temp = try TemporaryDirectory()
+        let file = temp.url.appending(path: "main.c")
+        try Data("int main(void) { return 0; }\n".utf8).write(to: file)
+
+        let controller = MainWindowController(defaults: try makeDefaults(), boardMonitor: FakeBoardMonitor())
+        controller.openItem(at: file)
+        let jump = menuItem(#selector(MainWindowController.jumpToDefinitionMenuAction(_:)))
+        #expect(controller.validateMenuItem(jump))
+
+        controller.toggleCodeIntelligence(nil)
+        #expect(!controller.validateMenuItem(jump))
     }
 }

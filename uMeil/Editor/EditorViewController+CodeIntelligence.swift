@@ -21,6 +21,9 @@ final class EditorCodeIntelligenceState {
     var completionRequestVersion = 0
     var completionTask: Task<Void, Never>?
     var lastEditWasSingleTypedCharacter = false
+    /// When false the editor shows no live diagnostics, never asks for
+    /// completions, and ignores go-to-definition requests.
+    var isEnabled = true
 }
 
 /// Connects `EditorViewController` to live `clangd` diagnostics, autocomplete,
@@ -56,11 +59,24 @@ extension EditorViewController {
         }
     }
 
+    /// Turns live diagnostics, autocomplete, and go-to-definition on or off.
+    /// Turning them off clears what is showing right away.
+    func setCodeIntelligenceEnabled(_ enabled: Bool) {
+        intelligence.isEnabled = enabled
+        guard !enabled else { return }
+        intelligence.completionTask?.cancel()
+        intelligence.completionTask = nil
+        intelligence.completionAnchorOffset = nil
+        completionPanel.dismiss()
+        clearLiveDiagnostics()
+    }
+
     // MARK: - Inline diagnostics
 
     /// Displays `diagnostics` from `clangd` as inline underlines, tooltips,
     /// gutter markers, and a compact diagnostic strip while typing.
     func applyLiveDiagnostics(_ diagnostics: [LSPDiagnostic]) {
+        guard intelligence.isEnabled else { return }
         clearInlineDiagnosticAttributes()
         intelligence.liveDiagnostics = diagnostics
         refreshRulerMarkers()
@@ -128,6 +144,7 @@ extension EditorViewController {
 
     /// Edit > Complete (`Ctrl+Space` / `Opt+Esc`)
     @objc func triggerCompletion(_ sender: Any?) {
+        guard intelligence.isEnabled else { return }
         intelligence.completionTask?.cancel()
         intelligence.completionTask = Task { [weak self] in
             await self?.performCompletionRequest()
@@ -148,7 +165,8 @@ extension EditorViewController {
             return
         }
 
-        guard intelligence.lastEditWasSingleTypedCharacter,
+        guard intelligence.isEnabled,
+              intelligence.lastEditWasSingleTypedCharacter,
               let url = document?.url,
               SourceLanguage(url: url) == .c,
               shouldAutoTriggerCompletion(in: textView.string, atUTF16Offset: cursor)
@@ -176,7 +194,8 @@ extension EditorViewController {
     }
 
     func performCompletionRequest() async {
-        guard let url = document?.url,
+        guard intelligence.isEnabled,
+              let url = document?.url,
               SourceLanguage(url: url) == .c,
               let onCompletionRequested = intelligence.onCompletionRequested
         else { return }
@@ -191,6 +210,7 @@ extension EditorViewController {
 
         let items = await onCompletionRequested(url, text, position)
         guard !Task.isCancelled,
+              intelligence.isEnabled,
               requestVersion == intelligence.completionRequestVersion,
               document?.url == url
         else { return }
@@ -262,7 +282,8 @@ extension EditorViewController {
     // MARK: - Go to definition
 
     func requestDefinition(atUTF16Offset offset: Int? = nil) {
-        guard let url = document?.url,
+        guard intelligence.isEnabled,
+              let url = document?.url,
               SourceLanguage(url: url) == .c,
               let onDefinitionRequested = intelligence.onDefinitionRequested
         else { return }
@@ -279,7 +300,7 @@ extension EditorViewController {
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(triggerCompletion(_:)) {
-            return document.map { SourceLanguage(url: $0.url) == .c } ?? false
+            return intelligence.isEnabled && (document.map { SourceLanguage(url: $0.url) == .c } ?? false)
         }
         return true
     }

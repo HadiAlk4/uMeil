@@ -49,7 +49,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
 
     /// Where the last opened folder is remembered between launches.
     static let lastFolderDefaultsKey = "LastOpenedFolder"
-    private let defaults: UserDefaults
+    let defaults: UserDefaults
 
     init(
         defaults: UserDefaults = .standard,
@@ -219,8 +219,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         switch action {
         case #selector(saveDocument(_:)):
             editor.document != nil
-        case #selector(jumpToDefinitionMenuAction(_:)):
-            editor.document.map { SourceLanguage(url: $0.url) == .c } ?? false
+        case #selector(jumpToDefinitionMenuAction(_:)), #selector(toggleCodeIntelligence(_:)):
+            isCodeIntelligenceActionEnabled(action)
         case #selector(buildProject(_:)), #selector(flashProject(_:)):
             folder != nil && !isBuilding && !isFlashing && !debugger.isActive
         case #selector(flashImage(_:)):
