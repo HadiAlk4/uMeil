@@ -36,7 +36,35 @@ jobs:
             -project uMeil.xcodeproj \
             -scheme uMeil \
             -destination 'platform=macOS,arch=arm64' \
-            -derivedDataPath DerivedData
+            -derivedDataPath DerivedData \
+            -resultBundlePath TestResults.xcresult
+
+      # The log lists failing tests but not why; the result bundle has the
+      # messages.
+      - name: Show why tests failed
+        if: failure()
+        run: |
+          xcrun xcresulttool get test-results tests --path TestResults.xcresult \
+            | python3 -c '
+          import json, sys
+          def walk(node, path, failed):
+              name = node.get("name", "")
+              if node.get("nodeType") == "Test Case":
+                  path, failed = name, node.get("result") == "Failed"
+              elif node.get("nodeType") == "Failure Message" and failed:
+                  print(f"{path}: {name}")
+              for child in node.get("children", []):
+                  walk(child, path, failed)
+          for node in json.load(sys.stdin)["testNodes"]:
+              walk(node, "", False)
+          '
+
+      - name: Keep the test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: TestResults.xcresult
 
   hardware:
     name: Hardware-in-the-loop
