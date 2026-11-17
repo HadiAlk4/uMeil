@@ -193,6 +193,30 @@ struct DebugControllerTests {
         #expect(frame?.function == "Reset_Handler")
     }
 
+    // MARK: - Memory
+
+    @Test func memoryReadsStopAtTheEndOfRAM() async throws {
+        let gdb = FakeBlinky.debugger()
+        let controller = try await startedAtMain(gdb)
+
+        // `main`'s locals in the Keil video's program, 44 bytes below the top of RAM.
+        _ = await controller.readMemory(at: 0x2003_FFD4, count: 64)
+        #expect(gdb.commands.last == "-data-read-memory-bytes 0x2003ffd4 44")
+
+        _ = await controller.readMemory(at: 0x2000_0258, count: 64)
+        #expect(gdb.commands.last == "-data-read-memory-bytes 0x20000258 64")
+    }
+
+    @Test func readsAreCutAtTheEndOfFlashAndRAMOnly() {
+        let chip = Chip.tm4c1294ncpdt
+        #expect(chip.readableByteCount(at: 0x2003_FFF0, count: 256) == 16)
+        #expect(chip.readableByteCount(at: 0x2003_FFD4, count: 4) == 4)
+        #expect(chip.readableByteCount(at: 0x000F_FFFC, count: 64) == 4)
+        // Peripherals and anything else are read as asked.
+        #expect(chip.readableByteCount(at: 0x4006_43FC, count: 64) == 64)
+        #expect(chip.readableByteCount(at: 0x2004_0000, count: 64) == 64)
+    }
+
     // MARK: - Breakpoints
 
     @Test func breakpointsCanBeSetAndRemovedWithoutASession() async {
