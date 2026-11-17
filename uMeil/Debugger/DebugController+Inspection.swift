@@ -26,9 +26,11 @@ extension DebugController {
         return (try? await session.disassemble(from: address, count: count)) ?? []
     }
 
-    /// Reads `count` bytes of the chip's memory starting at `address`.
+    /// Reads `count` bytes of the chip's memory starting at `address`, or
+    /// fewer if flash or RAM ends sooner.
     func readMemory(at address: UInt64, count: Int = 64) async -> [UInt8]? {
         guard isStopped, let session else { return nil }
+        let count = chip?.readableByteCount(at: address, count: count) ?? count
         return try? await session.readMemory(at: address, count: count)
     }
 

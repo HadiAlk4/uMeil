@@ -33,6 +33,22 @@ enum Chip: String, Codable, CaseIterable, Sendable {
     var ram: MemoryRegion {
         MemoryRegion(origin: 0x2000_0000, length: 256 * 1024)
     }
+
+    /// How many of `count` bytes from `address` to read in one go. A read
+    /// that starts in flash or RAM stops where that memory ends: past the
+    /// end, the LaunchPad's ICDI probe returns zeros for the whole read,
+    /// without an error. The stack sits at the top of RAM, so this is where
+    /// `main`'s locals are.
+    func readableByteCount(at address: UInt64, count: Int) -> Int {
+        for region in [flash, ram] {
+            let start = UInt64(region.origin)
+            let end = start + UInt64(region.length)
+            if (start..<end).contains(address) {
+                return min(count, Int(end - address))
+            }
+        }
+        return count
+    }
 }
 
 /// A development board. The raw value is the name stored in project files.

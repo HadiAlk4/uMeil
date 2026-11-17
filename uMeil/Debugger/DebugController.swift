@@ -56,6 +56,8 @@ final class DebugController {
     /// Lines with code, by file, for the program being debugged.
     private var executableLines: [URL: Set<Int>] = [:]
     private(set) var session: GDBSession?
+    /// The chip of the session that is running.
+    private(set) var chip: Chip?
     /// Everything GDB and OpenOCD printed in this session.
     private(set) var log = ""
 
@@ -73,6 +75,7 @@ final class DebugController {
         guard state == .idle else { return }
         state = .starting
         log = ""
+        chip = plan.chip
 
         let session: GDBSession
         do {
