@@ -47,6 +47,39 @@ struct CodeIntelligenceEditorUnitTests {
         #expect(editor.diagnosticBar.isHidden)
     }
 
+    @Test func turningCodeIntelligenceOffClearsAndIgnoresDiagnostics() throws {
+        let temp = try TemporaryDirectory()
+        let file = temp.url.appending(path: "main.c")
+        try Data("int main(void) {\n    return missing_sym;\n}\n".utf8).write(to: file)
+
+        let editor = EditorViewController()
+        editor.loadViewIfNeeded()
+        try editor.open(file)
+
+        let range = LSPRange(start: LSPPosition(line: 1, character: 11), end: LSPPosition(line: 1, character: 22))
+        let diagnostic = LSPDiagnostic(range: range, severity: .error, message: "undeclared")
+        editor.applyLiveDiagnostics([diagnostic])
+        #expect(editor.markers == [2: .error])
+
+        editor.setCodeIntelligenceEnabled(false)
+        #expect(editor.liveDiagnostics.isEmpty)
+        #expect(editor.markers.isEmpty)
+        #expect(editor.diagnosticBar.isHidden)
+
+        // Diagnostics that arrive late from clangd are dropped while off.
+        editor.applyLiveDiagnostics([diagnostic])
+        #expect(editor.liveDiagnostics.isEmpty)
+
+        let complete = NSMenuItem(title: "Complete", action: #selector(EditorViewController.triggerCompletion(_:)),
+                                  keyEquivalent: "")
+        #expect(!editor.validateMenuItem(complete))
+
+        editor.setCodeIntelligenceEnabled(true)
+        #expect(editor.validateMenuItem(complete))
+        editor.applyLiveDiagnostics([diagnostic])
+        #expect(editor.markers == [2: .error])
+    }
+
     @Test func detectsCompletionPrefixAndAutoTriggerRules() {
         let editor = EditorViewController()
 
