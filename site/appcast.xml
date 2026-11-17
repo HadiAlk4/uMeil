@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>uMeil</title>
+    <link>https://hadialk4.github.io/uMeil/appcast.xml</link>
+    <description>Updates to uMeil, newest first. Written by Scripts/update-release-files.py.</description>
+    <language>en</language>
+  </channel>
+</rss>
