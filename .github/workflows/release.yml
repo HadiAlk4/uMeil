@@ -1,0 +1,120 @@
+name: Release
+
+# Pushing a tag such as v0.2.0 builds uMeil 0.2.0, publishes it on GitHub
+# Releases, and updates the website's update feed and the Homebrew cask on
+# main. See docs/releasing.md.
+#
+# Every secret is optional. Without the Developer ID ones the DMG is ad-hoc
+# signed and not notarized; without SPARKLE_PRIVATE_KEY it is not offered
+# to existing installs as an update.
+#
+#   DEVELOPER_ID_CERTIFICATE_P12       Base64 of the exported .p12.
+#   DEVELOPER_ID_CERTIFICATE_PASSWORD  Its password.
+#   DEVELOPER_ID_APPLICATION           "Developer ID Application: Name (TEAMID)".
+#   DEVELOPMENT_TEAM                   TEAMID.
+#   NOTARY_KEY_P8                      Base64 of an App Store Connect API key (.p8).
+#   NOTARY_KEY_ID, NOTARY_ISSUER       That key's ID and issuer ID.
+#   SPARKLE_PRIVATE_KEY                From Sparkle's generate_keys -x.
+#
+# The repository variable SPARKLE_PUBLIC_ED_KEY (not a secret) turns on
+# automatic updates in the app.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The build number is the number of commits, so fetch them all.
+          fetch-depth: 0
+
+      - name: Read the version from the tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install the Developer ID certificate
+        env:
+          CERTIFICATE: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
+          PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+        if: env.CERTIFICATE != ''
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password=$(uuidgen)
+          echo "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/certificate.p12"
+
+      - name: Write the notarization key
+        env:
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+        if: env.NOTARY_KEY_P8 != ''
+        run: |
+          echo "$NOTARY_KEY_P8" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+          echo "NOTARY_KEY_PATH=$RUNNER_TEMP/notary.p8" >> "$GITHUB_ENV"
+
+      - name: Build, sign and notarize
+        env:
+          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+          DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
+        run: Scripts/make-release.sh "${{ steps.version.outputs.version }}"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source dist/release.env
+          notes="Apple Silicon, macOS 14 or later."
+          if [[ $NOTARIZED != yes ]]; then
+            notes+=$'\n\n'"This build is not notarized by Apple. The first time you open it, macOS will block it: open it once, then choose Open Anyway in System Settings > Privacy & Security."
+          fi
+          notes+=$'\n\n'"SHA-256: \`$SHA256\`"
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/uMeil-$VERSION.dmg" dist/uMeil.dmg \
+            --title "uMeil $VERSION" \
+            --notes "$notes" \
+            $([[ $VERSION == *-* ]] && echo --prerelease)
+
+      - name: Update the website's feed and the Homebrew cask
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # dist/ is ignored by git, so it survives the switch to main.
+          git fetch origin main
+          git checkout -B release-files origin/main
+          python3 Scripts/update-release-files.py dist/release.env
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Point the website and the Homebrew cask at uMeil ${{ steps.version.outputs.version }}."
+          git push origin HEAD:main
+          # A push made with the workflow's token starts no other workflows,
+          # so start the website's by hand.
+          gh workflow run pages.yml --ref main
+
+      - name: Remove the signing keychain
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/notary.p8"

@@ -146,6 +146,7 @@ Make uMeil easy to download and install.
 
 - **What we use:** Developer ID signing, Apple notarization (`notarytool`), a DMG, Sparkle for automatic updates, and a Homebrew cask. The app is Apple Silicon only. Toolchains are not bundled; they are downloaded on first launch. Signing and notarization need an Apple Developer Program membership.
 - **Website:** A one-page static site (plain HTML and CSS, no framework) on GitHub Pages, deployed from this repo with GitHub Actions. It says what uMeil is, shows a screenshot and the system requirements, and has a download button that links to the latest DMG on GitHub Releases. It also hosts Sparkle's `appcast.xml` update feed.
+- **How to release:** see [`docs/releasing.md`](docs/releasing.md). `Scripts/make-release.sh` builds the DMG, and pushing a `v*` tag publishes it. Signing, notarization and Sparkle's update signature switch on as their secrets are added; until then releases are ad-hoc signed.
 - **How we test it:**
   - CI builds, signs, and notarizes every release, then checks the result with `spctl --assess` and `stapler validate`.
   - Manual install test on a clean Mac (or a fresh macOS VM, for example with Tart or UTM) on Apple Silicon.
