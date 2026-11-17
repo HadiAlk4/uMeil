@@ -113,6 +113,56 @@ enum PeripheralAccess {
         )
     }
 
+    enum WriteFailure: Error, Equatable, LocalizedError {
+        case notAValue(String, bits: Int)
+        case readOnly(String)
+
+        var errorDescription: String? {
+            switch self {
+            case let .notAValue(text, bits):
+                "“\(text)” is not a value that fits in \(bits) bit\(bits == 1 ? "" : "s")."
+            case .readOnly(let name):
+                "\(name) is read-only."
+            }
+        }
+    }
+
+    /// Writes what the user typed into a register's or field's value, and
+    /// returns the register's new value. A field is written by reading the
+    /// register, changing the field's bits, and writing the whole register
+    /// back. When the register cannot be read safely, `known` (the last
+    /// value read) or the reset value stands in for the other bits.
+    @MainActor
+    @discardableResult
+    static func apply(
+        _ text: String,
+        to register: SVDRegister,
+        field: SVDField? = nil,
+        of peripheral: SVDPeripheral,
+        known: RegisterReading? = nil,
+        in memory: some TargetMemory
+    ) async throws -> UInt64 {
+        let access = field?.access ?? register.access
+        guard access.isWritable else { throw WriteFailure.readOnly(field?.name ?? register.name) }
+        guard let typed = parseValue(text, field: field, bitWidth: register.size) else {
+            throw WriteFailure.notAValue(text, bits: field?.bitWidth ?? register.size)
+        }
+        var newValue = typed
+        if let field {
+            var current = register.resetValue ?? 0
+            if case .value(let value) = known {
+                current = value
+            }
+            if register.access.isReadable, !register.readHasSideEffects,
+               case .value(let value) = await read(register, of: peripheral, from: memory) {
+                current = value
+            }
+            newValue = field.inserting(typed, into: current)
+        }
+        try await write(newValue, to: register, of: peripheral, in: memory)
+        return newValue
+    }
+
     // MARK: - Byte order
 
     static func littleEndian(_ bytes: ArraySlice<UInt8>) -> UInt64 {

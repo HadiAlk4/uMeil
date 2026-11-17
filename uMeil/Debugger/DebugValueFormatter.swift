@@ -143,6 +143,34 @@ enum DebugValueFormatter {
         return rows
     }
 
+    /// Reads bytes typed into the memory view's hex column, such as
+    /// `"9D FF 00"` or `"9dff00"`. `nil` if anything is not a hex byte.
+    static func parseHexBytes(_ text: String) -> [UInt8]? {
+        let words = text.split(whereSeparator: \.isWhitespace)
+        var bytes: [UInt8] = []
+        for word in words {
+            guard word.count.isMultiple(of: 2) else { return nil }
+            var rest = Substring(word)
+            while !rest.isEmpty {
+                guard let byte = UInt8(rest.prefix(2), radix: 16) else { return nil }
+                bytes.append(byte)
+                rest = rest.dropFirst(2)
+            }
+        }
+        return bytes
+    }
+
+    /// The bytes of `edited` that differ from `original`, as the offset of
+    /// the first one and the run up to the last one. `nil` when nothing
+    /// changed or the lengths differ.
+    static func changedRun(from original: [UInt8], to edited: [UInt8]) -> (offset: Int, bytes: [UInt8])? {
+        guard original.count == edited.count,
+              let first = original.indices.first(where: { original[$0] != edited[$0] }),
+              let last = original.indices.last(where: { original[$0] != edited[$0] })
+        else { return nil }
+        return (first, Array(edited[first...last]))
+    }
+
     /// Parses a user-entered hex or decimal address string such as `"0x20000258"`.
     static func parseAddress(_ text: String) -> UInt64? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

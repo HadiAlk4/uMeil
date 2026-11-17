@@ -2,16 +2,33 @@ import AppKit
 
 /// The `Memory 1` panel: lets the user enter a hex address or expression
 /// (`0x20000258` or `&result`) and shows a 16-byte-per-row hex dump with
-/// little-endian byte ordering and ASCII decoding.
-final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
+/// little-endian byte ordering and ASCII decoding. While the program is
+/// stopped, typing over a row's bytes writes them to the chip.
+final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
     let addressField = NSTextField()
+    let lengthPopUp = NSPopUpButton()
     let tableView = NSTableView()
+
+    /// How many bytes the view can show at once.
+    static let lengths = [64, 256, 1024]
 
     private(set) var currentAddress: UInt64?
     private(set) var rows: [DebugValueFormatter.MemoryRow] = []
+    /// How many bytes to read from `currentAddress`.
+    private(set) var byteCount = 64
+    /// Bytes can be typed only while the program is stopped.
+    var isEditable = false {
+        didSet {
+            if isViewLoaded, isEditable != oldValue { tableView.reloadData() }
+        }
+    }
 
     /// Called when the user enters an address or expression to inspect.
     var onRequestAddress: ((String) -> Void)?
+    /// Called when the user picks a length; read `byteCount` bytes again.
+    var onLengthChange: (() -> Void)?
+    /// Called with bytes the user typed and the address of the first one.
+    var onWriteBytes: ((UInt64, [UInt8]) -> Void)?
 
     init() {
         super.init(nibName: nil, bundle: nil)
@@ -30,7 +47,14 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
         addressField.target = self
         addressField.action = #selector(addressSubmitted(_:))
 
-        let topBar = NSStackView(views: [prompt, addressField])
+        lengthPopUp.controlSize = .small
+        lengthPopUp.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        lengthPopUp.addItems(withTitles: Self.lengths.map { "\($0) bytes" })
+        lengthPopUp.selectItem(at: Self.lengths.firstIndex(of: byteCount) ?? 0)
+        lengthPopUp.target = self
+        lengthPopUp.action = #selector(lengthChosen(_:))
+
+        let topBar = NSStackView(views: [prompt, addressField, lengthPopUp])
         topBar.orientation = .horizontal
         topBar.spacing = 6
         topBar.edgeInsets = NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
@@ -75,6 +99,7 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
     func clear() {
         currentAddress = nil
         rows = []
+        isEditable = false
         if isViewLoaded {
             tableView.reloadData()
         }
@@ -84,6 +109,37 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
         let text = addressField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         onRequestAddress?(text)
+    }
+
+    /// Changes how many bytes are shown, as the length menu does.
+    func setByteCount(_ count: Int) {
+        guard count > 0, count != byteCount else { return }
+        byteCount = count
+        if isViewLoaded, let index = Self.lengths.firstIndex(of: count) {
+            lengthPopUp.selectItem(at: index)
+        }
+        onLengthChange?()
+    }
+
+    @objc private func lengthChosen(_ sender: NSPopUpButton) {
+        let index = sender.indexOfSelectedItem
+        guard Self.lengths.indices.contains(index) else { return }
+        setByteCount(Self.lengths[index])
+    }
+
+    /// Writes what was typed over row `row`'s bytes: the run from the first
+    /// changed byte to the last. Returns false, writing nothing, if the text
+    /// is not exactly the row's number of hex bytes.
+    @discardableResult
+    func commitEdit(_ text: String, inRow row: Int) -> Bool {
+        guard rows.indices.contains(row),
+              let typed = DebugValueFormatter.parseHexBytes(text),
+              typed.count == rows[row].bytes.count
+        else { return false }
+        if let run = DebugValueFormatter.changedRun(from: rows[row].bytes, to: typed) {
+            onWriteBytes?(rows[row].address + UInt64(run.offset), run.bytes)
+        }
+        return true
     }
 
     // MARK: - NSTableViewDataSource
@@ -106,6 +162,10 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
         let label = NSTextField(labelWithString: text)
         label.font = EditorTheme.font
         label.lineBreakMode = .byTruncatingTail
+        if identifier.rawValue == "hex", isEditable {
+            label.isEditable = true
+            label.delegate = self
+        }
 
         let cell = NSTableCellView()
         cell.identifier = identifier
@@ -118,5 +178,18 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
             label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
         ])
         return cell
+    }
+
+    // MARK: - Typing bytes
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField else { return }
+        let row = tableView.row(for: field)
+        if !commitEdit(field.stringValue, inRow: row) {
+            NSSound.beep()
+            if rows.indices.contains(row) {
+                field.stringValue = rows[row].hexText
+            }
+        }
     }
 }

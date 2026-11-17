@@ -143,6 +143,53 @@ struct PeripheralAccessTests {
         #expect(memory.writes.first?.bytes == [0x02, 0x00, 0x00, 0x00])
     }
 
+    @Test func typingIntoAFieldChangesOnlyItsBits() async throws {
+        let memory = FakeTargetMemory()
+        memory.store(0x1300_0000, at: 0x400F_E0B0)
+        let sysctl = SVDPeripheral(
+            name: "SYSCTL", description: nil, groupName: nil, baseAddress: 0x400F_E000,
+            registers: [register("RSCLKCFG", 0xB0, fields: [oscillatorSource])]
+        )
+        let rsclkcfg = sysctl.registers[0]
+
+        let newValue = try await PeripheralAccess.apply(
+            "MOSC", to: rsclkcfg, field: oscillatorSource, of: sysctl, in: memory
+        )
+
+        #expect(newValue == 0x1330_0000)
+        #expect(memory.writes.last?.bytes == [0x00, 0x00, 0x30, 0x13])
+    }
+
+    @Test func typingIntoARegisterWithSideEffectsUsesTheLastKnownValue() async throws {
+        let memory = FakeTargetMemory()
+        let low = SVDField(name: "LOW", description: nil, bitOffset: 0, bitWidth: 8, access: .readWrite,
+                           enumeratedValues: [])
+        let peripheral = SVDPeripheral(
+            name: "P", description: nil, groupName: nil, baseAddress: 0x1000,
+            registers: [register("FIFO", 0, sideEffects: true, fields: [low])]
+        )
+
+        let newValue = try await PeripheralAccess.apply(
+            "0x41", to: peripheral.registers[0], field: low, of: peripheral, known: .value(0xAB00), in: memory
+        )
+
+        #expect(newValue == 0xAB41)
+        #expect(memory.reads.isEmpty)
+    }
+
+    @Test func typingRejectsReadOnlyRegistersAndValuesThatDoNotFit() async {
+        let memory = FakeTargetMemory()
+        let flags = uart.registers[2]
+
+        await #expect(throws: PeripheralAccess.WriteFailure.readOnly("FR")) {
+            try await PeripheralAccess.apply("1", to: flags, of: uart, in: memory)
+        }
+        await #expect(throws: PeripheralAccess.WriteFailure.notAValue("lots", bits: 32)) {
+            try await PeripheralAccess.apply("lots", to: uart.registers[4], of: uart, in: memory)
+        }
+        #expect(memory.writes.isEmpty)
+    }
+
     @Test func byteOrderRoundTrips() {
         let bytes = PeripheralAccess.littleEndianBytes(0xFFFF_FF9D, count: 4)
         #expect(bytes == [0x9D, 0xFF, 0xFF, 0xFF])
