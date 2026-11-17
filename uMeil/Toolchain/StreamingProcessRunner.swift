@@ -29,33 +29,43 @@ struct StreamingProcessRunner: LineStreamingProcessRunning {
         let handle = ProcessHandle()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    continuation.resume(with: Result {
-                        try Self.runBlocking(
-                            executable,
-                            arguments: arguments,
-                            currentDirectory: currentDirectory,
-                            handle: handle,
-                            onLine: onLine
-                        )
-                    })
+                // Both streams are read as data arrives, so no thread is held
+                // for as long as the tool runs.
+                let result = StreamingResult(continuation: continuation)
+                let outputPipe = Pipe()
+                let errorPipe = Pipe()
+                let process = Self.makeProcess(
+                    executable,
+                    arguments: arguments,
+                    currentDirectory: currentDirectory,
+                    output: outputPipe,
+                    error: errorPipe
+                )
+                process.terminationHandler = { result.exited($0.terminationStatus) }
+                do {
+                    try process.run()
+                } catch {
+                    result.fail(error)
+                    return
                 }
+                handle.started(process)
+
+                PipeLineReader.start(outputPipe.fileHandleForReading, onLine: onLine) { result.outputEnded($0) }
+                PipeLineReader.start(errorPipe.fileHandleForReading, onLine: onLine) { result.errorEnded($0) }
             }
         } onCancel: {
             handle.stop()
         }
     }
 
-    private static func runBlocking(
+    private static func makeProcess(
         _ executable: URL,
         arguments: [String],
         currentDirectory: URL?,
-        handle: ProcessHandle,
-        onLine: @escaping @Sendable (String) -> Void
-    ) throws -> ProcessOutput {
+        output outputPipe: Pipe,
+        error errorPipe: Pipe
+    ) -> Process {
         let process = Process()
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
         process.executableURL = executable
         process.arguments = arguments
         if let currentDirectory {
@@ -64,58 +74,55 @@ struct StreamingProcessRunner: LineStreamingProcessRunning {
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = outputPipe
         process.standardError = errorPipe
+        return process
+    }
+}
 
-        try process.run()
-        handle.started(process)
-
-        // Read both streams at once, each on its own thread, so that neither
-        // pipe fills up while the other is being read.
-        let errorText = OSAllocatedUnfairLock(initialState: "")
-        let errorDrained = DispatchGroup()
-        DispatchQueue.global(qos: .userInitiated).async(group: errorDrained) {
-            let text = readLines(from: errorPipe.fileHandleForReading, onLine: onLine)
-            errorText.withLock { $0 = text }
-        }
-        let outputText = readLines(from: outputPipe.fileHandleForReading, onLine: onLine)
-        errorDrained.wait()
-        process.waitUntilExit()
-
-        return ProcessOutput(
-            exitCode: process.terminationStatus,
-            standardOutput: outputText,
-            standardError: errorText.withLock { $0 }
-        )
+/// Collects the exit code and both streams, and resumes the waiting task
+/// once all three are in.
+private final class StreamingResult: Sendable {
+    private struct State {
+        var exitCode: Int32?
+        var standardOutput: String?
+        var standardError: String?
+        var isFinished = false
     }
 
-    /// Reads `file` to its end, calling `onLine` as each line completes.
-    /// Returns everything that was read.
-    private static func readLines(from file: FileHandle, onLine: (String) -> Void) -> String {
-        var all = Data()
-        var pending = Data()
-        let newline = UInt8(ascii: "\n")
+    private let state = OSAllocatedUnfairLock(initialState: State())
+    private let continuation: CheckedContinuation<ProcessOutput, Error>
 
-        while true {
-            let chunk = file.availableData
-            if chunk.isEmpty { break } // End of file: the process closed its end.
-            all.append(chunk)
-            pending.append(chunk)
-            while let end = pending.firstIndex(of: newline) {
-                onLine(text(from: pending[pending.startIndex..<end]))
-                pending.removeSubrange(pending.startIndex...end)
-            }
-        }
-        if !pending.isEmpty {
-            onLine(text(from: pending))
-        }
-        return text(from: all)
+    init(continuation: CheckedContinuation<ProcessOutput, Error>) {
+        self.continuation = continuation
     }
 
-    /// Decodes tool output as UTF-8, replacing any invalid bytes, and drops
-    /// the carriage return of a Windows-style line ending.
-    private static func text(from data: Data) -> String {
-        // swiftlint:disable:next optional_data_string_conversion
-        let text = String(decoding: data, as: UTF8.self)
-        return text.hasSuffix("\r") ? String(text.dropLast()) : text
+    func exited(_ code: Int32) { finishIfReady { $0.exitCode = code } }
+    func outputEnded(_ text: String) { finishIfReady { $0.standardOutput = text } }
+    func errorEnded(_ text: String) { finishIfReady { $0.standardError = text } }
+
+    func fail(_ error: Error) {
+        let shouldResume = state.withLock { state -> Bool in
+            defer { state.isFinished = true }
+            return !state.isFinished
+        }
+        if shouldResume {
+            continuation.resume(throwing: error)
+        }
+    }
+
+    private func finishIfReady(_ update: @Sendable (inout State) -> Void) {
+        let output: ProcessOutput? = state.withLock { state in
+            update(&state)
+            guard !state.isFinished,
+                  let exitCode = state.exitCode,
+                  let standardOutput = state.standardOutput,
+                  let standardError = state.standardError
+            else { return nil }
+            state.isFinished = true
+            return ProcessOutput(exitCode: exitCode, standardOutput: standardOutput, standardError: standardError)
+        }
+        if let output {
+            continuation.resume(returning: output)
+        }
     }
 }
 

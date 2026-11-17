@@ -136,8 +136,9 @@ struct BuildPlan: Equatable, Sendable {
             "-fdata-sections",
             // Color codes would end up in the parsed messages.
             "-fdiagnostics-color=never",
-            // Report columns as positions in the line, not as screen columns
-            // with tabs expanded, so the editor can put the cursor there.
+            // Report columns as byte positions in the line, not as screen
+            // columns with tabs expanded. The editor converts bytes to its
+            // own UTF-16 offsets before moving the cursor there.
             "-fdiagnostics-column-unit=byte"
         ]
         arguments += (chip.defines + settings.defines).map { "-D\($0)" }

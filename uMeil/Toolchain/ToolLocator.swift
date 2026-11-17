@@ -16,7 +16,7 @@ struct ToolLocator: Sendable {
 
     /// Every executable for `tool` in the search directories, in priority order.
     func candidates(for tool: Tool) -> [URL] {
-        let directories = deduplicated(searchDirectories + (extraDirectories[tool] ?? []))
+        let directories = Self.deduplicated(searchDirectories + (extraDirectories[tool] ?? []))
         let excluded = excludedPaths[tool] ?? []
         return directories
             .map { $0.appending(path: tool.executableName, directoryHint: .notDirectory) }
@@ -26,7 +26,9 @@ struct ToolLocator: Sendable {
             }
     }
 
-    private func deduplicated(_ directories: [URL]) -> [URL] {
+    /// `directories` in the same order, keeping only the first of any that
+    /// name the same folder.
+    private static func deduplicated(_ directories: [URL]) -> [URL] {
         var seen = Set<String>()
         return directories.filter { directory in
             seen.insert(directory.standardizedFileURL.path(percentEncoded: false)).inserted
@@ -80,10 +82,7 @@ extension ToolLocator {
             URL(filePath: $0, directoryHint: .isDirectory)
         })
 
-        var seen = Set<String>()
-        return directories.filter { directory in
-            seen.insert(directory.standardizedFileURL.path(percentEncoded: false)).inserted
-        }
+        return deduplicated(directories)
     }
 
     /// The default search order:
@@ -111,10 +110,7 @@ extension ToolLocator {
             of: applicationsDirectory.appending(path: "ArmGNUToolchain", directoryHint: .isDirectory)
         ).map { $0.appending(path: "arm-none-eabi/bin", directoryHint: .isDirectory) }
 
-        var seen = Set<String>()
-        return (managed + path + homebrew + armInstaller).filter { directory in
-            seen.insert(directory.standardizedFileURL.path(percentEncoded: false)).inserted
-        }
+        return deduplicated(managed + path + homebrew + armInstaller)
     }
 
     /// The folders directly inside `directory`, newest version name first.

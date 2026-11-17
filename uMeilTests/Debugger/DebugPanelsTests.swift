@@ -168,6 +168,19 @@ struct DebugPanelsTests {
         #expect(editor.textView.toolTip == "result = 0xFFFFFF9D")
     }
 
+    @Test func findsTheWholeIdentifierUnderTheMouse() {
+        let editor = EditorViewController()
+        editor.loadViewIfNeeded()
+        editor.textView.string = "x = µ + count2 + 42;"
+
+        #expect(editor.identifier(atCharacterIndex: 0) == "x")
+        #expect(editor.identifier(atCharacterIndex: 10) == "count2")
+        #expect(editor.identifier(atCharacterIndex: 13) == "count2")
+        #expect(editor.identifier(atCharacterIndex: 18) == nil) // a number
+        #expect(editor.identifier(atCharacterIndex: 4) == nil) // µ is not ASCII
+        #expect(editor.identifier(atCharacterIndex: 99) == nil)
+    }
+
     @Test func debugLayoutTransitionsInDuringASessionAndRestoresOnExit() {
         let controller = MainWindowController(boardMonitor: FakeBoardMonitor())
         let mainSplit = controller.window?.contentViewController as? NSSplitViewController

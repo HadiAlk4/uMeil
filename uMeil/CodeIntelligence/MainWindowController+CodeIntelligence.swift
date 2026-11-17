@@ -49,16 +49,20 @@ extension MainWindowController {
     }
 
     /// Opens `file` if it is not already open and moves the caret to `line`/`column`.
-    func navigate(to file: URL, line: Int?, column: Int?) {
+    func navigate(
+        to file: URL,
+        line: Int?,
+        column: Int?,
+        columnUnit: EditorViewController.ColumnUnit = .utf16
+    ) {
         let isOpen = editor.document.map {
             ClangdSession.normalize($0.url) == ClangdSession.normalize(file)
         } ?? false
         if !isOpen {
-            guard confirmDiscardingChanges() else { return }
-            openFile(file)
+            guard confirmDiscardingChanges(), openFile(file) else { return }
         }
         if let line {
-            editor.goTo(line: line, column: column)
+            editor.goTo(line: line, column: column, unit: columnUnit)
         }
     }
 

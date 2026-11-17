@@ -34,7 +34,40 @@ private final class MockLSPTransport: LSPTransporting, @unchecked Sendable {
     }
 }
 
+/// Records each payload only once its (slow) write completes, so a later
+/// write that is not made to wait would be recorded first.
+private final class SlowWriteTransport: LSPTransporting, @unchecked Sendable {
+    let incoming = AsyncStream<Data> { _ in }
+    private let written = OSAllocatedUnfairLock(initialState: [String]())
+
+    var writtenMethods: [String] { written.withLock { $0 } }
+
+    func send(_ payload: Data) async throws {
+        let json = try JSONSerialization.jsonObject(with: payload) as? [String: Any]
+        let method = json?["method"] as? String ?? ""
+        if json?["id"] != nil {
+            try await Task.sleep(for: .milliseconds(150))
+        }
+        written.withLock { $0.append(method) }
+    }
+
+    func close() async {}
+}
+
 struct LSPClientTests {
+    @Test func aNotificationNeverOvertakesAnEarlierRequest() async throws {
+        let transport = SlowWriteTransport()
+        let client = LSPClient(transport: transport)
+        let file = URL(filePath: "/tmp/Blinky/src/main.c")
+
+        let completion = Task { try await client.completion(url: file, position: LSPPosition(line: 0, character: 0)) }
+        try await Task.sleep(for: .milliseconds(30))
+        try await client.didChange(url: file, version: 2, text: "int x;\n")
+
+        #expect(transport.writtenMethods == ["textDocument/completion", "textDocument/didChange"])
+        completion.cancel()
+    }
+
     @Test func initializesAndMatchesOutOfOrderResponses() async throws {
         let transport = MockLSPTransport()
         let client = LSPClient(transport: transport)
@@ -121,15 +154,23 @@ struct LSPClientTests {
             ]
         ])
 
-        try await Task.sleep(for: .milliseconds(50))
+        // Writes go out in order on their own task, so wait for the reply
+        // rather than for a fixed time that a busy machine can overrun.
+        let replied = await eventually {
+            transport.sentPayloads.contains { payload in
+                guard let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else {
+                    return false
+                }
+                return (json["id"] as? Int) == 99 && json["result"] is NSNull
+            }
+        }
+        #expect(replied)
+        // The diagnostics are handled after the reply has been written.
+        #expect(await eventually { !received.withLock { $0 }.isEmpty })
+
         let messages = received.withLock { $0 }
         #expect(messages.count == 1)
         #expect(messages.first?.diagnostics.first?.message == "expected ';'")
-
-        let replies = transport.sentPayloads.compactMap {
-            try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
-        }
-        #expect(replies.contains { ($0["id"] as? Int) == 99 && $0["result"] is NSNull })
 
         await client.shutdown()
     }

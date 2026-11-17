@@ -152,17 +152,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
 
     /// Opens `url` in the editor and selects it in the navigator. Unsaved
     /// changes to the current file are discarded, so ask the user first.
-    func openFile(_ url: URL) {
+    /// Opens `url` in the editor. Returns false, after telling the user, if
+    /// it could not be opened.
+    @discardableResult
+    func openFile(_ url: URL) -> Bool {
+        defer { updateTitle() }
         do {
             try editor.open(url)
             navigator.select(url)
             refreshMarkers()
             refreshDebugMarks()
+            return true
         } catch {
             navigator.select(editor.document?.url)
             presentError(error)
+            return false
         }
-        updateTitle()
     }
 
     private func userSelectedFile(_ url: URL) {
@@ -302,7 +307,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     /// Takes the editor to the place a build message points at.
     private func show(_ diagnostic: Diagnostic) {
         guard let file = diagnostic.file else { return }
-        navigate(to: file, line: diagnostic.line, column: diagnostic.column)
+        // GCC counts columns in bytes (`-fdiagnostics-column-unit=byte`).
+        navigate(to: file, line: diagnostic.line, column: diagnostic.column, columnUnit: .utf8)
     }
 
     // MARK: - Unsaved changes
