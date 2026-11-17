@@ -10,6 +10,7 @@
 		B10000000000000000000005 /* SwiftTreeSitter in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000003 /* SwiftTreeSitter */; };
 		B10000000000000000000006 /* TreeSitterC in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000004 /* TreeSitterC */; };
 		B10000000000000000000009 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000008 /* SwiftTerm */; };
+		B1000000000000000000000C /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B1000000000000000000000B /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,6 +49,7 @@
 				B10000000000000000000005 /* SwiftTreeSitter in Frameworks */,
 				B10000000000000000000006 /* TreeSitterC in Frameworks */,
 				B10000000000000000000009 /* SwiftTerm in Frameworks */,
+				B1000000000000000000000C /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -102,6 +104,7 @@
 				B10000000000000000000003 /* SwiftTreeSitter */,
 				B10000000000000000000004 /* TreeSitterC */,
 				B10000000000000000000008 /* SwiftTerm */,
+				B1000000000000000000000B /* Sparkle */,
 			);
 			productName = uMeil;
 			productReference = A10000000000000000000006 /* uMeil.app */;
@@ -162,6 +165,7 @@
 				B10000000000000000000001 /* XCRemoteSwiftPackageReference "swift-tree-sitter" */,
 				B10000000000000000000002 /* XCRemoteSwiftPackageReference "tree-sitter-c" */,
 				B10000000000000000000007 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+				B1000000000000000000000A /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A10000000000000000000003 /* Products */;
@@ -279,6 +283,7 @@
 				);
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.hadialk4.uMeil;
+				SPARKLE_PUBLIC_ED_KEY = "";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Debug;
@@ -301,6 +306,7 @@
 				);
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.hadialk4.uMeil;
+				SPARKLE_PUBLIC_ED_KEY = "";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Release;
@@ -392,6 +398,14 @@
 				minimumVersion = 1.11.2;
 			};
 		};
+		B1000000000000000000000A /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = exactVersion;
+				version = 2.10.1;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -409,6 +423,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B10000000000000000000007 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
 			productName = SwiftTerm;
+		};
+		B1000000000000000000000B /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1000000000000000000000A /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -2,7 +2,7 @@
 
 Open work that is not yet scheduled in the README milestones, and when it is recommended to do each item. Last updated 17 November 2026.
 
-Status today: M0 to M6, M8 and M9 are merged. M7 (memory and peripheral views) is on the `m7-memory-peripherals` branch and has been tested on an EK-TM4C1294XL. Still open from M5: item 7, and the CI runner for item 9.
+Status today: M0 to M9 are merged. M10 (packaging and distribution) is on the `m10-packaging` branch; Developer ID signing and notarization wait on an Apple Developer Program membership (see `docs/releasing.md`). Still open from M5: item 7, and the CI runner for item 9.
 
 ## Summary
 

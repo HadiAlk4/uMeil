@@ -5,24 +5,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindowController: MainWindowController?
     private lazy var toolchainWindowController = ToolchainWindowController()
     private lazy var serialMonitorWindowController = SerialMonitorWindowController()
+    private var softwareUpdater: SoftwareUpdater?
     /// What the app was launched to open, instead of the last folder.
     private var launchItem: URL?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.mainMenu = MainMenu.make(appName: AppInfo.name)
+        let updater = SoftwareUpdater()
+        softwareUpdater = updater
+        NSApp.mainMenu = MainMenu.make(appName: AppInfo.name, updater: updater)
 
         let controller = MainWindowController()
         controller.showWindow(nil)
         mainWindowController = controller
         if let launchItem {
             controller.openItem(at: launchItem)
-        } else {
+        } else if !Self.isTestHost {
             reopenLastFolder(in: controller)
         }
         launchItem = nil
 
         NSApp.activate()
-        showToolchainStatusIfToolsAreMissing()
+        if !Self.isTestHost {
+            showToolchainStatusIfToolsAreMissing()
+        }
+    }
+
+    /// True when the app was launched to host the unit tests. The tests make
+    /// their own windows and projects, so the user's last folder is not
+    /// reopened: reading it could wait on a permission prompt (for
+    /// ~/Downloads, say) and stop the tests from starting.
+    static var isTestHost: Bool {
+        ProcessInfo.processInfo.environment.keys.contains { $0.hasPrefix("XCTest") }
     }
 
     /// A folder or file dropped on the Dock icon, opened from Finder, or

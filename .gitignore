@@ -198,3 +198,4 @@ JLinkLog.txt
 JLinkSettings.ini
 openocd.log
 openocd_log.txt
+dist/

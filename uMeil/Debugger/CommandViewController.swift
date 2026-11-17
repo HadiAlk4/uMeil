@@ -47,10 +47,7 @@ final class CommandViewController: NSViewController {
         inputBar.spacing = 6
         inputBar.edgeInsets = NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
 
-        let stack = NSStackView(views: [scrollView, inputBar])
-        stack.orientation = .vertical
-        stack.spacing = 0
-        view = stack
+        view = PanelLayout.view(bar: inputBar, content: scrollView, barAt: .bottom)
     }
 
     /// Appends `text` to the console log and scrolls to the bottom.
