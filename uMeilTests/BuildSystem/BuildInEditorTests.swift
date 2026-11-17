@@ -148,7 +148,7 @@ struct BuildInEditorTests {
         #expect(result == nil)
         #expect(controller.issues.statusLabel.stringValue == "Build failed")
         #expect(controller.issues.diagnostics.map(\.message) == [
-            "This folder has no uMeil project file (.umeil) to build."
+            "This folder has no uMeil project file (.umeil) or Keil project (.uvprojx) to build."
         ])
     }
 
