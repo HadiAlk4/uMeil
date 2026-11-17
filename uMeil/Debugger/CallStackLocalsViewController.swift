@@ -83,7 +83,9 @@ final class CallStackLocalsViewController: NSViewController, NSMenuItemValidatio
         outlineView.outlineTableColumn = outlineView.tableColumns.first
         outlineView.dataSource = self
         outlineView.delegate = self
-        outlineView.usesAlternatingRowBackgroundColors = true
+        // No alternating stripes: AppKit paints them below the last row too,
+        // and a stack only a frame or two deep looked like a list of empty rows.
+        outlineView.usesAlternatingRowBackgroundColors = false
         outlineView.rowHeight = 20
         outlineView.target = self
         outlineView.action = #selector(rowClicked(_:))
