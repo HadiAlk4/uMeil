@@ -5,11 +5,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindowController: MainWindowController?
     private lazy var toolchainWindowController = ToolchainWindowController()
     private lazy var serialMonitorWindowController = SerialMonitorWindowController()
+    private var softwareUpdater: SoftwareUpdater?
     /// What the app was launched to open, instead of the last folder.
     private var launchItem: URL?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.mainMenu = MainMenu.make(appName: AppInfo.name)
+        let updater = SoftwareUpdater()
+        softwareUpdater = updater
+        NSApp.mainMenu = MainMenu.make(appName: AppInfo.name, updater: updater)
 
         let controller = MainWindowController()
         controller.showWindow(nil)
