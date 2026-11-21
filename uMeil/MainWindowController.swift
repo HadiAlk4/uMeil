@@ -25,6 +25,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     /// Runs debug sessions and keeps the breakpoints.
     let debugger = DebugController()
     let debugPanels = DebugPanelsController()
+    /// Floats "Build Succeeded" and "Flashed to Board" over the editor.
+    let notice = NoticeView()
 
     /// The outcome of the most recent build of the open folder.
     private(set) var lastBuild: BuildResult?
@@ -275,7 +277,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     // MARK: - Building
 
     /// Product > Build
-    @objc func buildProject(_ sender: Any?) { Task { await build() } }
+    @objc func buildProject(_ sender: Any?) { Task { await buildShowingNotice() } }
 
     /// Saves the open file, builds the project in the open folder, and shows
     /// the outcome in the issues panel and the editor's gutter.

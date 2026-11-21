@@ -60,6 +60,7 @@ extension MainWindowController {
         // Set before showing the result, so a stage that arrives late cannot replace it.
         isFlashing = false
         issues.show(result)
+        showNotice(NoticeText.flash(result))
         return result
     }
 
@@ -109,6 +110,7 @@ extension MainWindowController {
         }
         isFlashing = false
         issues.show(result)
+        showNotice(NoticeText.flash(result))
         return result
     }
 
