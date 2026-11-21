@@ -86,6 +86,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         showSidebar(false)
         editor.onModifiedChanged = { [weak self] _ in self?.updateTitle() }
         issues.onSelect = { [weak self] diagnostic in self?.show(diagnostic) }
+        issues.onActivity = { [weak self] activity in self?.toolbar.activity.show(activity) }
+        toolbar.isActionEnabled = { [weak self] action in self?.isEnabled(action) ?? false }
         configureCodeIntelligence()
         configureBottomPanelCallbacks()
         window.toolbar = toolbar.toolbar
@@ -256,7 +258,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool { isEnabled(item.action) }
 
     /// Whether the command a menu or toolbar item sends can run right now.
-    private func isEnabled(_ action: Selector?) -> Bool {
+    func isEnabled(_ action: Selector?) -> Bool {
         switch action {
         case #selector(saveDocument(_:)):
             editor.document != nil

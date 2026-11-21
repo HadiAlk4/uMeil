@@ -47,6 +47,11 @@ struct DebugInEditorTests {
         await waitUntil("the program stops at main") { window.controller.debugger.isStopped }
     }
 
+    /// The actions of the buttons in the window's toolbar right now.
+    private func toolbarActions(of controller: MainWindowController) -> [Selector] {
+        controller.toolbar.visibleActions
+    }
+
     private func isEnabled(_ action: Selector, in controller: MainWindowController) -> Bool {
         controller.validateMenuItem(NSMenuItem(title: "", action: action, keyEquivalent: ""))
     }
@@ -78,6 +83,9 @@ struct DebugInEditorTests {
         #expect(controller.editor.executionLine == 21)
         #expect(controller.editor.isReadOnly)
         #expect(controller.issues.statusLabel.stringValue == "Stopped at main.c:21 in main")
+        #expect(controller.toolbar.activity.activity == Activity(text: "Stopped at main.c:21 in main", kind: .info))
+        #expect(controller.toolbar.isShowingDebugControls)
+        #expect(toolbarActions(of: controller).contains(#selector(MainWindowController.debugStepOver(_:))))
         #expect(controller.isIssuesPanelVisible)
         // GDB was given the image the build just made.
         let image = try #require(controller.lastBuild?.elf)
@@ -98,6 +106,9 @@ struct DebugInEditorTests {
         #expect(controller.editor.executableLines.isEmpty)
         #expect(!controller.editor.isReadOnly)
         #expect(controller.issues.statusLabel.stringValue == "Debug session ended")
+        #expect(!controller.toolbar.isShowingDebugControls)
+        #expect(!toolbarActions(of: controller).contains(#selector(MainWindowController.debugStepOver(_:))))
+        #expect(toolbarActions(of: controller).contains(#selector(MainWindowController.toggleDebugging(_:))))
     }
 
     @Test func aBuildWithErrorsDoesNotStartASession() async throws {
@@ -116,6 +127,8 @@ struct DebugInEditorTests {
         #expect(window.gdb.commands.isEmpty)
         #expect(!controller.editor.isReadOnly)
         #expect(controller.issues.statusLabel.stringValue.hasPrefix("Build failed"))
+        #expect(controller.toolbar.activity.activity.kind == .failed)
+        #expect(!controller.toolbar.isShowingDebugControls)
     }
 
     @Test func aStartWithoutABoardIsExplained() async throws {
@@ -325,24 +338,28 @@ extension DebugInEditorTests {
         #expect(isEnabled(breakpoint, in: controller))
         #expect(!isEnabled(build, in: controller))
         #expect(!isEnabled(flash, in: controller))
+        // The toolbar's buttons follow the same rules.
+        let stepOver = #selector(MainWindowController.debugStepOver(_:))
+        let stepOverButton = try #require(controller.toolbar.debugItem?.sessionButtons.first { $0.action == stepOver })
+        #expect(stepOverButton.isEnabled)
 
         // Running.
         controller.debugContinue(nil)
         await waitUntil("the program is running") { controller.debugger.state == .running }
         #expect(whileStopped.allSatisfy { !isEnabled($0, in: controller) })
+        #expect(!stepOverButton.isEnabled)
         #expect(isEnabled(pause, in: controller))
         #expect(isEnabled(toggle, in: controller))
         #expect(!isEnabled(breakpoint, in: controller))
     }
 
     @Test func theToolbarAndMenuOfferTheDebugCommands() throws {
-        let toolbar = MainToolbar()
-        let identifiers = toolbar.toolbarDefaultItemIdentifiers(toolbar.toolbar)
-        let actions = identifiers.compactMap {
-            toolbar.toolbar(toolbar.toolbar, itemForItemIdentifier: $0, willBeInsertedIntoToolbar: false)?.action
-        }
-        #expect(actions.contains(#selector(MainWindowController.toggleDebugging(_:))))
-        #expect(actions.contains(#selector(MainWindowController.debugStepOver(_:))))
+        let item = DebugControlsItem(itemIdentifier: .init("Debug"), isSessionActive: true)
+        #expect(item.visibleActions.contains(#selector(MainWindowController.toggleDebugging(_:))))
+        #expect(item.visibleActions.contains(#selector(MainWindowController.debugStepOver(_:))))
+
+        item.showSession(false)
+        #expect(item.visibleActions == [#selector(MainWindowController.toggleDebugging(_:))])
 
         let menu = MainMenu.make(appName: "uMeil")
         let debug = try #require(menu.items.first { $0.submenu?.title == "Debug" }?.submenu)

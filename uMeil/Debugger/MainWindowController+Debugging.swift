@@ -106,6 +106,7 @@ extension MainWindowController {
             issues.showDebugging(DebugSummary.statusText(for: state), isBusy: state == .starting)
         }
         debugPanels.setEditable(debugger.isStopped)
+        toolbar.showDebugControls(state != .idle)
         switch state {
         case .idle:
             editor.isReadOnly = false

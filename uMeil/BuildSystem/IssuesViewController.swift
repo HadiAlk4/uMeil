@@ -6,6 +6,8 @@ import AppKit
 final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     /// Called when the user picks a message that points at a file.
     var onSelect: ((Diagnostic) -> Void)?
+    /// Called with each change of status, for the toolbar to show.
+    var onActivity: ((Activity) -> Void)?
 
     private(set) var diagnostics: [Diagnostic] = []
 
@@ -101,21 +103,25 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
         loadViewIfNeeded()
         statusLabel.stringValue = "Building…"
         spinner.startAnimation(nil)
+        onActivity?(Activity(text: "Building…", kind: .working(progress: nil)))
     }
 
     /// Shows the outcome of a build. Notes are listed under the message they belong to.
     func show(_ result: BuildResult) {
         show(status: BuildSummary.statusText(for: result), diagnostics: result.diagnostics)
+        publish(Activity.outcome(of: result.diagnostics))
     }
 
     /// Shows a build that could not start at all, such as a missing compiler.
     func show(failure message: String) {
         show(status: "Build failed", diagnostics: [Diagnostic(severity: .error, message: message)])
+        publish(.failed)
     }
 
     /// Empties the list, for work that has nothing to do with the last build.
     func clear() {
         show(status: "", diagnostics: [])
+        onActivity?(.idle)
     }
 
     /// Shows that a flash has reached `stage`. The messages from the build
@@ -126,6 +132,7 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
         statusLabel.stringValue = stage.title
         progressBar.isHidden = false
         progressBar.doubleValue = stage.progress
+        onActivity?(Activity(text: stage.title, kind: .working(progress: stage.progress)))
     }
 
     /// Shows the outcome of a flash. A failure is listed first, above any
@@ -136,6 +143,7 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
             diagnostics.insert(Diagnostic(severity: .error, message: failure.localizedDescription), at: 0)
         }
         show(status: FlashSummary.statusText(for: result), diagnostics: diagnostics)
+        publish(result.failure == nil ? .succeeded : .failed)
     }
 
     /// Shows what the debugger is doing. The messages from the build that
@@ -145,12 +153,19 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
         if isBusy {
             spinner.startAnimation(nil)
         }
+        publish(isBusy ? .working(progress: nil) : .info)
     }
 
     /// Shows something the debugger could not do, listed first, above any
     /// warnings from the build.
     func show(debugFailure message: String, status: String) {
         show(status: status, diagnostics: [Diagnostic(severity: .error, message: message)] + diagnostics)
+        publish(.failed)
+    }
+
+    /// Tells the toolbar about the status just shown.
+    private func publish(_ kind: Activity.Kind) {
+        onActivity?(Activity(text: statusLabel.stringValue, kind: kind))
     }
 
     private func show(status: String, diagnostics: [Diagnostic]) {
