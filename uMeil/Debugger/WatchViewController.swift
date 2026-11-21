@@ -14,6 +14,8 @@ final class WatchViewController: NSViewController, NSTableViewDataSource, NSTabl
 
     private(set) var entries: [Entry] = []
     private var previousValues: [String: String] = [:]
+    /// When the values last changed, so their cells flash only then.
+    private var updatedAt: Date?
 
     /// Called when watch expressions change and should be re-evaluated.
     var onExpressionsChanged: (([String]) -> Void)?
@@ -100,6 +102,7 @@ final class WatchViewController: NSViewController, NSTableViewDataSource, NSTabl
             entries[idx].isChanged = oldValue != nil && oldValue != newValue
             previousValues[expr] = newValue
         }
+        updatedAt = Date()
         tableView.reloadData()
     }
 
@@ -129,12 +132,10 @@ final class WatchViewController: NSViewController, NSTableViewDataSource, NSTabl
         let entry = entries[row]
         let isValue = identifier.rawValue == "value"
         let label = NSTextField(labelWithString: isValue ? entry.value : entry.expression)
-        label.font = EditorTheme.font
+        label.font = DebugTableStyle.font
         label.lineBreakMode = .byTruncatingTail
         if isValue && entry.isChanged {
-            label.textColor = .systemTeal
-            label.drawsBackground = true
-            label.backgroundColor = NSColor.systemTeal.withAlphaComponent(0.15)
+            DebugTableStyle.markChanged(label, flash: DebugTableStyle.shouldFlash(since: updatedAt))
         }
         let cell = NSTableCellView()
         cell.identifier = identifier

@@ -25,6 +25,8 @@ final class RegistersViewController: NSViewController, NSOutlineViewDataSource, 
     /// Register names (`r0`, `pc`, etc.) whose value changed on the most recent stop.
     private(set) var changedNames: Set<String> = []
     private var previousValues: [String: UInt64] = [:]
+    /// When the values last changed, so their cells flash only then.
+    private var updatedAt: Date?
 
     private static let coreOrder: [(key: String, label: String)] = [
         ("r0", "R0"), ("r1", "R1"), ("r2", "R2"), ("r3", "R3"),
@@ -87,6 +89,7 @@ final class RegistersViewController: NSViewController, NSOutlineViewDataSource, 
         }
         previousValues = byName
         changedNames = changed
+        updatedAt = Date()
         nodes = buildNodes(from: byName, changed: changed)
         outlineView.reloadData()
         if let stateGroup = nodes.last {
@@ -156,11 +159,9 @@ final class RegistersViewController: NSViewController, NSOutlineViewDataSource, 
         let isName = identifier.rawValue == "register"
         let text = isName ? node.name : node.value
         let label = NSTextField(labelWithString: text)
-        label.font = isName ? .systemFont(ofSize: 12) : EditorTheme.font
+        label.font = DebugTableStyle.font
         if !isName && node.isChanged {
-            label.textColor = .systemTeal
-            label.drawsBackground = true
-            label.backgroundColor = NSColor.systemTeal.withAlphaComponent(0.15)
+            DebugTableStyle.markChanged(label, flash: DebugTableStyle.shouldFlash(since: updatedAt))
         }
         let cell = NSTableCellView()
         cell.identifier = identifier

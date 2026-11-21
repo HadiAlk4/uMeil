@@ -30,11 +30,11 @@ extension PeripheralsViewController: NSOutlineViewDataSource, NSOutlineViewDeleg
         switch identifier.rawValue {
         case "name":
             label = NSTextField(labelWithString: node.name)
-            label.font = .systemFont(ofSize: 12)
+            label.font = DebugTableStyle.font
             label.toolTip = node.field?.description ?? node.register.description
         case "value":
             label = NSTextField(labelWithString: valueText(for: node))
-            label.font = EditorTheme.font
+            label.font = DebugTableStyle.font
             if case .unreadable(let reason) = readings[node.register.name] {
                 label.toolTip = reason
                 label.textColor = .secondaryLabelColor
@@ -45,9 +45,7 @@ extension PeripheralsViewController: NSOutlineViewDataSource, NSOutlineViewDeleg
                     : nil
             }
             if changedRegisters.contains(node.register.name) {
-                label.textColor = .systemTeal
-                label.drawsBackground = true
-                label.backgroundColor = NSColor.systemTeal.withAlphaComponent(0.15)
+                DebugTableStyle.markChanged(label, flash: DebugTableStyle.shouldFlash(since: updatedAt))
             }
             if isEditable, isWritable(node) {
                 label.isEditable = true
@@ -55,7 +53,7 @@ extension PeripheralsViewController: NSOutlineViewDataSource, NSOutlineViewDeleg
             }
         default:
             label = NSTextField(labelWithString: locationText(for: node))
-            label.font = EditorTheme.font
+            label.font = DebugTableStyle.font
             label.textColor = .secondaryLabelColor
         }
         label.lineBreakMode = .byTruncatingTail

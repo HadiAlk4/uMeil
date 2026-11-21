@@ -53,14 +53,14 @@ extension MainWindowController {
     /// Expands the bottom panel and brings the build/flash issues list forward.
     func showIssuesPanel() {
         bottomPanel.select(.issues)
-        bottomPanelItem.isCollapsed = false
+        setBottomPanelCollapsed(false)
     }
 
     /// Expands the bottom panel, switches to the terminal, and starts the shell
     /// lazily if it has not been started yet.
     func showTerminalPanel() {
         bottomPanel.select(.terminal)
-        bottomPanelItem.isCollapsed = false
+        setBottomPanelCollapsed(false)
         terminal.startIfNeeded(folder: folder)
         window?.makeFirstResponder(terminal.focusableView)
     }
@@ -87,10 +87,15 @@ extension MainWindowController {
         // NSSplitViewController moves firstResponder to the window when a pane
         // collapses, so check ownership before collapsing.
         let wasInBottomPanel = isFirstResponderInBottomPanel
-        bottomPanelItem.isCollapsed = true
+        setBottomPanelCollapsed(true)
         if wasInBottomPanel {
             restoreEditorFocus()
         }
+    }
+
+    /// Slides the bottom panel open or closed.
+    private func setBottomPanelCollapsed(_ collapsed: Bool) {
+        PanelAnimation.setCollapsed(collapsed, [bottomPanelItem], in: window)
     }
 
     func configureBottomPanelCallbacks() {

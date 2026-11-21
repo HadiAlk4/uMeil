@@ -125,7 +125,7 @@ final class DisassemblyViewController: NSViewController, NSTableViewDataSource, 
         }
 
         let label = NSTextField(labelWithString: text)
-        label.font = EditorTheme.font
+        label.font = DebugTableStyle.font
         label.textColor = textColor
         label.lineBreakMode = .byTruncatingTail
 

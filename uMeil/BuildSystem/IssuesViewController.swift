@@ -6,6 +6,8 @@ import AppKit
 final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     /// Called when the user picks a message that points at a file.
     var onSelect: ((Diagnostic) -> Void)?
+    /// Called whenever the list of messages is replaced.
+    var onDiagnosticsChange: (() -> Void)?
     /// Called with each change of status, for the toolbar to show.
     var onActivity: ((Activity) -> Void)?
 
@@ -175,6 +177,7 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
         statusLabel.stringValue = status
         self.diagnostics = diagnostics
         tableView.reloadData()
+        onDiagnosticsChange?()
     }
 
     @objc private func rowClicked(_ sender: Any?) {

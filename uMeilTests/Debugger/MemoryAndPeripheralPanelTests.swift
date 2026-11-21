@@ -59,7 +59,7 @@ struct MemoryAndPeripheralPanelTests {
 
     @Test func peripheralsTabSitsBesideMemoryAndStartsOnTheLEDPort() async throws {
         let panels = try await loadedPanels()
-        #expect(panels.auxiliaryTabs.tabViewItems.map(\.label) == ["Watch 1", "Memory 1", "Peripherals", "Command"])
+        #expect(panels.auxiliaryTabs.tabViewItems.map(\.label) == ["Watch 1", "Memory 1", "Peripherals"])
         #expect(panels.peripherals.selectedPeripheral?.name == "GPIO_PORTN")
         #expect(panels.peripherals.nodes.first?.name == "DATA")
         #expect(panels.peripherals.locationText(for: panels.peripherals.nodes[0]) == "0x400643FC")
@@ -209,7 +209,7 @@ struct DebugTabLayoutTests {
         return view.subviews.lazy.compactMap { scrollView(in: $0) }.first
     }
 
-    @Test(arguments: ["Watch 1", "Memory 1", "Peripherals", "Command"])
+    @Test(arguments: ["Watch 1", "Memory 1", "Peripherals"])
     func eachTabsListFillsTheTab(_ title: String) throws {
         let panels = DebugPanelsController()
         let tab = try #require(panels.auxiliaryTabs.tabViewItems.first { $0.label == title })

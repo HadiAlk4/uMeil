@@ -14,6 +14,11 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
 
     private(set) var currentAddress: UInt64?
     private(set) var rows: [DebugValueFormatter.MemoryRow] = []
+    /// Addresses whose byte differs from the last time it was shown.
+    private(set) var changedAddresses: Set<UInt64> = []
+    private var previousBytes: [UInt64: UInt8] = [:]
+    /// When the bytes last changed, so their cells flash only then.
+    private var updatedAt: Date?
     /// How many bytes to read from `currentAddress`.
     private(set) var byteCount = 64
     /// Bytes can be typed only while the program is stopped.
@@ -90,12 +95,31 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
             addressField.stringValue = DebugValueFormatter.hex32(address)
         }
         rows = DebugValueFormatter.memoryRows(from: bytes, baseAddress: address)
+        var shown: [UInt64: UInt8] = [:]
+        for (offset, byte) in bytes.enumerated() {
+            shown[address + UInt64(offset)] = byte
+        }
+        // Only bytes seen before can have changed; a new address starts clean.
+        changedAddresses = Set(shown.compactMap { address, byte in
+            previousBytes[address].map { $0 != byte } == true ? address : nil
+        })
+        previousBytes = shown
+        updatedAt = Date()
         tableView.reloadData()
+    }
+
+    /// The positions in `row` of bytes that changed, counting from 0.
+    func changedOffsets(inRow row: Int) -> Set<Int> {
+        guard rows.indices.contains(row) else { return [] }
+        let start = rows[row].address
+        return Set(rows[row].bytes.indices.filter { changedAddresses.contains(start + UInt64($0)) })
     }
 
     func clear() {
         currentAddress = nil
         rows = []
+        changedAddresses = []
+        previousBytes = [:]
         isEditable = false
         if isViewLoaded {
             tableView.reloadData()
@@ -157,11 +181,21 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
         }
 
         let label = NSTextField(labelWithString: text)
-        label.font = EditorTheme.font
+        label.font = DebugTableStyle.font
         label.lineBreakMode = .byTruncatingTail
-        if identifier.rawValue == "hex", isEditable {
-            label.isEditable = true
-            label.delegate = self
+        if identifier.rawValue == "hex" {
+            let changed = changedOffsets(inRow: row)
+            if !changed.isEmpty {
+                // Only the changed bytes are red, not the whole row.
+                label.attributedStringValue = DebugTableStyle.hexBytes(text, changedOffsets: changed)
+                if DebugTableStyle.shouldFlash(since: updatedAt) {
+                    DebugTableStyle.flash(label)
+                }
+            }
+            if isEditable {
+                label.isEditable = true
+                label.delegate = self
+            }
         }
 
         let cell = NSTableCellView()
