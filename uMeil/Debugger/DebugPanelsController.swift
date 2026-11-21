@@ -1,8 +1,9 @@
 import AppKit
 
 /// Coordinates the multi-pane debugging layout (`Regs`, `Call Stack + Locals`,
-/// `Disassembly`, `Watch 1`, `Memory 1`, `Peripherals`, `Command`) and
-/// refreshes them when the program stops.
+/// `Disassembly`, `Watch 1`, `Memory 1`, `Peripherals`) and refreshes them
+/// when the program stops. `Command`, the debugger's console, lives in the
+/// bottom panel's Debug tab.
 @MainActor
 final class DebugPanelsController {
     let registers = RegistersViewController()
@@ -25,7 +26,7 @@ final class DebugPanelsController {
     var svdFile = SVDDevice.bundledFile()
 
     init() {
-        for panel in [watch, memory, peripherals, command] as [NSViewController] {
+        for panel in [watch, memory, peripherals] as [NSViewController] {
             let tab = NSTabViewItem(viewController: panel)
             tab.label = panel.title ?? ""
             auxiliaryTabs.addTabViewItem(tab)

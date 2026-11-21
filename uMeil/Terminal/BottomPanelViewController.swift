@@ -1,22 +1,26 @@
 import AppKit
 
-/// Hosts the collapsible bottom workspace tabs (`Issues` and `Terminal`) below
-/// the code editor.
+/// Hosts the collapsible bottom workspace tabs (`Issues`, `Terminal` and
+/// `Debug`) below the code editor.
 final class BottomPanelViewController: NSViewController {
     enum Tab: Int, CaseIterable {
         case issues
         case terminal
+        case debug
 
         var title: String {
             switch self {
             case .issues: "Issues"
             case .terminal: "Terminal"
+            case .debug: "Debug"
             }
         }
     }
 
     let issues: IssuesViewController
     let terminal: TerminalViewController
+    /// The debugger's console: GDB and OpenOCD output, and a field for commands.
+    let debugConsole: CommandViewController
 
     private(set) var selectedTab: Tab = .issues
     var onSelectTab: ((Tab) -> Void)?
@@ -51,10 +55,12 @@ final class BottomPanelViewController: NSViewController {
     private let contentContainer = NSView()
     private var activeConstraints: [NSLayoutConstraint] = []
 
-    init(issues: IssuesViewController, terminal: TerminalViewController) {
+    init(issues: IssuesViewController, terminal: TerminalViewController, debugConsole: CommandViewController) {
         self.issues = issues
         self.terminal = terminal
+        self.debugConsole = debugConsole
         super.init(nibName: nil, bundle: nil)
+        issues.onDiagnosticsChange = { [weak self] in self?.updateTabTitles() }
     }
 
     @available(*, unavailable)
@@ -63,7 +69,7 @@ final class BottomPanelViewController: NSViewController {
     }
 
     override func loadView() {
-        tabControl.segmentStyle = .texturedRounded
+        tabControl.segmentStyle = .rounded
         tabControl.controlSize = .small
         tabControl.selectedSegment = selectedTab.rawValue
         tabControl.target = self
@@ -109,8 +115,31 @@ final class BottomPanelViewController: NSViewController {
 
         addChild(issues)
         addChild(terminal)
+        addChild(debugConsole)
         terminal.onStatusChange = { [weak self] in self?.updateTerminalHeader() }
+        updateTabTitles()
         applyTab(selectedTab)
+    }
+
+    /// The label on each tab. Issues shows how many errors and warnings the
+    /// last build reported, as in "Issues 3".
+    func title(for tab: Tab) -> String {
+        switch tab {
+        case .issues:
+            let count = issues.diagnostics.count { $0.severity != .note }
+            return count > 0 ? "\(tab.title) \(count)" : tab.title
+        case .terminal, .debug:
+            return tab.title
+        }
+    }
+
+    private func updateTabTitles() {
+        guard isViewLoaded else { return }
+        for tab in Tab.allCases {
+            tabControl.setLabel(title(for: tab), forSegment: tab.rawValue)
+            // Zero lets the segment grow and shrink with its label.
+            tabControl.setWidth(0, forSegment: tab.rawValue)
+        }
     }
 
     func select(_ tab: Tab) {
@@ -127,7 +156,11 @@ final class BottomPanelViewController: NSViewController {
             subview.removeFromSuperview()
         }
 
-        let child: NSViewController = tab == .issues ? issues : terminal
+        let child: NSViewController = switch tab {
+        case .issues: issues
+        case .terminal: terminal
+        case .debug: debugConsole
+        }
         let childView = child.view
         childView.translatesAutoresizingMaskIntoConstraints = false
         contentContainer.addSubview(childView)

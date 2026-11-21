@@ -59,7 +59,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         self.defaults = defaults
         self.boardMonitor = boardMonitor
         self.terminal = TerminalViewController(session: makeTerminalSession())
-        self.bottomPanel = BottomPanelViewController(issues: issues, terminal: terminal)
+        self.bottomPanel = BottomPanelViewController(
+            issues: issues, terminal: terminal, debugConsole: debugPanels.command
+        )
 
         let bottomPanelItem = NSSplitViewItem(viewController: bottomPanel)
         bottomPanelItem.canCollapse = true
