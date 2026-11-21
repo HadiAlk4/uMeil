@@ -31,6 +31,8 @@ final class PeripheralsViewController: NSViewController {
     private(set) var readings: [String: RegisterReading] = [:]
     /// Registers whose value changed since the previous read.
     private(set) var changedRegisters: Set<String> = []
+    /// When the values last changed, so their cells flash only then.
+    var updatedAt: Date?
     /// Values can be typed only while the program is stopped.
     var isEditable = false {
         didSet {
@@ -196,6 +198,7 @@ final class PeripheralsViewController: NSViewController {
         }
         readings = merged
         changedRegisters = changed
+        updatedAt = Date()
         let unreadable = newReadings.values.contains { if case .unreadable = $0 { true } else { false } }
         showMessage(unreadable ? "Some registers could not be read. Is the peripheral's clock on?" : "")
         outlineView.reloadData()

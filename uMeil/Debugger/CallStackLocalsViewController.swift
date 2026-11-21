@@ -51,6 +51,8 @@ final class CallStackLocalsViewController: NSViewController, NSMenuItemValidatio
     /// Variable keys (`"<level>:<name>"`) whose value changed on the most recent stop.
     private(set) var changedKeys: Set<String> = []
     private var previousValues: [String: String] = [:]
+    /// When the values last changed, so their cells flash only then.
+    private var updatedAt: Date?
 
     /// When true (the default), integers are formatted in 32-bit two's complement hex.
     var useHexadecimal = true {
@@ -144,6 +146,7 @@ final class CallStackLocalsViewController: NSViewController, NSMenuItemValidatio
         }
         previousValues = currentValues
         changedKeys = changed
+        updatedAt = Date()
         outlineView.reloadData()
         for node in frameNodes {
             outlineView.expandItem(node)
@@ -249,14 +252,11 @@ extension CallStackLocalsViewController: NSOutlineViewDataSource, NSOutlineViewD
         guard let identifier = tableColumn?.identifier else { return nil }
         let text: String
         var isChanged = false
-        var isMonospaced = false
 
         if let frame = item as? FrameNode {
             switch identifier.rawValue {
             case "name": text = frame.name
-            case "value":
-                text = frame.valueText
-                isMonospaced = true
+            case "value": text = frame.valueText
             default: text = frame.typeText
             }
         } else if let variable = item as? VariableNode {
@@ -269,29 +269,25 @@ extension CallStackLocalsViewController: NSOutlineViewDataSource, NSOutlineViewD
                     hexadecimal: useHexadecimal
                 )
                 isChanged = variable.isChanged
-                isMonospaced = true
             default: text = variable.displayType
             }
         } else {
             return nil
         }
 
-        return makeCell(identifier: identifier, text: text, isChanged: isChanged, isMonospaced: isMonospaced)
+        return makeCell(identifier: identifier, text: text, isChanged: isChanged)
     }
 
     private func makeCell(
         identifier: NSUserInterfaceItemIdentifier,
         text: String,
-        isChanged: Bool,
-        isMonospaced: Bool
+        isChanged: Bool
     ) -> NSTableCellView {
         let label = NSTextField(labelWithString: text)
-        label.font = isMonospaced ? EditorTheme.font : .systemFont(ofSize: 12)
+        label.font = DebugTableStyle.font
         label.lineBreakMode = .byTruncatingTail
         if isChanged {
-            label.textColor = .systemTeal
-            label.drawsBackground = true
-            label.backgroundColor = NSColor.systemTeal.withAlphaComponent(0.15)
+            DebugTableStyle.markChanged(label, flash: DebugTableStyle.shouldFlash(since: updatedAt))
         }
         let cell = NSTableCellView()
         cell.identifier = identifier
