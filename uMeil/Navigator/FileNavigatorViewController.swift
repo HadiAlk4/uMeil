@@ -1,15 +1,21 @@
 import AppKit
 
-/// The sidebar that shows the open folder as a tree of files.
+/// The sidebar that shows the open folder as a tree of files. When the folder
+/// holds a project, its sources, startup code and linker script are listed
+/// first under their own headings, above the whole folder.
 final class FileNavigatorViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
     /// Called when the user selects a file (not a folder).
     var onSelectFile: ((URL) -> Void)?
 
     /// The folder being shown, or `nil` when no folder is open.
     private(set) var root: FileNode?
+    /// The headings shown at the top level. Empty when the folder has no
+    /// project, in which case the folder's contents are the top level.
+    private(set) var sections: [NavigatorSection] = []
 
     let outlineView = NSOutlineView()
     private static let cellIdentifier = NSUserInterfaceItemIdentifier("FileCell")
+    private static let headerIdentifier = NSUserInterfaceItemIdentifier("HeaderCell")
 
     /// True while the selection is being changed in code, so that it is not
     /// reported as the user choosing a file.
@@ -46,13 +52,29 @@ final class FileNavigatorViewController: NSViewController, NSOutlineViewDataSour
     func showFolder(_ folder: URL?) {
         loadViewIfNeeded()
         root = folder.map { FileNode(url: $0, isDirectory: true) }
-        outlineView.reloadData()
+        reloadSections()
     }
 
     /// Re-reads the folder from disk, keeping the tree's root.
     func reloadFromDisk() {
         root?.reload()
+        reloadSections()
+    }
+
+    private func reloadSections() {
+        sections = root.map(Self.makeSections(for:)) ?? []
         outlineView.reloadData()
+        sections.forEach { outlineView.expandItem($0) }
+    }
+
+    private static func makeSections(for root: FileNode) -> [NavigatorSection] {
+        guard let projectFile = BuildSummary.projectFile(in: root.url),
+              let project = try? ProjectFile.load(from: projectFile)
+        else { return [] }
+        let projectSections = NavigatorSection.projectFiles(of: project, in: root.url).map { group in
+            NavigatorSection(kind: group.kind, nodes: group.files.map { FileNode(url: $0, isDirectory: false) })
+        }
+        return projectSections + [NavigatorSection(kind: .files, nodes: root.children)]
     }
 
     /// Selects `file` in the tree (expanding its folders), or clears the
@@ -61,7 +83,18 @@ final class FileNavigatorViewController: NSViewController, NSOutlineViewDataSour
         isSelectingInCode = true
         defer { isSelectingInCode = false }
 
-        guard let file, let root, let node = root.node(for: file) else {
+        guard let file, let root else {
+            outlineView.deselectAll(nil)
+            return
+        }
+        // A project's own files are picked under their heading, not deep in the folder.
+        let wanted = file.standardizedFileURL
+        if let listed = sections.lazy.filter({ $0.kind != .files }).flatMap(\.nodes)
+            .first(where: { $0.url.standardizedFileURL == wanted }) {
+            selectRow(of: listed)
+            return
+        }
+        guard let node = root.node(for: file) else {
             outlineView.deselectAll(nil)
             return
         }
@@ -76,7 +109,10 @@ final class FileNavigatorViewController: NSViewController, NSOutlineViewDataSour
             current = next
         }
         ancestors.forEach { outlineView.expandItem($0) }
+        selectRow(of: node)
+    }
 
+    private func selectRow(of node: FileNode) {
         let row = outlineView.row(forItem: node)
         guard row >= 0 else { return }
         outlineView.selectRowIndexes([row], byExtendingSelection: false)
@@ -85,26 +121,47 @@ final class FileNavigatorViewController: NSViewController, NSOutlineViewDataSour
 
     // MARK: - NSOutlineViewDataSource
 
-    private func node(_ item: Any?) -> FileNode? {
-        item == nil ? root : item as? FileNode
+    /// The rows under `item`: the headings or the folder at the top level,
+    /// a heading's files, or a folder's contents.
+    private func children(of item: Any?) -> [Any] {
+        switch item {
+        case nil: sections.isEmpty ? root?.children ?? [] : sections
+        case let section as NavigatorSection: section.nodes
+        case let node as FileNode: node.children
+        default: []
+        }
     }
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        node(item)?.children.count ?? 0
+        children(of: item).count
     }
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
         // AppKit only asks for indexes below the count reported above.
-        node(item)?.children[index] as Any
+        children(of: item)[index]
     }
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
-        (item as? FileNode)?.isDirectory ?? false
+        item is NavigatorSection || (item as? FileNode)?.isDirectory == true
     }
 
     // MARK: - NSOutlineViewDelegate
 
+    func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
+        item is NavigatorSection
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
+        item is FileNode
+    }
+
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+        if let section = item as? NavigatorSection {
+            let cell = outlineView.makeView(withIdentifier: Self.headerIdentifier, owner: self) as? NSTableCellView
+                ?? Self.makeHeaderCell()
+            cell.textField?.stringValue = section.title
+            return cell
+        }
         guard let node = item as? FileNode else { return nil }
 
         let cell = outlineView.makeView(withIdentifier: Self.cellIdentifier, owner: self) as? NSTableCellView
@@ -122,6 +179,24 @@ final class FileNavigatorViewController: NSViewController, NSOutlineViewDataSour
               !node.isDirectory
         else { return }
         onSelectFile?(node.url)
+    }
+
+    private static func makeHeaderCell() -> NSTableCellView {
+        let label = NSTextField(labelWithString: "")
+        label.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
+        label.textColor = .secondaryLabelColor
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        let cell = NSTableCellView()
+        cell.identifier = headerIdentifier
+        cell.textField = label
+        cell.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
+            label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -2),
+            label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+        ])
+        return cell
     }
 
     private static func makeCell() -> NSTableCellView {
