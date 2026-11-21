@@ -48,35 +48,53 @@ final class DebugPanelsController {
 
         disassemblyItem = NSSplitViewItem(viewController: disassembly)
         disassemblyItem.minimumThickness = 110
+
+        // Collapsing is how they slide in and out when a session starts and ends.
+        for item in [inspectorItem, disassemblyItem] {
+            item.canCollapse = true
+        }
     }
 
     /// Transitions the window between the standard editing layout and the
-    /// multi-pane debugging perspective (`FR-1.2`).
+    /// multi-pane debugging perspective (`FR-1.2`). On screen, the panes
+    /// slide in and out rather than appearing at once.
     func setLayoutVisible(
         _ visible: Bool,
         mainSplit: NSSplitViewController,
         editorSplit: NSSplitViewController
     ) {
+        let window = mainSplit.view.window
+        let items = [disassemblyItem, inspectorItem]
         if visible, !isDebugLayoutVisible {
             loadDeviceIfNeeded()
+            let animated = PanelAnimation.shouldAnimate(in: window)
             if !editorSplit.splitViewItems.contains(disassemblyItem) {
+                disassemblyItem.isCollapsed = animated
                 let index = min(1, editorSplit.splitViewItems.count)
                 editorSplit.insertSplitViewItem(disassemblyItem, at: index)
             }
             if !mainSplit.splitViewItems.contains(inspectorItem) {
+                inspectorItem.isCollapsed = animated
                 mainSplit.addSplitViewItem(inspectorItem)
             }
             isDebugLayoutVisible = true
+            PanelAnimation.setCollapsed(false, items, in: window)
         } else if !visible, isDebugLayoutVisible {
             cancelRefresh()
-            if editorSplit.splitViewItems.contains(disassemblyItem) {
-                editorSplit.removeSplitViewItem(disassemblyItem)
-            }
-            if mainSplit.splitViewItems.contains(inspectorItem) {
-                mainSplit.removeSplitViewItem(inspectorItem)
-            }
             isDebugLayoutVisible = false
             clear()
+            PanelAnimation.setCollapsed(true, items, in: window) { [weak self] in
+                // A new session may have started while the panes slid away.
+                guard let self, !isDebugLayoutVisible else { return }
+                if editorSplit.splitViewItems.contains(disassemblyItem) {
+                    editorSplit.removeSplitViewItem(disassemblyItem)
+                }
+                if mainSplit.splitViewItems.contains(inspectorItem) {
+                    mainSplit.removeSplitViewItem(inspectorItem)
+                }
+                // Removed panes come back expanded next time.
+                items.forEach { $0.isCollapsed = false }
+            }
         }
     }
 
