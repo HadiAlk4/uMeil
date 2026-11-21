@@ -49,9 +49,14 @@ final class SwiftTermSessionView: LocalProcessTerminalView, TerminalSessionView 
         applyTheme()
     }
 
+    /// Uses the editor's background, text color and font, with ANSI colors
+    /// from the same family as its syntax colors.
     private func applyTheme() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             configureNativeColors()
+            installColors(TerminalTheme.ansiColors(isDark: TerminalTheme.isDark(effectiveAppearance)))
+            caretColor = .controlAccentColor
+            selectedTextBackgroundColor = .selectedTextBackgroundColor
         }
     }
 
