@@ -110,7 +110,9 @@ final class FileNavigatorViewController: NSViewController, NSOutlineViewDataSour
         let cell = outlineView.makeView(withIdentifier: Self.cellIdentifier, owner: self) as? NSTableCellView
             ?? Self.makeCell()
         cell.textField?.stringValue = node.name
-        cell.imageView?.image = NSWorkspace.shared.icon(forFile: node.url.path(percentEncoded: false))
+        let icon = FileIcon(name: node.name, isDirectory: node.isDirectory)
+        cell.imageView?.image = icon.image
+        cell.imageView?.contentTintColor = icon.color
         return cell
     }
 

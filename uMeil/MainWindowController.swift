@@ -50,6 +50,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     /// Where the last opened folder is remembered between launches.
     static let lastFolderDefaultsKey = "LastOpenedFolder"
     let defaults: UserDefaults
+    /// The folders listed on the welcome screen.
+    var recentProjects: RecentProjects { RecentProjects(defaults: defaults) }
 
     init(
         defaults: UserDefaults = .standard,
@@ -78,8 +80,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         window.delegate = self
 
         navigator.onSelectFile = { [weak self] url in self?.userSelectedFile(url) }
+        editor.welcomeView.onOpenRecent = { [weak self] url in self?.openRecentProject(url) }
+        editor.loadViewIfNeeded()
+        editor.welcomeView.showRecent(recentProjects.folders)
+        showSidebar(false)
         editor.onModifiedChanged = { [weak self] _ in self?.updateTitle() }
         issues.onSelect = { [weak self] diagnostic in self?.show(diagnostic) }
+        issues.onActivity = { [weak self] activity in self?.toolbar.activity.show(activity) }
+        toolbar.isActionEnabled = { [weak self] action in self?.isEnabled(action) ?? false }
         configureCodeIntelligence()
         configureBottomPanelCallbacks()
         window.toolbar = toolbar.toolbar
@@ -107,7 +115,42 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         editor.close(hasFolder: true)
         terminal.updateFolder(url)
         defaults.set(url.path(percentEncoded: false), forKey: Self.lastFolderDefaultsKey)
+        recentProjects.add(url)
+        showSidebar(true)
         updateTitle()
+    }
+
+    /// The file navigator is hidden on the welcome screen, which has nothing to list.
+    private func showSidebar(_ isShown: Bool) {
+        let split = window?.contentViewController as? NSSplitViewController
+        split?.splitViewItem(for: navigator)?.isCollapsed = !isShown
+    }
+
+    /// File > Close Folder: back to the welcome screen.
+    @objc func closeFolder(_ sender: Any?) {
+        guard folder != nil, confirmDiscardingChanges() else { return }
+        Task { await debugger.stop() }
+        folder = nil
+        lastBuild = nil
+        codeIntelligence?.folderClosed()
+        navigator.showFolder(nil)
+        editor.close(hasFolder: false)
+        editor.welcomeView.showRecent(recentProjects.folders)
+        terminal.updateFolder(nil)
+        showSidebar(false)
+        defaults.removeObject(forKey: Self.lastFolderDefaultsKey)
+        updateTitle()
+    }
+
+    /// Opens a project picked on the welcome screen, or drops it from the
+    /// list if it has been moved or deleted since.
+    func openRecentProject(_ url: URL) {
+        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
+            recentProjects.remove(url)
+            editor.welcomeView.showRecent(recentProjects.folders)
+            return
+        }
+        openItem(at: url)
     }
 
     /// File > Open Folder…
@@ -215,7 +258,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool { isEnabled(item.action) }
 
     /// Whether the command a menu or toolbar item sends can run right now.
-    private func isEnabled(_ action: Selector?) -> Bool {
+    func isEnabled(_ action: Selector?) -> Bool {
         switch action {
         case #selector(saveDocument(_:)):
             editor.document != nil
@@ -227,46 +270,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
             !isBuilding && !isFlashing && !debugger.isActive
         case #selector(stopFlashing(_:)):
             isFlashing
+        case #selector(closeFolder(_:)):
+            folder != nil
         default:
             isDebugActionEnabled(action)
-        }
-    }
-
-    // MARK: - New projects
-
-    /// File > New Project…
-    @objc func newProject(_ sender: Any?) {
-        guard confirmDiscardingChanges() else { return }
-
-        let panel = NSSavePanel()
-        panel.title = "New Project"
-        panel.message = "Choose a name and location for a new Blinky project"
-        panel.nameFieldLabel = "Project Name:"
-        panel.nameFieldStringValue = "Blinky"
-        panel.prompt = "Create"
-        panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        do {
-            try createProject(named: url.lastPathComponent, in: url.deletingLastPathComponent())
-        } catch {
-            presentError(error)
-        }
-    }
-
-    /// Creates a project from the Blinky template in `parent/name`, opens
-    /// its folder, and shows its main source file.
-    func createProject(named name: String, in parent: URL) throws {
-        guard let template = try ProjectTemplate.all().first else {
-            throw CocoaError(.fileNoSuchFile)
-        }
-        let projectFile = try template.createProject(named: name, in: parent)
-        let projectFolder = projectFile.deletingLastPathComponent()
-        openFolder(projectFolder)
-
-        let project = try ProjectFile.load(from: projectFile)
-        if let main = project.sources.first {
-            openFile(projectFolder.appending(path: main))
         }
     }
 

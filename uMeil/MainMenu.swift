@@ -81,6 +81,11 @@ enum MainMenu {
         )
         menu.addItem(.separator())
         menu.addItem(withTitle: "Save", action: #selector(MainWindowController.saveDocument(_:)), keyEquivalent: "s")
+        menu.addItem(
+            withTitle: "Close Folder",
+            action: #selector(MainWindowController.closeFolder(_:)),
+            keyEquivalent: ""
+        )
         return menu
     }
 
