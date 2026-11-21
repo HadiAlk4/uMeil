@@ -69,6 +69,12 @@ final class CodeIntelligenceController {
         startSessionIfAvailable(in: folder)
     }
 
+    /// Stops `clangd` when the folder is closed and nothing replaces it.
+    func folderClosed() {
+        folder = nil
+        stop()
+    }
+
     func fileOpened(_ url: URL, text: String) {
         guard isEnabled else { return }
         guard SourceLanguage(url: url) == .c else {

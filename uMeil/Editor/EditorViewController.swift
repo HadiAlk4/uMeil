@@ -28,13 +28,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
     private let scrollView = NSScrollView()
     private let editorStack = NSStackView()
     private(set) var ruler: LineNumberRulerView?
-    private let placeholderLabel = NSTextField(labelWithString: "")
-    private lazy var openFolderButton = NSButton(
-        title: "Open Folder…",
-        target: nil,
-        action: #selector(MainWindowController.chooseFolder(_:))
-    )
-    private lazy var placeholder = NSStackView(views: [placeholderLabel, openFolderButton])
+    private let placeholderLabel = NSTextField(labelWithString: "Select a file to edit")
+    /// Shown instead of the editor while no folder is open.
+    let welcomeView = WelcomeView()
 
     /// True while the editor itself is replacing the text, so that loading a
     /// file is not mistaken for the user editing it.
@@ -144,16 +140,23 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
 
         placeholderLabel.font = .preferredFont(forTextStyle: .title3)
         placeholderLabel.textColor = .secondaryLabelColor
-        placeholder.orientation = .vertical
-        placeholder.spacing = 12
 
         editorStack.orientation = .vertical
         editorStack.spacing = 0
         editorStack.addArrangedSubview(scrollView)
         editorStack.addArrangedSubview(diagnosticBar)
 
+        view = makeContainer()
+
+        configureCodeIntelligence()
+        showPlaceholder(hasFolder: false)
+    }
+
+    /// Holds the editor, the "Select a file" hint, and the welcome screen,
+    /// one of which shows at a time.
+    private func makeContainer() -> NSView {
         let container = NSView()
-        for subview in [editorStack, placeholder] {
+        for subview in [editorStack, placeholderLabel, welcomeView] {
             subview.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(subview)
         }
@@ -162,13 +165,14 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
             editorStack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             editorStack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             editorStack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            placeholder.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            placeholder.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+            placeholderLabel.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            placeholderLabel.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            welcomeView.topAnchor.constraint(equalTo: container.topAnchor),
+            welcomeView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            welcomeView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            welcomeView.trailingAnchor.constraint(equalTo: container.trailingAnchor)
         ])
-        view = container
-
-        configureCodeIntelligence()
-        showPlaceholder(hasFolder: false)
+        return container
     }
 
     @objc private func editorDidScroll(_ notification: Notification) {
@@ -207,7 +211,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         setMarkers([:])
         clearDebugMarks()
         editorStack.isHidden = false
-        placeholder.isHidden = true
+        placeholderLabel.isHidden = true
+        welcomeView.isHidden = true
         scheduleHighlighting(delay: .zero)
         intelligence.onDocumentOpened?(loaded.url, loaded.text)
     }
@@ -249,10 +254,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
     }
 
     private func showPlaceholder(hasFolder: Bool) {
-        placeholderLabel.stringValue = hasFolder ? "Select a file to edit" : "Open a folder to get started"
-        openFolderButton.isHidden = hasFolder
         editorStack.isHidden = true
-        placeholder.isHidden = false
+        placeholderLabel.isHidden = !hasFolder
+        welcomeView.isHidden = hasFolder
     }
 
     // MARK: - NSTextViewDelegate
