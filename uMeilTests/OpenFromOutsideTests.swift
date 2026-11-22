@@ -179,7 +179,7 @@ struct OpenFromOutsideTests {
         #expect(open.action == #selector(MainWindowController.openDocument(_:)))
         #expect(open.keyEquivalent == "o")
         let openFolder = try #require(fileMenu.items.first { $0.title == "Open Folder…" })
-        #expect(openFolder.keyEquivalentModifierMask == [.command, .shift])
+        #expect(openFolder.keyEquivalentModifierMask == [.command, .option])
     }
 
     @Test func refusesToAutoOpenMainSourceEscapingTheProjectFolder() throws {

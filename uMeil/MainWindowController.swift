@@ -27,6 +27,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     let debugPanels = DebugPanelsController()
     /// Floats "Build Succeeded" and "Flashed to Board" over the editor.
     let notice = NoticeView()
+    /// File > Open Quickly: finds a project file by a few letters of its name.
+    let quickOpen = QuickOpenController()
 
     /// The outcome of the most recent build of the open folder.
     private(set) var lastBuild: BuildResult?
@@ -47,6 +49,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     var showImportNotes: (_ notes: [String], _ projectName: String) -> Void = { notes, name in
         MainWindowController.alertImportNotes(notes, for: name)
     }
+
+    /// Answers "Save changes?" in place of the alert. For tests.
+    var answerSavePrompt: ((_ files: [URL]) -> SaveChoice)?
 
     /// The folder open in the navigator, or `nil` before one is chosen.
     private(set) var folder: URL?
@@ -96,6 +101,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         toolbar.isActionEnabled = { [weak self] action in self?.isEnabled(action) ?? false }
         configureCodeIntelligence()
         configureBottomPanelCallbacks()
+        configureTabs()
         window.toolbar = toolbar.toolbar
         window.toolbarStyle = .unified
         startWatchingForBoard()
@@ -198,13 +204,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         }
     }
 
+    /// The file that was showing keeps its unsaved changes in its tab.
     private func userSelectedFile(_ url: URL) {
         guard url != editor.document?.url else { return }
-        guard confirmDiscardingChanges() else {
-            // Put the selection back on the file that is still open.
-            navigator.select(editor.document?.url)
-            return
-        }
         openFile(url)
     }
 
@@ -243,7 +245,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
             !isBuilding && !isFlashing && !debugger.isActive
         case #selector(stopFlashing(_:)):
             isFlashing
-        case #selector(closeFolder(_:)):
+        case #selector(closeFolder(_:)), #selector(openQuickly(_:)):
             folder != nil
         default:
             isDebugActionEnabled(action)
@@ -260,7 +262,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     @discardableResult
     func build() async -> BuildResult? {
         guard !isBuilding, let folder else { return nil }
-        if editor.isModified, !save() {
+        if !saveAllFiles() {
             return nil
         }
         showIssuesPanel()
@@ -288,6 +290,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
             lastBuild = result
             issues.show(result)
             refreshMarkers()
+            showMemoryUsage(of: result, projectFile: projectFile)
             codeIntelligence?.buildFinished(in: folder)
             return result
         } catch {
@@ -302,6 +305,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     private func refreshMarkers() {
         guard let file = editor.document?.url else { return }
         editor.setMarkers(BuildSummary.markers(for: file, in: lastBuild?.diagnostics ?? []))
+        editor.setBuildMessages(BuildSummary.lineMessages(for: file, in: lastBuild?.diagnostics ?? []))
     }
 
     /// Takes the editor to the place a build message points at.
@@ -355,22 +359,15 @@ extension MainWindowController {
 
     // MARK: - Unsaved changes
 
-    /// If the open file has unsaved changes, asks whether to save them.
+    /// If any open tab has unsaved changes, asks whether to save them.
     /// Returns false if the user cancels, or if saving fails.
     func confirmDiscardingChanges() -> Bool {
-        guard editor.isModified, let name = editor.document?.url.lastPathComponent else { return true }
-
-        let alert = NSAlert()
-        alert.messageText = "Do you want to save the changes you made to “\(name)”?"
-        alert.informativeText = "Your changes will be lost if you don’t save them."
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Cancel")
-        alert.addButton(withTitle: "Don’t Save")
-
-        switch alert.runModal() {
-        case .alertFirstButtonReturn: return save()
-        case .alertThirdButtonReturn: return true
-        default: return false
+        let unsaved = editor.unsavedFiles
+        guard !unsaved.isEmpty else { return true }
+        switch askToSave(unsaved) {
+        case .save: return saveAllFiles()
+        case .discard: return true
+        case .cancel: return false
         }
     }
 
@@ -386,7 +383,7 @@ extension MainWindowController {
 
     // MARK: - Title
 
-    private func updateTitle() {
+    func updateTitle() {
         guard let window else { return }
         let file = editor.document?.url
 

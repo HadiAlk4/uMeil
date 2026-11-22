@@ -16,6 +16,18 @@ final class EditorTextView: NSTextView {
 
     private var hoverTrackingArea: NSTrackingArea?
 
+    /// The last build's messages, drawn at the ends of their lines.
+    var inlineMessages: [InlineMessage] = [] {
+        didSet {
+            if inlineMessages != oldValue { needsDisplay = true }
+        }
+    }
+
+    override func drawBackground(in rect: NSRect) {
+        super.drawBackground(in: rect)
+        drawInlineMessages(in: rect)
+    }
+
     override func mouseDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if modifiers == .command, let offset = characterOffset(for: event) {

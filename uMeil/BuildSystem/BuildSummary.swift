@@ -20,6 +20,38 @@ enum BuildSummary {
         return markers
     }
 
+    /// What the editor writes at the end of a line the build complained about.
+    struct LineMessage: Equatable, Sendable {
+        var severity: Diagnostic.Severity
+        var text: String
+        /// Other errors and warnings on the same line, not shown.
+        var moreCount = 0
+    }
+
+    /// The most serious message on each line of `file`, for showing beside
+    /// the code. Notes are left out, as for the gutter markers.
+    static func lineMessages(for file: URL, in diagnostics: [Diagnostic]) -> [Int: LineMessage] {
+        let wanted = file.resolvingSymlinksInPath().standardizedFileURL
+        var messages: [Int: LineMessage] = [:]
+
+        for diagnostic in diagnostics where diagnostic.severity != .note {
+            guard let line = diagnostic.line,
+                  diagnostic.file?.resolvingSymlinksInPath().standardizedFileURL == wanted
+            else { continue }
+            guard var existing = messages[line] else {
+                messages[line] = LineMessage(severity: diagnostic.severity, text: diagnostic.message)
+                continue
+            }
+            existing.moreCount += 1
+            if existing.severity == .warning, diagnostic.severity == .error {
+                existing.severity = .error
+                existing.text = diagnostic.message
+            }
+            messages[line] = existing
+        }
+        return messages
+    }
+
     /// For example "Build succeeded: 1.4 KB flash, 16 bytes RAM
     /// (Code=1300 RO-data=96 RW-data=8 ZI-data=16)" or
     /// "Build failed: 2 errors, 1 warning".
