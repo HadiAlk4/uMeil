@@ -170,6 +170,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         completionPanel.dismiss()
         intelligence.completionTask?.cancel()
         intelligence.completionAnchorOffset = nil
+        endPlaceholders()
 
         isLoading = true
         textView.string = text
@@ -228,6 +229,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         completionPanel.dismiss()
         intelligence.completionTask?.cancel()
         intelligence.completionAnchorOffset = nil
+        endPlaceholders()
 
         isLoading = true
         textView.string = ""
@@ -267,6 +269,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
             setMarkers([:])
         }
         clearLiveDiagnostics()
+        refreshPlaceholderHighlights()
         updateCursorPosition()
         isModified = true
         // Wait for a short pause in typing before parsing again.

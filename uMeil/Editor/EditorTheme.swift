@@ -75,6 +75,9 @@ enum EditorTheme {
     }
 
     /// Underline colors for live diagnostics reported while typing.
+    /// The shading behind a snippet placeholder still waiting to be filled in.
+    static let placeholderBackgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.18)
+
     static let inlineErrorColor = NSColor.systemRed
     static let inlineWarningColor = NSColor.systemOrange
 

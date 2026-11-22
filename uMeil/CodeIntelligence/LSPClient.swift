@@ -55,7 +55,7 @@ actor LSPClient {
                     ],
                     "completion": [
                         "completionItem": [
-                            "snippetSupport": false,
+                            "snippetSupport": true,
                             "documentationFormat": ["plaintext"]
                         ]
                     ],

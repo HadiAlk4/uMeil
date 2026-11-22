@@ -23,6 +23,8 @@ final class EditorCodeIntelligenceState {
     var completionRequestVersion = 0
     var completionTask: Task<Void, Never>?
     var lastEditWasSingleTypedCharacter = false
+    /// The arguments left to fill in after accepting a snippet completion.
+    var placeholders: SnippetPlaceholders?
     /// When false the editor shows no live diagnostics, never asks for
     /// completions, and ignores go-to-definition requests.
     var isEnabled = true
@@ -48,7 +50,8 @@ extension EditorViewController {
             self?.triggerCompletion(nil)
         }
         editorTextView?.completionKeyHandler = { [weak self] event in
-            self?.completionPanel.handleKeyDown(event) ?? false
+            guard let self else { return false }
+            return completionPanel.handleKeyDown(event) || handlePlaceholderKey(event)
         }
         completionPanel.onAccept = { [weak self] item in
             self?.acceptCompletion(item)
@@ -70,6 +73,7 @@ extension EditorViewController {
         intelligence.completionTask = nil
         intelligence.completionAnchorOffset = nil
         completionPanel.dismiss()
+        endPlaceholders()
         clearLiveDiagnostics()
     }
 
@@ -241,7 +245,7 @@ extension EditorViewController {
         guard cursor >= anchor, cursor <= (textView.textStorage?.length ?? 0) else { return }
 
         let replaceRange = NSRange(location: anchor, length: cursor - anchor)
-        textView.insertText(item.insertionText, replacementRange: replaceRange)
+        insertSnippet(item.snippet, replacing: replaceRange)
     }
 
     func shouldAutoTriggerCompletion(in text: String, atUTF16Offset offset: Int) -> Bool {
@@ -317,12 +321,14 @@ extension EditorViewController {
             return true
         }
         intelligence.lastEditWasSingleTypedCharacter = replacementString?.count == 1 && affectedCharRange.length <= 1
+        placeholdersWillChangeText(in: affectedCharRange, replacement: replacementString)
         return true
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {
         guard !isLoading else { return }
         updateCursorPosition()
+        placeholdersSelectionDidChange()
         handleSelectionChangeForCodeIntelligence()
     }
 }
