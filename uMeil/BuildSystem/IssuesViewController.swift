@@ -25,6 +25,13 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
     let progressBar = NSProgressIndicator()
     /// Says a tool is missing and offers to install it. Hidden otherwise.
     let toolchainBanner = ToolchainBanner()
+    /// Says why the list is empty: no build yet, or a build with nothing to report.
+    let emptyState = EmptyStateView()
+    /// Whether the list holds the outcome of a build or flash, rather than
+    /// nothing having run yet.
+    private(set) var hasOutcome = false
+    /// True while a build runs, when an empty list means nothing yet.
+    private(set) var isBusy = false
 
     private enum Column: String, CaseIterable {
         case message, location
@@ -88,6 +95,8 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
         statusBar.edgeInsets = NSEdgeInsets(top: 5, left: 10, bottom: 5, right: 10)
 
         let stack = makeStack(of: [toolchainBanner, statusBar, scrollView])
+        emptyState.pin(over: scrollView, in: stack)
+        updateEmptyState()
 
         // Without a background of its own the status line shows whatever is
         // behind the panel, which is not the same in light and dark mode.
@@ -123,17 +132,21 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
         toolchainBanner.show([])
         statusLabel.stringValue = "Building…"
         spinner.startAnimation(nil)
+        isBusy = true
+        updateEmptyState()
         onActivity?(Activity(text: "Building…", kind: .working(progress: nil)))
     }
 
     /// Shows the outcome of a build. Notes are listed under the message they belong to.
     func show(_ result: BuildResult) {
+        hasOutcome = true
         show(status: BuildSummary.statusText(for: result), diagnostics: result.diagnostics)
         publish(Activity.outcome(of: result.diagnostics))
     }
 
     /// Shows a build that could not start at all, such as a missing compiler.
     func show(failure message: String) {
+        hasOutcome = true
         show(status: "Build failed", diagnostics: [Diagnostic(severity: .error, message: message)])
         publish(.failed)
     }
@@ -158,6 +171,7 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
 
     /// Empties the list, for work that has nothing to do with the last build.
     func clear() {
+        hasOutcome = false
         show(status: "", diagnostics: [])
         onActivity?(.idle)
     }
@@ -184,6 +198,7 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
         if let failure = result.failure {
             diagnostics.insert(Diagnostic(severity: .error, message: failure.localizedDescription), at: 0)
         }
+        hasOutcome = true
         show(status: FlashSummary.statusText(for: result), diagnostics: diagnostics)
         publish(result.failure == nil ? .succeeded : .failed)
     }
@@ -217,7 +232,9 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
         progressBar.isHidden = true
         statusLabel.stringValue = status
         self.diagnostics = diagnostics
+        isBusy = false
         tableView.reloadData()
+        updateEmptyState()
         onDiagnosticsChange?()
     }
 

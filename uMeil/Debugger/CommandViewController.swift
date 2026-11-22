@@ -8,6 +8,9 @@ final class CommandViewController: NSViewController {
 
     let textView = NSTextView()
     let commandField = NSTextField()
+    private let prompt = NSTextField(labelWithString: "(gdb)")
+    /// Shown over the log until the first line of output arrives.
+    let emptyState = EmptyStateView()
 
     /// Maximum retained console log length in UTF-16 code units.
     var maxLength = CommandViewController.maximumLength
@@ -39,7 +42,6 @@ final class CommandViewController: NSViewController {
         scrollView.hasVerticalScroller = true
         scrollView.borderType = .noBorder
 
-        let prompt = NSTextField(labelWithString: "(gdb)")
         prompt.font = EditorTheme.font
         prompt.textColor = .secondaryLabelColor
 
@@ -53,7 +55,20 @@ final class CommandViewController: NSViewController {
         inputBar.spacing = 6
         inputBar.edgeInsets = NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
 
-        view = PanelLayout.view(bar: inputBar, content: scrollView, barAt: .bottom)
+        let container = PanelLayout.view(bar: inputBar, content: scrollView, barAt: .bottom)
+        emptyState.show(
+            symbol: "ladybug",
+            title: "No debug session",
+            detail: "Start a debug session (⌃F5) to see GDB and OpenOCD output here."
+        )
+        emptyState.pin(over: scrollView, in: container)
+        view = container
+        updateEmptyState()
+    }
+
+    /// The hint shows only while the log is empty.
+    private func updateEmptyState() {
+        emptyState.isHidden = !textView.string.isEmpty
     }
 
     private static var outputAttributes: [NSAttributedString.Key: Any] {
@@ -89,12 +104,27 @@ final class CommandViewController: NSViewController {
             storage.deleteCharacters(in: NSRange(location: 0, length: cutLength))
         }
         storage.endEditing()
+        updateEmptyState()
         textView.scrollRangeToVisible(NSRange(location: storage.length, length: 0))
+    }
+
+    /// Redraws the log, the prompt and the command field in the editor's
+    /// current font.
+    func applyFont() {
+        loadViewIfNeeded()
+        let font = EditorTheme.font
+        textView.font = font
+        if let storage = textView.textStorage, storage.length > 0 {
+            storage.addAttribute(.font, value: font, range: NSRange(location: 0, length: storage.length))
+        }
+        prompt.font = font
+        commandField.font = font
     }
 
     func clear() {
         loadViewIfNeeded()
         textView.string = ""
+        updateEmptyState()
     }
 
     @objc func submitCommand(_ sender: Any? = nil) {

@@ -4,6 +4,9 @@ import AppKit
 /// `PC`, `xPSR` (expandable into condition flags and `ISR`), special registers,
 /// and the Cortex-M processor state (`Mode`, `Privilege`, `Stack`).
 final class RegistersViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
+    /// Row height at the standard font size.
+    static let baseRowHeight: CGFloat = 20
+
     final class Node {
         let key: String
         let name: String
@@ -80,7 +83,7 @@ final class RegistersViewController: NSViewController, NSOutlineViewDataSource, 
         outlineView.dataSource = self
         outlineView.delegate = self
         outlineView.usesAlternatingRowBackgroundColors = true
-        outlineView.rowHeight = 20
+        outlineView.rowHeight = DebugTableStyle.rowHeight(base: Self.baseRowHeight)
 
         let scrollView = NSScrollView()
         scrollView.documentView = outlineView

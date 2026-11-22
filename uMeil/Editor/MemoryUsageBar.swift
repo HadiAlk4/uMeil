@@ -9,9 +9,15 @@ final class MemoryUsageBar: NSView {
 
     static let height: CGFloat = 22
 
+    /// The line along the top. Off when the bar sits inside a strip that
+    /// draws its own, such as the editor's status line.
+    var showsSeparator = true {
+        didSet { separator.isHidden = !showsSeparator }
+    }
+    private let separator = NSBox()
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        let separator = NSBox()
         separator.boxType = .separator
 
         let dot = NSTextField(labelWithString: "·")

@@ -4,6 +4,9 @@ import AppKit
 /// parameters and local variables, with pointer expansion (`*p`), changed-value
 /// highlighting, and a right-click toggle for Hexadecimal Display.
 final class CallStackLocalsViewController: NSViewController, NSMenuItemValidation {
+    /// Row height at the standard font size.
+    static let baseRowHeight: CGFloat = 20
+
     struct VariableIdentity: Hashable {
         let depthFromBottom: Int
         let function: String
@@ -98,7 +101,7 @@ final class CallStackLocalsViewController: NSViewController, NSMenuItemValidatio
         // No alternating stripes: AppKit paints them below the last row too,
         // and a stack only a frame or two deep looked like a list of empty rows.
         outlineView.usesAlternatingRowBackgroundColors = false
-        outlineView.rowHeight = 20
+        outlineView.rowHeight = DebugTableStyle.rowHeight(base: Self.baseRowHeight)
         outlineView.target = self
         outlineView.action = #selector(rowClicked(_:))
 

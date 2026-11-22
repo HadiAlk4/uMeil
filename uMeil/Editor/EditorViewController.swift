@@ -29,6 +29,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
     var onHoverIdentifier: ((String) async -> String?)?
     /// Waits for the mouse to rest before asking the debugger for a value.
     var hoverTask: Task<Void, Never>?
+    /// The lines of a file with a breakpoint that is turned off.
+    var disabledBreakpointLinesProvider: ((URL) -> Set<Int>)?
 
     let textView: NSTextView
     let intelligence = EditorCodeIntelligenceState()
@@ -38,6 +40,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
     private let placeholderLabel = NSTextField(labelWithString: "Select a file to edit")
     /// Shown instead of the editor while no folder is open.
     let welcomeView = WelcomeView()
+    /// The cursor position, memory use, chip, and board, under the editor.
+    let statusBar = EditorStatusBar()
 
     /// True while the editor itself is replacing the text, so that loading a
     /// file is not mistaken for the user editing it.
@@ -112,11 +116,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         editorStack.addArrangedSubview(tabBar)
         editorStack.addArrangedSubview(scrollView)
         editorStack.addArrangedSubview(diagnosticBar)
-        editorStack.addArrangedSubview(memoryUsageBar)
-        // A vertical stack centers what it holds; these strips span the editor.
-        for strip in [tabBar, memoryUsageBar] {
-            strip.widthAnchor.constraint(equalTo: editorStack.widthAnchor).isActive = true
-        }
+        // A vertical stack centers what it holds; the tab bar spans the editor.
+        tabBar.widthAnchor.constraint(equalTo: editorStack.widthAnchor).isActive = true
+        // The Flash and RAM meters sit in the status line, beside the cursor position.
+        statusBar.embed(memoryUsageBar)
 
         view = makeContainer()
 
@@ -128,13 +131,13 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
     /// one of which shows at a time.
     private func makeContainer() -> NSView {
         let container = NSView()
-        for subview in [editorStack, placeholderLabel, welcomeView] {
+        for subview in [editorStack, placeholderLabel, statusBar, welcomeView] {
             subview.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(subview)
         }
         NSLayoutConstraint.activate([
             editorStack.topAnchor.constraint(equalTo: container.topAnchor),
-            editorStack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            editorStack.bottomAnchor.constraint(equalTo: statusBar.topAnchor),
             editorStack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             editorStack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             placeholderLabel.centerXAnchor.constraint(equalTo: container.centerXAnchor),
@@ -144,6 +147,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
             welcomeView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             welcomeView.trailingAnchor.constraint(equalTo: container.trailingAnchor)
         ])
+        statusBar.pinToBottom(of: container)
         return container
     }
 
@@ -182,6 +186,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
             textView.setSelectedRange(NSRange(location: 0, length: 0))
         }
         isLoading = false
+        updateCursorPosition()
 
         document = loaded
         tabs.select(url)
@@ -195,6 +200,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         editorStack.isHidden = false
         placeholderLabel.isHidden = true
         welcomeView.isHidden = true
+        statusBar.isHidden = false
         scheduleHighlighting(delay: .zero)
         intelligence.onDocumentOpened?(loaded.url, text)
     }
@@ -229,6 +235,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         isLoading = false
 
         document = nil
+        updateCursorPosition()
         isModified = false
         lineIndex = LineIndex("")
         clearLiveDiagnostics()
@@ -246,6 +253,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         editorStack.isHidden = true
         placeholderLabel.isHidden = !hasFolder
         welcomeView.isHidden = hasFolder
+        statusBar.isHidden = !hasFolder
     }
 
     // MARK: - NSTextViewDelegate
@@ -259,6 +267,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
             setMarkers([:])
         }
         clearLiveDiagnostics()
+        updateCursorPosition()
         isModified = true
         // Wait for a short pause in typing before parsing again.
         scheduleHighlighting(delay: .milliseconds(40))

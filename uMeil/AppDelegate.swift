@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let updater = SoftwareUpdater()
         softwareUpdater = updater
         NSApp.mainMenu = MainMenu.make(appName: AppInfo.name, updater: updater)
+        setUpAppearance()
 
         let controller = MainWindowController()
         controller.showWindow(nil)

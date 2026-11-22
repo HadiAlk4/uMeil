@@ -14,6 +14,12 @@ protocol TerminalSessionView: AnyObject {
     func start(config: TerminalLaunchConfig)
     func clear()
     func terminateSession()
+    /// Draws the terminal's text in `font`, as when the editor's font changes.
+    func applyFont(_ font: NSFont)
+}
+
+extension TerminalSessionView {
+    func applyFont(_ font: NSFont) {}
 }
 
 /// Real `SwiftTerm` view hosting a local PTY shell, styled to match the editor
@@ -81,6 +87,10 @@ final class SwiftTermSessionView: LocalProcessTerminalView, TerminalSessionView 
         } else {
             terminal.resetToInitialState()
         }
+    }
+
+    func applyFont(_ font: NSFont) {
+        self.font = font
     }
 
     func terminateSession() {
@@ -152,6 +162,11 @@ private final class ProcessDelegateProxy: @preconcurrency LocalProcessTerminalVi
 /// The shell is launched lazily on first display rather than at window init.
 final class TerminalViewController: NSViewController {
     private let session: any TerminalSessionView
+
+    /// Switches the shell to the editor's current font.
+    func applyFont() {
+        session.applyFont(EditorTheme.font)
+    }
     private let makeConfig: (URL?) -> TerminalLaunchConfig
 
     private(set) var hasStarted = false

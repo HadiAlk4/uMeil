@@ -5,6 +5,9 @@ import AppKit
 /// chip's SVD file, and change them by typing a new value while the program
 /// is stopped.
 final class PeripheralsViewController: NSViewController {
+    /// Row height at the standard font size.
+    static let baseRowHeight: CGFloat = 19
+
     /// A register, or one bit field of it.
     final class Node {
         let register: SVDRegister
@@ -87,7 +90,7 @@ final class PeripheralsViewController: NSViewController {
         outlineView.dataSource = self
         outlineView.delegate = self
         outlineView.usesAlternatingRowBackgroundColors = true
-        outlineView.rowHeight = 19
+        outlineView.rowHeight = DebugTableStyle.rowHeight(base: Self.baseRowHeight)
         let menu = NSMenu()
         menu.delegate = self
         outlineView.menu = menu

@@ -71,12 +71,14 @@ final class MainToolbar: NSObject, NSToolbarDelegate {
 
     // MARK: - NSToolbarDelegate
 
+    /// Whether a board is plugged in shows in the status line under the
+    /// editor, which keeps the toolbar to the actions and their progress.
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Item.build, Item.flash, .space, Item.debug, .flexibleSpace, Item.activity, .flexibleSpace, Item.board]
+        [Item.build, Item.flash, .space, Item.debug, .flexibleSpace, Item.activity, .flexibleSpace]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
+        toolbarDefaultItemIdentifiers(toolbar) + [Item.board]
     }
 
     func toolbar(

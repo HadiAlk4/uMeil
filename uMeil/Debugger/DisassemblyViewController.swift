@@ -4,6 +4,9 @@ import AppKit
 /// assembly mnemonics, interleaved C source lines when available, and the
 /// current Program Counter (`PC`) indicator.
 final class DisassemblyViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
+    /// Row height at the standard font size.
+    static let baseRowHeight: CGFloat = 19
+
     enum Row: Equatable {
         case source(line: Int, text: String)
         case instruction(DisassembledInstruction, isProgramCounter: Bool)
@@ -31,7 +34,7 @@ final class DisassemblyViewController: NSViewController, NSTableViewDataSource, 
         tableView.dataSource = self
         tableView.delegate = self
         tableView.usesAlternatingRowBackgroundColors = true
-        tableView.rowHeight = 19
+        tableView.rowHeight = DebugTableStyle.rowHeight(base: Self.baseRowHeight)
 
         let scrollView = NSScrollView()
         scrollView.documentView = tableView

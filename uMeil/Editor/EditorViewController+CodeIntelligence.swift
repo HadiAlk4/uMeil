@@ -322,6 +322,7 @@ extension EditorViewController {
 
     func textViewDidChangeSelection(_ notification: Notification) {
         guard !isLoading else { return }
+        updateCursorPosition()
         handleSelectionChangeForCodeIntelligence()
     }
 }

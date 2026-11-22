@@ -1,13 +1,14 @@
 import AppKit
 
 /// Hosts the collapsible bottom workspace tabs (`Issues`, `Terminal`,
-/// `Debug` and `Serial`) below the code editor.
+/// `Debug`, `Serial` and `Breakpoints`) below the code editor.
 final class BottomPanelViewController: NSViewController {
     enum Tab: Int, CaseIterable {
         case issues
         case terminal
         case debug
         case serial
+        case breakpoints
 
         var title: String {
             switch self {
@@ -15,6 +16,7 @@ final class BottomPanelViewController: NSViewController {
             case .terminal: "Terminal"
             case .debug: "Debug"
             case .serial: "Serial"
+            case .breakpoints: "Breakpoints"
             }
         }
     }
@@ -25,6 +27,8 @@ final class BottomPanelViewController: NSViewController {
     let debugConsole: CommandViewController
     /// The board's serial port: what the firmware prints, and a field for sending lines.
     let serial: SerialMonitorViewController
+    /// Every breakpoint in the project, to turn on and off or delete.
+    let breakpoints: BreakpointsViewController
 
     private(set) var selectedTab: Tab = .issues
     var onSelectTab: ((Tab) -> Void)?
@@ -63,14 +67,17 @@ final class BottomPanelViewController: NSViewController {
         issues: IssuesViewController,
         terminal: TerminalViewController,
         debugConsole: CommandViewController,
-        serial: SerialMonitorViewController = SerialMonitorViewController()
+        serial: SerialMonitorViewController = SerialMonitorViewController(),
+        breakpoints: BreakpointsViewController = BreakpointsViewController()
     ) {
         self.issues = issues
         self.terminal = terminal
         self.debugConsole = debugConsole
         self.serial = serial
+        self.breakpoints = breakpoints
         super.init(nibName: nil, bundle: nil)
         issues.onDiagnosticsChange = { [weak self] in self?.updateTabTitles() }
+        breakpoints.onCountChange = { [weak self] in self?.updateTabTitles() }
     }
 
     @available(*, unavailable)
@@ -127,6 +134,7 @@ final class BottomPanelViewController: NSViewController {
         addChild(terminal)
         addChild(debugConsole)
         addChild(serial)
+        addChild(breakpoints)
         terminal.onStatusChange = { [weak self] in self?.updateTerminalHeader() }
         updateTabTitles()
         applyTab(selectedTab)
@@ -138,6 +146,9 @@ final class BottomPanelViewController: NSViewController {
         switch tab {
         case .issues:
             let count = issues.diagnostics.count { $0.severity != .note }
+            return count > 0 ? "\(tab.title) \(count)" : tab.title
+        case .breakpoints:
+            let count = breakpoints.entries.count
             return count > 0 ? "\(tab.title) \(count)" : tab.title
         case .terminal, .debug, .serial:
             return tab.title
@@ -172,6 +183,7 @@ final class BottomPanelViewController: NSViewController {
         case .terminal: terminal
         case .debug: debugConsole
         case .serial: serial
+        case .breakpoints: breakpoints
         }
         let childView = child.view
         childView.translatesAutoresizingMaskIntoConstraints = false

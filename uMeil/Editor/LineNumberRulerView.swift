@@ -22,6 +22,11 @@ final class LineNumberRulerView: NSRulerView {
         didSet { needsDisplay = true }
     }
 
+    /// Lines with a breakpoint that is turned off, drawn as a hollow circle.
+    var disabledBreakpointLines: Set<Int> = [] {
+        didSet { needsDisplay = true }
+    }
+
     /// Lines that have machine code, so a breakpoint can stop there. Drawn
     /// as a gray block. Empty when no debug session is running.
     var executableLines: Set<Int> = [] {
@@ -55,6 +60,13 @@ final class LineNumberRulerView: NSRulerView {
     @available(*, unavailable)
     required init(coder: NSCoder) {
         fatalError("LineNumberRulerView is created in code, not from a nib")
+    }
+
+    /// Redraws the numbers in the current font, widening or narrowing the
+    /// gutter to fit them.
+    func fontDidChange() {
+        updateThickness()
+        needsDisplay = true
     }
 
     /// Makes the gutter wide enough for the largest line number (at least three digits).
@@ -128,6 +140,11 @@ final class LineNumberRulerView: NSRulerView {
         if breakpointLines.contains(line) {
             NSColor.systemRed.setFill()
             NSBezierPath(ovalIn: mark).fill()
+        } else if disabledBreakpointLines.contains(line) {
+            let ring = NSBezierPath(ovalIn: mark.insetBy(dx: 0.75, dy: 0.75))
+            ring.lineWidth = 1.5
+            NSColor.systemRed.withAlphaComponent(0.6).setStroke()
+            ring.stroke()
         } else if executableLines.contains(line) {
             NSColor.tertiaryLabelColor.setFill()
             NSBezierPath(rect: mark.insetBy(dx: side / 2 - 1.5, dy: 0)).fill()
