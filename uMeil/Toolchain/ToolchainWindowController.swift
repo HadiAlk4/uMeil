@@ -2,6 +2,8 @@ import AppKit
 
 /// A separate window for the toolchain status table.
 final class ToolchainWindowController: NSWindowController {
+    let status = ToolchainStatusViewController()
+
     init() {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 860, height: 260),
@@ -10,7 +12,7 @@ final class ToolchainWindowController: NSWindowController {
             defer: false
         )
         window.title = "Toolchain Status"
-        window.contentViewController = ToolchainStatusViewController()
+        window.contentViewController = status
         window.contentMinSize = NSSize(width: 520, height: 180)
         window.setContentSize(NSSize(width: 860, height: 260))
         window.setFrameAutosaveName("ToolchainWindow")

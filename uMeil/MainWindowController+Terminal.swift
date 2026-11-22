@@ -136,6 +136,10 @@ extension MainWindowController {
         bottomPanel.onClose = { [weak self] in
             self?.collapseBottomPanel()
         }
+        issues.onInstallTools = { _ in
+            // The app delegate owns the toolchain window, which does the installing.
+            NSApp.sendAction(#selector(AppDelegate.installMissingTools(_:)), to: nil, from: nil)
+        }
     }
 
     private var isFirstResponderInBottomPanel: Bool {

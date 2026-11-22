@@ -80,9 +80,7 @@ extension MainWindowController {
             let project = try ProjectFile.load(from: projectFile)
             let locator = makeToolLocator()
             guard let gdb = locator.locate(.debugger) else {
-                throw DebugError.refused(
-                    "The debugger (GDB) is not installed. Install it from Window > Toolchain Status."
-                )
+                throw ToolNotInstalled(tool: .debugger)
             }
             guard let openOCD = locator.locate(.openOCD) else {
                 throw FlashFailure.openOCDNotFound
@@ -95,7 +93,11 @@ extension MainWindowController {
             return true
         } catch {
             editor.isReadOnly = false
-            issues.show(debugFailure: error.localizedDescription, status: "Debug session failed to start")
+            if let tool = error.missingTool {
+                issues.show(missingTool: tool, status: "Debug session failed to start")
+            } else {
+                issues.show(debugFailure: error.localizedDescription, status: "Debug session failed to start")
+            }
             return false
         }
     }

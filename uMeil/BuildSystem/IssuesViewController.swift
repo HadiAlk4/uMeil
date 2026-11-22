@@ -10,6 +10,11 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
     var onDiagnosticsChange: (() -> Void)?
     /// Called with each change of status, for the toolbar to show.
     var onActivity: ((Activity) -> Void)?
+    /// Called with the missing tools when the user clicks the banner's Install button.
+    var onInstallTools: (([Tool]) -> Void)? {
+        get { toolchainBanner.onInstall }
+        set { toolchainBanner.onInstall = newValue }
+    }
 
     private(set) var diagnostics: [Diagnostic] = []
 
@@ -18,6 +23,8 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
     private let spinner = NSProgressIndicator()
     /// Fills up as a flash moves through its stages. Hidden otherwise.
     let progressBar = NSProgressIndicator()
+    /// Says a tool is missing and offers to install it. Hidden otherwise.
+    let toolchainBanner = ToolchainBanner()
 
     private enum Column: String, CaseIterable {
         case message, location
@@ -34,6 +41,7 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
         super.init(nibName: nil, bundle: nil)
         // Hidden from the start, not just once the view loads.
         progressBar.isHidden = true
+        toolchainBanner.isHidden = true
     }
 
     @available(*, unavailable)
@@ -79,9 +87,7 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
         statusBar.orientation = .horizontal
         statusBar.edgeInsets = NSEdgeInsets(top: 5, left: 10, bottom: 5, right: 10)
 
-        let stack = NSStackView(views: [statusBar, scrollView])
-        stack.orientation = .vertical
-        stack.spacing = 0
+        let stack = makeStack(of: [toolchainBanner, statusBar, scrollView])
 
         // Without a background of its own the status line shows whatever is
         // behind the panel, which is not the same in light and dark mode.
@@ -100,9 +106,21 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
         view = background
     }
 
+    private func makeStack(of views: [NSView]) -> NSStackView {
+        let stack = NSStackView(views: views)
+        stack.orientation = .vertical
+        stack.spacing = 0
+        stack.detachesHiddenViews = true
+        for view in views {
+            view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        }
+        return stack
+    }
+
     /// Shows that a build is running.
     func showBuilding() {
         loadViewIfNeeded()
+        toolchainBanner.show([])
         statusLabel.stringValue = "Building…"
         spinner.startAnimation(nil)
         onActivity?(Activity(text: "Building…", kind: .working(progress: nil)))
@@ -117,6 +135,24 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
     /// Shows a build that could not start at all, such as a missing compiler.
     func show(failure message: String) {
         show(status: "Build failed", diagnostics: [Diagnostic(severity: .error, message: message)])
+        publish(.failed)
+    }
+
+    /// Shows a build that could not start because of `error`. A missing
+    /// tool gets the banner that offers to install it, not an error line.
+    func show(failure error: Error) {
+        if let tool = error.missingTool {
+            show(missingTool: tool, status: "Build failed")
+        } else {
+            show(failure: error.localizedDescription)
+        }
+    }
+
+    /// Says `tool` is missing in the banner, which offers to install it.
+    /// The messages from the build that came before stay listed.
+    func show(missingTool tool: Tool, status: String) {
+        show(status: status, diagnostics: diagnostics)
+        toolchainBanner.show([tool])
         publish(.failed)
     }
 
@@ -140,6 +176,10 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
     /// Shows the outcome of a flash. A failure is listed first, above any
     /// warnings from the build.
     func show(_ result: FlashResult) {
+        if let tool = result.failure?.missingTool {
+            show(missingTool: tool, status: FlashSummary.statusText(for: result))
+            return
+        }
         var diagnostics = self.diagnostics
         if let failure = result.failure {
             diagnostics.insert(Diagnostic(severity: .error, message: failure.localizedDescription), at: 0)
@@ -172,6 +212,7 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
 
     private func show(status: String, diagnostics: [Diagnostic]) {
         loadViewIfNeeded()
+        toolchainBanner.show([])
         spinner.stopAnimation(nil)
         progressBar.isHidden = true
         statusLabel.stringValue = status

@@ -297,7 +297,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
             return result
         } catch {
             lastBuild = nil
-            issues.show(failure: error.localizedDescription)
+            issues.show(failure: error)
             refreshMarkers()
             return nil
         }

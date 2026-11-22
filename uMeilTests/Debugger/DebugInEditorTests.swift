@@ -144,7 +144,7 @@ struct DebugInEditorTests {
         #expect(!controller.editor.isReadOnly)
     }
 
-    @Test func missingGDBSaysWhereToInstallIt() async throws {
+    @Test func missingGDBOffersToInstallIt() async throws {
         let folder = try TemporaryFolder()
         let window = try makeBlinkyWindow(in: folder)
         let controller = window.controller
@@ -162,7 +162,9 @@ struct DebugInEditorTests {
 
         #expect(await !controller.startDebugging())
 
-        #expect(controller.issues.diagnostics.first?.message.contains("Window > Toolchain Status") == true)
+        #expect(!controller.issues.toolchainBanner.isHidden)
+        #expect(controller.issues.toolchainBanner.tools == [.debugger])
+        #expect(!controller.issues.diagnostics.contains { $0.message.contains("Toolchain Status") })
         #expect(window.gdb.commands.isEmpty)
     }
 

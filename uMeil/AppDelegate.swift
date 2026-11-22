@@ -99,6 +99,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         toolchainWindowController.showWindow(sender)
     }
 
+    /// The Install button on the issues panel's missing-tool banner: shows
+    /// the toolchain window and installs whatever its check finds missing.
+    @objc func installMissingTools(_ sender: Any?) {
+        showToolchainStatus(sender)
+        toolchainWindowController.status.installMissingToolsAfterChecking()
+    }
+
     /// Reopens the folder from the previous session, if it still exists.
     private func reopenLastFolder(in controller: MainWindowController) {
         guard let path = UserDefaults.standard.string(forKey: MainWindowController.lastFolderDefaultsKey) else {

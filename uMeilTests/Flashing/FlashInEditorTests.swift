@@ -142,7 +142,9 @@ struct FlashInEditorTests {
 
         #expect(result?.failure == .openOCDNotFound)
         #expect(openOCD.calls.withLock { $0 }.isEmpty)
-        #expect(controller.issues.diagnostics.first?.message.contains("Toolchain Status") == true)
+        #expect(controller.issues.toolchainBanner.tools == [.openOCD])
+        #expect(!controller.issues.toolchainBanner.isHidden)
+        #expect(!controller.issues.diagnostics.contains { $0.message.contains("Toolchain Status") })
     }
 
     @Test func theProgressBarFollowsTheStages() throws {
