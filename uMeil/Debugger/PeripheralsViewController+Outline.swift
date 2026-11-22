@@ -106,8 +106,8 @@ extension PeripheralsViewController: NSOutlineViewDataSource, NSOutlineViewDeleg
         else { return }
         let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let current = valueText(for: node)
-        // Leaving the value blank or unchanged is not a write; restore canonical display.
-        guard !text.isEmpty, text != current else {
+        // Leaving the value blank, unchanged, or ending edits when not editable is not a write.
+        guard isEditable, !text.isEmpty, text != current else {
             field.stringValue = current
             return
         }

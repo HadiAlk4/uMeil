@@ -60,13 +60,13 @@ final class CallStackLocalsViewController: NSViewController, NSMenuItemValidatio
     private var isUpdating = false
     /// When the values last changed, so their cells flash only then.
     private var updatedAt: Date?
+    private var handledSelectionRow: Int?
+    private var selectionNotifyGeneration = 0
 
     /// When true (the default), integers are formatted in two's complement hex.
     var useHexadecimal = true {
         didSet {
-            if isViewLoaded {
-                outlineView.reloadData()
-            }
+            if isViewLoaded { outlineView.reloadData() }
         }
     }
 
@@ -206,6 +206,7 @@ final class CallStackLocalsViewController: NSViewController, NSMenuItemValidatio
         previousValues = [:]
         changedKeys = []
         expandedPointers = []
+        handledSelectionRow = nil
         if isViewLoaded {
             isUpdating = true
             outlineView.reloadData()
@@ -214,59 +215,38 @@ final class CallStackLocalsViewController: NSViewController, NSMenuItemValidatio
     }
 
     private func makeVariableNode(
-        _ variable: DebugVariable,
-        frameLevel: Int,
-        identity: VariableIdentity,
-        isChanged: Bool,
-        dereferenced: String?
+        _ variable: DebugVariable, frameLevel: Int, identity: VariableIdentity,
+        isChanged: Bool, dereferenced: String?
     ) -> VariableNode {
         let key = "\(frameLevel):\(variable.name)"
         var children: [VariableNode] = []
         if DebugValueFormatter.isPointer(variable) {
             let targetType = DebugValueFormatter.dereferencedType(variable.type)
             children.append(VariableNode(
-                key: "\(key):deref",
-                name: "*\(variable.name)",
-                rawValue: dereferenced,
-                rawType: targetType,
-                displayType: targetType,
-                frameLevel: frameLevel
+                key: "\(key):deref", name: "*\(variable.name)", rawValue: dereferenced,
+                rawType: targetType, displayType: targetType, frameLevel: frameLevel
             ))
         }
         return VariableNode(
-            key: key,
-            name: variable.name,
-            rawValue: variable.value,
-            rawType: variable.type,
+            key: key, name: variable.name, rawValue: variable.value, rawType: variable.type,
             displayType: DebugValueFormatter.displayType(for: variable),
-            frameLevel: frameLevel,
-            isChanged: isChanged,
-            children: children,
-            identity: identity
+            frameLevel: frameLevel, isChanged: isChanged, children: children, identity: identity
         )
     }
 
     private func containsNode(_ target: VariableNode) -> Bool {
         frameNodes.contains { frame in
-            frame.children.contains { variable in
-                variable === target || variable.children.contains { $0 === target }
-            }
+            frame.children.contains { $0 === target || $0.children.contains { $0 === target } }
         }
     }
 
     private func dereferenceHandler() -> ((String, Int) async -> String?)? {
-        if let onDereferenceInFrame {
-            return onDereferenceInFrame
-        }
-        if let onDereference {
-            return { expression, _ in await onDereference(expression) }
-        }
+        if let onDereferenceInFrame { return onDereferenceInFrame }
+        if let onDereference { return { expr, _ in await onDereference(expr) } }
         return nil
     }
 
-    @objc func toggleHexadecimalDisplay(_ sender: Any?) {
-        useHexadecimal.toggle()
-    }
+    @objc func toggleHexadecimalDisplay(_ sender: Any?) { useHexadecimal.toggle() }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(toggleHexadecimalDisplay(_:)) {
@@ -275,9 +255,13 @@ final class CallStackLocalsViewController: NSViewController, NSMenuItemValidatio
         return true
     }
 
-    @objc private func rowClicked(_ sender: Any?) {
+    @objc func rowClicked(_ sender: Any?) {
         let row = outlineView.clickedRow >= 0 ? outlineView.clickedRow : outlineView.selectedRow
         guard row >= 0, let frameNode = outlineView.item(atRow: row) as? FrameNode else { return }
+        if handledSelectionRow == row {
+            handledSelectionRow = nil
+            return
+        }
         onSelectFrame?(frameNode.frame)
     }
 }
@@ -311,14 +295,20 @@ extension CallStackLocalsViewController: NSOutlineViewDataSource, NSOutlineViewD
         guard !isUpdating else { return }
         let row = outlineView.selectedRow
         guard row >= 0, let frameNode = outlineView.item(atRow: row) as? FrameNode else { return }
+        handledSelectionRow = row
+        selectionNotifyGeneration += 1
+        let generation = selectionNotifyGeneration
+        Task { @MainActor [weak self] in
+            if self?.selectionNotifyGeneration == generation {
+                self?.handledSelectionRow = nil
+            }
+        }
         onSelectFrame?(frameNode.frame)
     }
 
     func outlineViewItemDidExpand(_ notification: Notification) {
         guard let variable = notification.userInfo?["NSObject"] as? VariableNode else { return }
-        if let identity = variable.identity {
-            expandedPointers.insert(identity)
-        }
+        if let identity = variable.identity { expandedPointers.insert(identity) }
         guard let child = variable.children.first,
               child.rawValue == nil,
               let dereference = dereferenceHandler()
@@ -357,9 +347,7 @@ extension CallStackLocalsViewController: NSOutlineViewDataSource, NSOutlineViewD
             case "name": text = variable.name
             case "value":
                 text = DebugValueFormatter.format(
-                    variable.rawValue,
-                    type: variable.rawType,
-                    hexadecimal: useHexadecimal
+                    variable.rawValue, type: variable.rawType, hexadecimal: useHexadecimal
                 )
                 isChanged = variable.isChanged
             default: text = variable.displayType
@@ -372,17 +360,13 @@ extension CallStackLocalsViewController: NSOutlineViewDataSource, NSOutlineViewD
     }
 
     private func makeCell(
-        outlineView: NSOutlineView,
-        identifier: NSUserInterfaceItemIdentifier,
-        text: String,
-        isChanged: Bool
+        outlineView: NSOutlineView, identifier: NSUserInterfaceItemIdentifier, text: String, isChanged: Bool
     ) -> NSTableCellView {
         let cell: NSTableCellView
         let label: NSTextField
         if let reused = outlineView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView,
            let existingLabel = reused.textField {
-            cell = reused
-            label = existingLabel
+            (cell, label) = (reused, existingLabel)
         } else {
             label = NSTextField(labelWithString: "")
             label.translatesAutoresizingMaskIntoConstraints = false

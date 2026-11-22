@@ -70,6 +70,7 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
         messageLabel.textColor = .secondaryLabelColor
         messageLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         messageLabel.lineBreakMode = .byTruncatingTail
+        messageLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         messageLabel.isHidden = true
 
         let headerBar = NSStackView(views: [topBar, messageLabel])

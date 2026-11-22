@@ -158,13 +158,11 @@ final class PeripheralsViewController: NSViewController {
     private func rebuildMenu() {
         let menu = NSMenu()
         var lastGroup: String?
-        var emittedHeader = false
         for peripheral in device?.peripherals.sorted(by: Self.menuOrder) ?? [] {
-            if !emittedHeader || peripheral.groupName != lastGroup {
-                emittedHeader = true
-                lastGroup = peripheral.groupName
-                let title = lastGroup.flatMap { $0.isEmpty ? nil : $0 } ?? "Other"
-                menu.addItem(NSMenuItem.sectionHeader(title: title))
+            let group = peripheral.groupName.flatMap { $0.isEmpty ? nil : $0 } ?? "Other"
+            if group != lastGroup {
+                lastGroup = group
+                menu.addItem(NSMenuItem.sectionHeader(title: group))
             }
             let item = NSMenuItem(title: peripheral.name, action: nil, keyEquivalent: "")
             item.toolTip = peripheral.description

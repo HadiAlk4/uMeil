@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 import AppKit
 import Testing
 @testable import uMeil
@@ -243,13 +244,13 @@ extension DebugPanelsTests {
     }
 
     private func makeInstruction(
-        address: UInt64, function: String, opcodes: String, instruction: String, file: URL?, line: Int?
+        address: UInt64, instruction: String, file: URL?, line: Int?
     ) throws -> DisassembledInstruction {
         let value = MIValue.tuple([
             MIField(name: "address", value: .string(String(format: "0x%llx", address))),
-            MIField(name: "func-name", value: .string(function)),
+            MIField(name: "func-name", value: .string("main")),
             MIField(name: "offset", value: .string("0")),
-            MIField(name: "opcodes", value: .string(opcodes)),
+            MIField(name: "opcodes", value: .string("00 20")),
             MIField(name: "inst", value: .string(instruction))
         ])
         return try #require(DisassembledInstruction(value, file: file, line: line))
@@ -338,18 +339,9 @@ extension DebugPanelsTests {
         let symlinkMain = folder.url.appending(path: "link_main.c")
         try FileManager.default.createSymbolicLink(at: symlinkMain, withDestinationURL: realMain)
 
-        let instMain = try makeInstruction(
-            address: 0x200, function: "main", opcodes: "00 20",
-            instruction: "movs r0, #0", file: realMain, line: 1
-        )
-        let instOther = try makeInstruction(
-            address: 0x202, function: "other", opcodes: "01 20",
-            instruction: "movs r0, #1", file: otherFile, line: 2
-        )
-        let instNoFile = try makeInstruction(
-            address: 0x204, function: "main", opcodes: "02 20",
-            instruction: "movs r0, #2", file: nil, line: 1
-        )
+        let instMain = try makeInstruction(address: 0x200, instruction: "movs r0, #0", file: realMain, line: 1)
+        let instOther = try makeInstruction(address: 0x202, instruction: "movs r0, #1", file: otherFile, line: 2)
+        let instNoFile = try makeInstruction(address: 0x204, instruction: "movs r0, #2", file: nil, line: 1)
         let sourceLines = [1: "int x = 1;", 2: "int y = 2;"]
         let panel = DisassemblyViewController()
 
@@ -424,12 +416,16 @@ extension DebugPanelsTests {
         #expect(panel.frameNodes[0].children.first?.children.first?.rawValue == "11")
         #expect(panel.frameNodes[1].children.first?.children.first?.rawValue == "22")
 
-        // Keyboard selection triggers onSelectFrame.
+        // Keyboard selection triggers onSelectFrame; mouse click (selectionDidChange + rowClicked)
+        // deduplicates to a single call, while re-clicking an already-selected frame fires again.
         var selectedFrames: [StackFrame] = []
         panel.onSelectFrame = { selectedFrames.append($0) }
         let mainRow = panel.outlineView.row(forItem: panel.frameNodes[1])
         panel.outlineView.selectRowIndexes(IndexSet(integer: mainRow), byExtendingSelection: false)
+        panel.rowClicked(nil)
         #expect(selectedFrames == [main1])
+        panel.rowClicked(nil)
+        #expect(selectedFrames == [main1, main1])
 
         // Expanding a pointer in frame 1 uses onDereferenceInFrame with frameLevel == 1.
         var derefCalls: [(String, Int)] = []

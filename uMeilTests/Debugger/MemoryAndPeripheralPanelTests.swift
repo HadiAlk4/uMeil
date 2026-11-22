@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 import AppKit
 import Testing
 @testable import uMeil
@@ -253,13 +254,16 @@ extension MemoryAndPeripheralPanelTests {
         customDefaults.removePersistentDomain(forName: suite)
         defer { customDefaults.removePersistentDomain(forName: suite) }
 
-        let ungrouped = SVDPeripheral(
+        let ungroupedNil = SVDPeripheral(
             name: "SYSCTL", description: nil, groupName: nil, baseAddress: 0x400F_E000, registers: []
+        )
+        let ungroupedEmpty = SVDPeripheral(
+            name: "NVIC", description: nil, groupName: "", baseAddress: 0xE000_E000, registers: []
         )
         let grouped = SVDPeripheral(
             name: "UART0", description: nil, groupName: "UART", baseAddress: 0x4000_C000, registers: []
         )
-        let device = SVDDevice(name: "TestChip", peripherals: [grouped, ungrouped])
+        let device = SVDDevice(name: "TestChip", peripherals: [grouped, ungroupedNil, ungroupedEmpty])
 
         let panel = PeripheralsViewController(defaults: customDefaults)
         panel.loadViewIfNeeded()
@@ -269,10 +273,11 @@ extension MemoryAndPeripheralPanelTests {
         #expect(customDefaults.string(forKey: PeripheralsViewController.selectionKey) == "UART0")
         #expect(UserDefaults.standard.string(forKey: PeripheralsViewController.selectionKey) == nil)
 
-        // The first sorted peripheral has groupName == nil, so "Other" must be the first section header.
+        // Both nil and "" groupName share a single leading "Other" section header.
         let items = try #require(panel.peripheralPopUp.menu?.items)
         #expect(items.first?.isSectionHeader == true)
         #expect(items.first?.title == "Other")
+        #expect(items.filter { $0.isSectionHeader && $0.title == "Other" }.count == 1)
         #expect(items.contains { $0.isSectionHeader && $0.title == "UART" })
     }
 
@@ -356,7 +361,7 @@ extension MemoryAndPeripheralPanelTests {
         #expect(!view.isChanged(data))
     }
 
-    @Test func peripheralEditingRevertsEmptyUnchangedFailedAndRunningWritesAndPreservesSideEffectChange() async throws {
+    @Test func peripheralEditingRevertsEmptyUnchangedFailedAndRunningWrites() async throws {
         let panels = try await loadedPanels()
         let chip = FakeTargetMemory()
         chip.store(0x02, at: 0x4006_43FC)
@@ -377,8 +382,21 @@ extension MemoryAndPeripheralPanelTests {
         #expect(field.stringValue == "0x00000002")
         #expect(writeCount == 0)
 
+        // Ending an edit after the target resumes (isEditable == false) reverts without firing onWrite.
+        view.isEditable = false
+        let nonEditableCell = try #require(
+            view.outlineView.view(atColumn: 1, row: 0, makeIfNecessary: true) as? NSTableCellView
+        )
+        let nonEditableField = try #require(nonEditableCell.textField)
+        nonEditableField.stringValue = "0x000000AA"
+        view.controlTextDidEndEditing(
+            Notification(name: NSControl.textDidEndEditingNotification, object: nonEditableField)
+        )
+        #expect(nonEditableField.stringValue == "0x00000002")
+        #expect(writeCount == 0)
+        view.isEditable = true
+
         // Running target refuses write and reverts edits.
-        field.stringValue = "0x000000FF"
         let runningErr = await panels.writePeripheral(
             port, register: data, field: nil, text: "0xFF", using: chip, isStopped: false
         )
@@ -393,8 +411,12 @@ extension MemoryAndPeripheralPanelTests {
         #expect(parseErr != nil)
         let revertedAgain = view.outlineView.view(atColumn: 1, row: 0, makeIfNecessary: true) as? NSTableCellView
         #expect(revertedAgain?.textField?.stringValue == "0x00000002")
+    }
 
-        // Side-effect register (UART0.DR) preserves changedRegisters across the post-write refresh.
+    @Test func writePeripheralPreservesChangedStateForSideEffectRegister() async throws {
+        let panels = try await loadedPanels()
+        let chip = FakeTargetMemory()
+        let view = panels.peripherals
         view.select(peripheralNamed: "UART0")
         let uart = try #require(view.selectedPeripheral)
         let drReg = try #require(uart.register(named: "DR"))
