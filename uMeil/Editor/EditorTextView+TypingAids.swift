@@ -28,6 +28,21 @@ extension EditorTextView {
         isEditable && !hasMarkedText() && selectedRanges.count == 1
     }
 
+    func handleNewline() -> Bool {
+        guard canUseTypingAids else { return false }
+        apply(CodeEditing.newline(in: currentText, selection: selectedRange(), style: indentStyle))
+        return true
+    }
+
+    /// A single typed character. Returns whether it was handled here.
+    func handleTyped(_ typed: String) -> Bool {
+        guard canUseTypingAids, typed == "}",
+              let edit = CodeEditing.closingBrace(in: currentText, selection: selectedRange(), style: indentStyle)
+        else { return false }
+        apply(edit)
+        return true
+    }
+
     func handleTab() -> Bool {
         guard canUseTypingAids else { return false }
         let selection = selectedRange()

@@ -113,3 +113,71 @@ struct CodeEditingTests {
         #expect(edit("\t‸x") { CodeEditing.deleteIndentation(in: $0, selection: $1, style: .tabs) } == nil)
     }
 }
+
+// MARK: - Return and closing braces
+
+struct AutoIndentTests {
+    private func newline(_ marked: String, style: IndentStyle = .fourSpaces) -> String? {
+        let start = MarkedText(marked)
+        return start.applying(CodeEditing.newline(in: start.text as NSString, selection: start.selection, style: style))
+    }
+
+    private func closeBrace(_ marked: String) -> String? {
+        let start = MarkedText(marked)
+        return start.applying(
+            CodeEditing.closingBrace(in: start.text as NSString, selection: start.selection, style: .fourSpaces)
+        )
+    }
+
+    @Test func returnKeepsTheLinesIndentation() {
+        #expect(newline("    x = 1;‸") == "    x = 1;\n    ‸")
+        #expect(newline("\tx = 1;‸", style: .tabs) == "\tx = 1;\n\t‸")
+        #expect(newline("x = 1;‸") == "x = 1;\n‸")
+    }
+
+    @Test func returnAfterABraceIndentsOneLevelMore() {
+        #expect(newline("int main(void) {‸") == "int main(void) {\n    ‸")
+        #expect(newline("    if (x) {  ‸") == "    if (x) {\n        ‸")
+        #expect(newline("\tif (x) {‸", style: .tabs) == "\tif (x) {\n\t\t‸")
+    }
+
+    @Test func aBraceInACommentOrStringDoesNotIndent() {
+        #expect(newline("x = 1; // {‸") == "x = 1; // {\n‸")
+        #expect(newline("puts(\"{‸") == "puts(\"{\n‸")
+    }
+
+    @Test func returnBetweenBracesPutsTheCloserOnItsOwnLine() {
+        #expect(newline("    if (x) {‸}") == "    if (x) {\n        ‸\n    }")
+        #expect(newline("void f(void) {‸ }") == "void f(void) {\n    ‸\n}")
+    }
+
+    @Test func returnDropsSpacesAroundTheBreak() {
+        #expect(newline("    x = 1;   ‸") == "    x = 1;\n    ‸")
+        #expect(newline("    a = b;‸   c = d;") == "    a = b;\n    ‸c = d;")
+    }
+
+    @Test func returnOnABlankIndentedLineLeavesNoSpacesBehind() {
+        #expect(newline("{\n    ‸\n}") == "{\n\n    ‸\n}")
+        #expect(newline("‸    x = 1;") == "\n‸    x = 1;")
+    }
+
+    @Test func returnReplacesTheSelection() {
+        #expect(newline("    a«bc»d") == "    a\n    ‸d")
+    }
+
+    @Test func aClosingBraceLinesUpWithItsOpeningLine() {
+        #expect(closeBrace("    if (x) {\n        y();\n        ‸") == "    if (x) {\n        y();\n    }‸")
+        #expect(closeBrace("int main(void) {\n    ‸") == "int main(void) {\n}‸")
+        #expect(closeBrace("int main(void) {\n‸") == nil)
+    }
+
+    @Test func aClosingBraceWithNoOpeningOneOutdentsALevel() {
+        #expect(closeBrace("        ‸") == "    }‸")
+        #expect(closeBrace("  ‸") == "}‸")
+    }
+
+    @Test func aClosingBraceAfterOtherTextIsLeftAlone() {
+        #expect(closeBrace("int main(void) {\n    x = 1; ‸") == nil)
+        #expect(closeBrace("int main(void) {\n    /* ‸") == nil)
+    }
+}

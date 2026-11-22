@@ -65,6 +65,22 @@ final class EditorTextView: NSTextView {
         indentStyleOverride ?? AppearanceSettings.shared.indentStyle
     }
 
+    override func insertNewline(_ sender: Any?) {
+        if !handleNewline() {
+            super.insertNewline(sender)
+        }
+    }
+
+    /// Typed characters arrive here with no replacement range; text put in by
+    /// code, such as an accepted completion, comes with one and is left alone.
+    override func insertText(_ string: Any, replacementRange: NSRange) {
+        let typed = (string as? String) ?? (string as? NSAttributedString)?.string
+        if replacementRange.location == NSNotFound, let typed, handleTyped(typed) {
+            return
+        }
+        super.insertText(string, replacementRange: replacementRange)
+    }
+
     override func insertTab(_ sender: Any?) {
         if !handleTab() {
             super.insertTab(sender)

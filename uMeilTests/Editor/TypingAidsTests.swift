@@ -68,3 +68,26 @@ struct TypingAidsTests {
         #expect(fixture.textView.string == "x")
     }
 }
+
+// MARK: - Return and closing braces
+
+@MainActor
+struct AutoIndentTypingTests {
+    @Test func typingABlockIndentsItsBody() throws {
+        let fixture = try TypingFixture("int main(void) ‸\n")
+        fixture.type("{")
+        fixture.textView.insertNewline(nil)
+        fixture.type("x = 1;")
+        fixture.textView.insertNewline(nil)
+        fixture.type("}")
+        #expect(fixture.shown == "int main(void) {\n    x = 1;\n}‸\n")
+    }
+
+    @Test func textPutInByCodeIsNotTreatedAsTyping() throws {
+        // Code that puts text in with a replacement range, like an accepted
+        // completion, is not treated as typing.
+        let fixture = try TypingFixture("‸")
+        fixture.textView.insertText("}", replacementRange: NSRange(location: 0, length: 0))
+        #expect(fixture.textView.string == "}")
+    }
+}
