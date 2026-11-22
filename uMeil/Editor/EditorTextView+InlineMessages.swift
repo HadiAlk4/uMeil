@@ -79,7 +79,8 @@ extension EditorTextView {
 
         let symbol = message.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill"
         let config = NSImage.SymbolConfiguration(pointSize: 9, weight: .bold)
-            .applying(.init(paletteColors: [color]))
+            // White mark on a colored shape, so the × and ! stay readable.
+            .applying(.init(paletteColors: [.white, color]))
         if let icon = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(config) {
             let iconRect = NSRect(

@@ -15,7 +15,6 @@ final class EditorTabBar: NSView {
 
     private(set) var items: [Item] = []
     private let stack = NSStackView()
-    private let scrollView = NSScrollView()
 
     static let height: CGFloat = 30
 
@@ -24,42 +23,26 @@ final class EditorTabBar: NSView {
         stack.orientation = .horizontal
         stack.spacing = 0
         stack.alignment = .centerY
+        stack.distribution = .fill
+        stack.detachesHiddenViews = true
         stack.translatesAutoresizingMaskIntoConstraints = false
-
-        // Many tabs scroll sideways instead of squeezing their names away.
-        let documentView = FlippedView()
-        documentView.translatesAutoresizingMaskIntoConstraints = false
-        documentView.addSubview(stack)
-        scrollView.documentView = documentView
-        scrollView.drawsBackground = false
-        scrollView.hasHorizontalScroller = false
-        scrollView.hasVerticalScroller = false
-        scrollView.horizontalScrollElasticity = .allowed
-        scrollView.verticalScrollElasticity = .none
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
 
         let separator = NSBox()
         separator.boxType = .separator
         separator.translatesAutoresizingMaskIntoConstraints = false
 
-        addSubview(scrollView)
+        addSubview(stack)
         addSubview(separator)
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: Self.height),
-            scrollView.topAnchor.constraint(equalTo: topAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: separator.topAnchor),
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            // Tabs keep their natural width, and shrink their names when crowded.
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: separator.topAnchor),
             separator.leadingAnchor.constraint(equalTo: leadingAnchor),
             separator.trailingAnchor.constraint(equalTo: trailingAnchor),
-            separator.bottomAnchor.constraint(equalTo: bottomAnchor),
-            documentView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
-            documentView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
-            documentView.heightAnchor.constraint(equalTo: scrollView.contentView.heightAnchor),
-            stack.topAnchor.constraint(equalTo: documentView.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: documentView.bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor)
+            separator.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
         setAccessibilityRole(.tabGroup)
         setAccessibilityLabel("Open files")
@@ -89,19 +72,11 @@ final class EditorTabBar: NSView {
             stack.addArrangedSubview(Divider())
         }
         isHidden = items.isEmpty
-        if let selected = stack.arrangedSubviews.first(where: { ($0 as? TabView)?.item.isSelected == true }) {
-            layoutSubtreeIfNeeded()
-            selected.scrollToVisible(selected.bounds)
-        }
     }
 
     /// The tab for `url`, for tests and accessibility.
     func tabView(for url: URL) -> TabView? {
         stack.arrangedSubviews.lazy.compactMap { $0 as? TabView }.first { $0.item.url == url }
-    }
-
-    private final class FlippedView: NSView {
-        override var isFlipped: Bool { true }
     }
 
     private final class Divider: NSView {
@@ -138,6 +113,8 @@ final class EditorTabBar: NSView {
             label.font = .systemFont(ofSize: 12, weight: item.isSelected ? .medium : .regular)
             label.textColor = item.isSelected ? .labelColor : .secondaryLabelColor
             label.lineBreakMode = .byTruncatingMiddle
+            // Just under the usual priority: names shrink only when tabs run out of room.
+            label.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(740), for: .horizontal)
 
             closeButton.isBordered = false
             closeButton.bezelStyle = .accessoryBarAction

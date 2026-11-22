@@ -110,6 +110,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         editorStack.addArrangedSubview(tabBar)
         editorStack.addArrangedSubview(scrollView)
         editorStack.addArrangedSubview(diagnosticBar)
+        // A vertical stack centers what it holds; the tabs span the editor.
+        tabBar.widthAnchor.constraint(equalTo: editorStack.widthAnchor).isActive = true
 
         view = makeContainer()
 
