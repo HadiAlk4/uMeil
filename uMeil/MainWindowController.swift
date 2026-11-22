@@ -30,6 +30,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     let notice = NoticeView()
     /// File > Open Quickly: finds a project file by a few letters of its name.
     let quickOpen = QuickOpenController()
+    /// Edit > Go to Line: jumps the editor to a line or line:column.
+    let goToLine = GoToLineController()
 
     /// The outcome of the most recent build of the open folder.
     private(set) var lastBuild: BuildResult? { didSet { refreshStatusBar() } }
@@ -247,7 +249,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     /// Whether the command a menu or toolbar item sends can run right now.
     func isEnabled(_ action: Selector?) -> Bool {
         switch action {
-        case #selector(saveDocument(_:)):
+        case #selector(saveDocument(_:)), #selector(showGoToLine(_:)):
             editor.document != nil
         case #selector(jumpToDefinitionMenuAction(_:)), #selector(toggleCodeIntelligence(_:)):
             isCodeIntelligenceActionEnabled(action)

@@ -234,6 +234,8 @@ enum MainMenu {
 
         let find = menu.addItem(withTitle: "Find", action: nil, keyEquivalent: "")
         find.submenu = findMenu()
+        menu.addItem(withTitle: "Go to Line…", action: #selector(MainWindowController.showGoToLine(_:)),
+                     keyEquivalent: "l")
 
         menu.addItem(.separator())
         addCodeIntelligenceItems(to: menu)
