@@ -9,6 +9,12 @@ extension EditorViewController {
         set { ruler?.breakpointLines = newValue }
     }
 
+    /// Lines of the open file with a breakpoint that is turned off.
+    var disabledBreakpointLines: Set<Int> {
+        get { ruler?.disabledBreakpointLines ?? [] }
+        set { ruler?.disabledBreakpointLines = newValue }
+    }
+
     /// Lines of the open file that have machine code.
     var executableLines: Set<Int> {
         get { ruler?.executableLines ?? [] }
@@ -54,6 +60,9 @@ extension EditorViewController {
     func clearDebugMarks() {
         showExecutionLine(nil)
         breakpointLines = []
+        // Breakpoints that are off belong to the project, not the session,
+        // so they come straight back for the file being opened.
+        disabledBreakpointLines = document.flatMap { disabledBreakpointLinesProvider?($0.url) } ?? []
         executableLines = []
         showInlineValues([:])
         cancelHover()

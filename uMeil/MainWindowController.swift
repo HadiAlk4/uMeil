@@ -55,7 +55,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     var answerSavePrompt: ((_ files: [URL]) -> SaveChoice)?
 
     /// The folder open in the navigator, or `nil` before one is chosen.
-    private(set) var folder: URL? { didSet { refreshStatusBar() } }
+    private(set) var folder: URL? { didSet { folderDidChange() } }
 
     /// Where the last opened folder is remembered between launches.
     static let lastFolderDefaultsKey = "LastOpenedFolder"
@@ -108,7 +108,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         window.toolbarStyle = .unified
         startWatchingForBoard()
         setUpDebugging()
-        observeAppearanceSettings()
+        setUpBreakpointsAndAppearance()
         updateTitle()
     }
 

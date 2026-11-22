@@ -29,8 +29,8 @@ struct BottomPanelTests {
         (0..<panel.tabControl.segmentCount).compactMap { panel.tabControl.label(forSegment: $0) }
     }
 
-    @Test func hasIssuesTerminalDebugAndSerialTabs() {
-        #expect(labels(of: makePanel()) == ["Issues", "Terminal", "Debug", "Serial"])
+    @Test func hasIssuesTerminalDebugSerialAndBreakpointsTabs() {
+        #expect(labels(of: makePanel()) == ["Issues", "Terminal", "Debug", "Serial", "Breakpoints"])
     }
 
     @Test func theSerialTabShowsTheSerialMonitorFillingThePanel() {

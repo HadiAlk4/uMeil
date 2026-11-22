@@ -29,6 +29,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
     var onHoverIdentifier: ((String) async -> String?)?
     /// Waits for the mouse to rest before asking the debugger for a value.
     var hoverTask: Task<Void, Never>?
+    /// The lines of a file with a breakpoint that is turned off.
+    var disabledBreakpointLinesProvider: ((URL) -> Set<Int>)?
 
     let textView: NSTextView
     let intelligence = EditorCodeIntelligenceState()
