@@ -54,4 +54,24 @@ struct AppSetupTests {
         ])
         #expect(find.items.allSatisfy { $0.action == #selector(NSResponder.performTextFinderAction(_:)) })
     }
+
+    @Test func editMenuShiftsLinesWithTheBracketKeys() throws {
+        let menu = MainMenu.make(appName: "uMeil")
+        let edit = try #require(menu.items.first { $0.submenu?.title == "Edit" }?.submenu)
+        let right = try #require(edit.items.first { $0.title == "Shift Right" })
+        let left = try #require(edit.items.first { $0.title == "Shift Left" })
+
+        #expect(right.keyEquivalent == "]" && right.keyEquivalentModifierMask == .command)
+        #expect(left.keyEquivalent == "[" && left.keyEquivalentModifierMask == .command)
+        #expect(right.action == #selector(EditorTextView.shiftRight(_:)))
+        #expect(left.action == #selector(EditorTextView.shiftLeft(_:)))
+    }
+
+    @Test func editMenuCommentsLinesWithCommandSlash() throws {
+        let menu = MainMenu.make(appName: "uMeil")
+        let edit = try #require(menu.items.first { $0.submenu?.title == "Edit" }?.submenu)
+        let comment = try #require(edit.items.first { $0.title == "Comment Selection" })
+        #expect(comment.keyEquivalent == "/" && comment.keyEquivalentModifierMask == .command)
+        #expect(comment.action == #selector(EditorTextView.toggleComment(_:)))
+    }
 }

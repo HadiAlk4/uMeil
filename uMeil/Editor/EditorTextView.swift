@@ -57,6 +57,111 @@ final class EditorTextView: NSTextView {
         super.keyDown(with: event)
     }
 
+    // MARK: - Typing aids
+
+    /// Closing brackets and quotes the editor typed, which typing steps over.
+    var autoClosedPairs = AutoClosedPairs()
+
+    override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
+        guard super.shouldChangeText(in: affectedCharRange, replacementString: replacementString) else { return false }
+        if let replacementString {
+            let length = (replacementString as NSString).length
+            autoClosedPairs.textChanged(in: affectedCharRange, replacementLength: length)
+        }
+        return true
+    }
+
+    override func setSelectedRanges(
+        _ ranges: [NSValue],
+        affinity: NSSelectionAffinity,
+        stillSelecting: Bool
+    ) {
+        super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+        let selection = selectedRange()
+        if ranges.count == 1, selection.length == 0, selection.location <= currentText.length {
+            let lineEnd = CodeEditing.lineEnd(in: currentText, at: selection.location)
+            autoClosedPairs.cursorMoved(to: selection.location, lineEnd: lineEnd)
+        } else {
+            autoClosedPairs.removeAll()
+        }
+    }
+
+    /// What one level of indentation is. Settings decides, unless a test does.
+    var indentStyleOverride: IndentStyle?
+    var indentStyle: IndentStyle {
+        indentStyleOverride ?? AppearanceSettings.shared.indentStyle
+    }
+
+    override func insertNewline(_ sender: Any?) {
+        if !handleNewline() {
+            super.insertNewline(sender)
+        }
+    }
+
+    /// Typed characters arrive here with no replacement range; text put in by
+    /// code, such as an accepted completion, comes with one and is left alone.
+    override func insertText(_ string: Any, replacementRange: NSRange) {
+        let typed = (string as? String) ?? (string as? NSAttributedString)?.string
+        if replacementRange.location == NSNotFound, let typed, handleTyped(typed) {
+            return
+        }
+        super.insertText(string, replacementRange: replacementRange)
+    }
+
+    override func insertTab(_ sender: Any?) {
+        if !handleTab() {
+            super.insertTab(sender)
+        }
+    }
+
+    /// Shift+Tab: every selected line, or the cursor's, moves a level left.
+    override func insertBacktab(_ sender: Any?) {
+        shiftSelectedLines(.left)
+    }
+
+    /// What starts a line comment in the file being edited, such as `//`,
+    /// or `nil` for files the editor does not know how to comment.
+    var lineCommentPrefix: String?
+
+    /// Edit > Comment Selection (⌘/).
+    @objc func toggleComment(_ sender: Any?) {
+        guard isEditable, let lineCommentPrefix,
+              let edit = CodeEditing.toggleLineComment(
+                in: currentText,
+                selection: selectedRange(),
+                prefix: lineCommentPrefix
+              )
+        else { return }
+        apply(edit)
+    }
+
+    /// Edit > Shift Right (⌘]).
+    @objc func shiftRight(_ sender: Any?) {
+        shiftSelectedLines(.right)
+    }
+
+    /// Edit > Shift Left (⌘[).
+    @objc func shiftLeft(_ sender: Any?) {
+        shiftSelectedLines(.left)
+    }
+
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        switch item.action {
+        case #selector(shiftRight(_:)), #selector(shiftLeft(_:)):
+            return isEditable
+        case #selector(toggleComment(_:)):
+            return isEditable && lineCommentPrefix != nil
+        default:
+            return super.validateUserInterfaceItem(item)
+        }
+    }
+
+    override func deleteBackward(_ sender: Any?) {
+        if !handleDeleteBackward() {
+            super.deleteBackward(sender)
+        }
+    }
+
     override func complete(_ sender: Any?) {
         onRequestCompletion?()
     }

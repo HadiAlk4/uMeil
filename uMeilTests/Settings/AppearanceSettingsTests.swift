@@ -49,6 +49,23 @@ struct AppearanceSettingsTests {
         #expect(settings.fontSize == 13)
     }
 
+    @Test func indentationIsFourSpacesUntilTabsAreChosen() throws {
+        let settings = try makeSettings()
+        #expect(settings.indentUsingSpaces)
+        #expect(settings.indentStyle == .fourSpaces)
+
+        var notified = false
+        let observer = NotificationCenter.default.addObserver(
+            forName: AppearanceSettings.didChange, object: settings, queue: nil
+        ) { _ in notified = true }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        settings.indentUsingSpaces = false
+        #expect(settings.indentStyle == .tabs)
+        #expect(notified)
+        #expect(AppearanceSettings(defaults: settings.defaults).indentUsingSpaces == false)
+    }
+
     @Test func aChosenFontIsUsedAndAMissingOneFallsBack() throws {
         let settings = try makeSettings()
         settings.fontName = "Menlo-Regular"

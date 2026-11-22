@@ -1,6 +1,7 @@
 import AppKit
 
-/// uMeil > Settings…: the code font, its size, and light or dark mode.
+/// uMeil > Settings…: the code font, its size, light or dark mode, and
+/// whether the editor indents with spaces or tabs.
 /// Changes apply as soon as they are made, as is usual for Mac settings.
 final class SettingsWindowController: NSWindowController {
     static let shared = SettingsWindowController(settings: .shared)
@@ -15,6 +16,7 @@ final class SettingsWindowController: NSWindowController {
         target: nil,
         action: nil
     )
+    let indentPopUp = NSPopUpButton()
     let preview = NSTextField(labelWithString: "GPIO_PORTN_DATA_R ^= 0x01;  // LED D1")
 
     /// The fonts offered, by PostScript name. `nil` is the system's monospaced font.
@@ -23,7 +25,7 @@ final class SettingsWindowController: NSWindowController {
     init(settings: AppearanceSettings) {
         self.settings = settings
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 200),
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 236),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: true
@@ -65,6 +67,10 @@ final class SettingsWindowController: NSWindowController {
         themeControl.target = self
         themeControl.action = #selector(themeChosen(_:))
 
+        indentPopUp.addItems(withTitles: Self.indentTitles)
+        indentPopUp.target = self
+        indentPopUp.action = #selector(indentChosen(_:))
+
         preview.lineBreakMode = .byTruncatingTail
         preview.textColor = .secondaryLabelColor
 
@@ -76,6 +82,7 @@ final class SettingsWindowController: NSWindowController {
             [label("Font:"), fontPopUp],
             [label("Size:"), size],
             [label("Appearance:"), themeControl],
+            [label("Indent with:"), indentPopUp],
             [NSGridCell.emptyContentView, preview],
             [NSGridCell.emptyContentView, hint]
         ])
@@ -115,6 +122,9 @@ final class SettingsWindowController: NSWindowController {
         return size
     }
 
+    /// The indentation choices, spaces first. Tab is as wide as four spaces.
+    static let indentTitles = ["\(EditorTheme.tabWidth) Spaces", "Tabs"]
+
     private func label(_ text: String) -> NSTextField {
         NSTextField(labelWithString: text)
     }
@@ -138,6 +148,7 @@ final class SettingsWindowController: NSWindowController {
         sizeStepper.integerValue = Int(settings.fontSize)
         themeControl.selectedSegment = AppearanceSettings.Theme.allCases.firstIndex(of: settings.theme) ?? 0
         preview.font = settings.font
+        indentPopUp.selectItem(at: settings.indentUsingSpaces ? 0 : 1)
     }
 
     @objc private func settingsChanged(_ notification: Notification) {
@@ -156,6 +167,10 @@ final class SettingsWindowController: NSWindowController {
 
     @objc func sizeStepped(_ sender: NSStepper) {
         settings.fontSize = CGFloat(sender.integerValue)
+    }
+
+    @objc func indentChosen(_ sender: NSPopUpButton) {
+        settings.indentUsingSpaces = sender.indexOfSelectedItem == 0
     }
 
     @objc func themeChosen(_ sender: NSSegmentedControl) {
