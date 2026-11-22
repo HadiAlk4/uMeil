@@ -137,29 +137,9 @@ actor ClangdSession {
         }
     }
 
-    // MARK: - Intelligence requests
-
-    func completion(
-        at position: LSPPosition,
-        in url: URL,
-        currentText: String? = nil
-    ) async throws -> [LSPCompletionItem] {
-        let normalized = Self.normalize(url)
-        try await ensureSynced(url: normalized, currentText: currentText)
-        let client = try await ensureClient()
-        return try await client.completion(url: normalized, position: position)
-    }
-
-    func definition(at position: LSPPosition, in url: URL, currentText: String? = nil) async throws -> [LSPLocation] {
-        let normalized = Self.normalize(url)
-        try await ensureSynced(url: normalized, currentText: currentText)
-        let client = try await ensureClient()
-        return try await client.definition(url: normalized, position: position)
-    }
-
     // MARK: - Helpers
 
-    private func ensureClient() async throws -> LSPClient {
+    func ensureClient() async throws -> LSPClient {
         if let client { return client }
         if let startTask { return try await startTask.value }
 
@@ -210,7 +190,7 @@ actor ClangdSession {
         }
     }
 
-    private func ensureSynced(url: URL, currentText: String?, version: Int? = nil) async throws {
+    func ensureSynced(url: URL, currentText: String?, version: Int? = nil) async throws {
         if !openDocuments.contains(url), let currentText {
             try await openDocument(url: url, text: currentText, version: version)
             return
@@ -280,6 +260,9 @@ extension ClangdSession {
         arguments.append("--enable-config=false")
         // Keep completions pure so accepting a function does not insert headers unexpectedly.
         arguments.append("--header-insertion=never")
+        // One entry per function with its full parameter list, so the list
+        // shows what each argument is and snippets fill them all in.
+        arguments.append("--completion-style=detailed")
         // Bound background worker threads and keep PCHs in memory for responsiveness.
         arguments.append("-j=2")
         arguments.append("--pch-storage=memory")

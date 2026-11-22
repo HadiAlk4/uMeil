@@ -117,6 +117,18 @@ struct LSPCompletionItem: Codable, Equatable, Sendable {
     var filterText: String?
     var sortText: String?
     var textEdit: LSPTextEdit?
+    /// `2` when `insertionText` is an LSP snippet with `${1:…}` placeholders.
+    var insertTextFormat: Int?
+
+    /// Whether accepting this item inserts placeholders to Tab between.
+    var isSnippet: Bool { insertTextFormat == 2 }
+
+    /// The text to insert and its placeholders. Plain items have none.
+    var snippet: LSPSnippet {
+        isSnippet
+            ? LSPSnippet(parsing: insertionText)
+            : LSPSnippet(text: insertionText, placeholders: [], finalOffset: nil)
+    }
 
     /// `clangd` prepends a space to labels when aligning icons; trim it for display.
     var displayLabel: String {
@@ -134,7 +146,7 @@ struct LSPCompletionItem: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case label, kind, detail, documentation, insertText, filterText, sortText, textEdit
+        case label, kind, detail, documentation, insertText, filterText, sortText, textEdit, insertTextFormat
     }
 
     private struct MarkupContent: Decodable {
@@ -149,7 +161,8 @@ struct LSPCompletionItem: Codable, Equatable, Sendable {
         insertText: String? = nil,
         filterText: String? = nil,
         sortText: String? = nil,
-        textEdit: LSPTextEdit? = nil
+        textEdit: LSPTextEdit? = nil,
+        insertTextFormat: Int? = nil
     ) {
         self.label = label
         self.kind = kind
@@ -159,6 +172,7 @@ struct LSPCompletionItem: Codable, Equatable, Sendable {
         self.filterText = filterText
         self.sortText = sortText
         self.textEdit = textEdit
+        self.insertTextFormat = insertTextFormat
     }
 
     init(from decoder: Decoder) throws {
@@ -177,6 +191,7 @@ struct LSPCompletionItem: Codable, Equatable, Sendable {
         filterText = try container.decodeIfPresent(String.self, forKey: .filterText)
         sortText = try container.decodeIfPresent(String.self, forKey: .sortText)
         textEdit = try container.decodeIfPresent(LSPTextEdit.self, forKey: .textEdit)
+        insertTextFormat = try container.decodeIfPresent(Int.self, forKey: .insertTextFormat)
     }
 }
 

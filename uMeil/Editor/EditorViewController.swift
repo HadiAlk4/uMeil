@@ -153,6 +153,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
 
     @objc private func editorDidScroll(_ notification: Notification) {
         ruler?.needsDisplay = true
+        dismissCodeHover()
         applyVisibleHighlights()
     }
 
@@ -167,9 +168,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         let restored = tabs.tab(for: url)
         let text = restored?.unsavedText ?? loaded.text
 
-        completionPanel.dismiss()
-        intelligence.completionTask?.cancel()
-        intelligence.completionAnchorOffset = nil
+        dismissCodeIntelligencePopups()
 
         isLoading = true
         (textView as? EditorTextView)?.autoClosedPairs.removeAll()
@@ -227,9 +226,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
             memoryUsageBar.show(nil)
         }
         let closedURL = document?.url
-        completionPanel.dismiss()
-        intelligence.completionTask?.cancel()
-        intelligence.completionAnchorOffset = nil
+        dismissCodeIntelligencePopups()
 
         isLoading = true
         textView.string = ""
@@ -270,6 +267,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
             setMarkers([:])
         }
         clearLiveDiagnostics()
+        dismissCodeHover()
+        refreshPlaceholderHighlights()
         updateCursorPosition()
         isModified = true
         // Wait for a short pause in typing before parsing again.
@@ -278,6 +277,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
             intelligence.onDocumentChanged?(url, textView.string)
         }
         handleTypingCompletionTrigger()
+        handleTypingSignatureTrigger()
     }
 
     // MARK: - Build messages

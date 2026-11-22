@@ -32,6 +32,27 @@ extension MainWindowController {
         editor.intelligence.onCompletionRequested = { [weak controller] url, text, position in
             await controller?.completion(in: url, text: text, position: position) ?? []
         }
+        editor.intelligence.onSignatureHelpRequested = { [weak controller] url, text, position in
+            await controller?.signatureHelp(in: url, text: text, position: position)
+        }
+        editor.intelligence.onHoverRequested = { [weak controller] url, text, position in
+            await controller?.hover(in: url, text: text, position: position)
+        }
+        editor.intelligence.onPrepareRename = { [weak controller] url, text, position in
+            guard let controller else { throw RenameError.unavailable }
+            return try await controller.prepareRename(in: url, text: text, position: position)
+        }
+        editor.intelligence.onRename = { [weak controller] url, text, position, newName in
+            guard let controller else { throw RenameError.unavailable }
+            return try await controller.rename(in: url, text: text, position: position, to: newName)
+        }
+        editor.intelligence.onFormatRequested = { [weak self] url, text, lines in
+            let locator = self?.makeToolLocator() ?? .standard()
+            guard let executable = ClangFormatter.locate(near: locator.locate(.clangd), locator: locator) else {
+                throw ClangFormatter.Failure.notFound
+            }
+            return try await ClangFormatter(executable: executable).format(text, of: url, lines: lines)
+        }
         editor.intelligence.onDefinitionRequested = { [weak controller] url, text, position in
             await controller?.jumpToDefinition(in: url, text: text, position: position)
         }

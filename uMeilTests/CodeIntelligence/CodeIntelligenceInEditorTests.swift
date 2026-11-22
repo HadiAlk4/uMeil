@@ -201,7 +201,7 @@ struct CodeIntelligenceInEditorTests {
         await controller.editor.performCompletionRequest()
 
         let hasDriverLibMatch = controller.editor.completionPanel.filteredItems.contains {
-            $0.insertionText == "GPIOPinWrite"
+            $0.filterKey == "GPIOPinWrite"
         }
         #expect(hasDriverLibMatch)
         controller.editor.completionPanel.dismiss()
