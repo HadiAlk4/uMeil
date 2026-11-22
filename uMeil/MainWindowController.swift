@@ -32,7 +32,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     let quickOpen = QuickOpenController()
 
     /// The outcome of the most recent build of the open folder.
-    private(set) var lastBuild: BuildResult?
+    private(set) var lastBuild: BuildResult? { didSet { refreshStatusBar() } }
     private(set) var isBuilding = false
     /// True from the moment Build and Flash is chosen until it finishes,
     /// including the build that comes first.
@@ -55,7 +55,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     var answerSavePrompt: ((_ files: [URL]) -> SaveChoice)?
 
     /// The folder open in the navigator, or `nil` before one is chosen.
-    private(set) var folder: URL?
+    private(set) var folder: URL? { didSet { refreshStatusBar() } }
 
     /// Where the last opened folder is remembered between launches.
     static let lastFolderDefaultsKey = "LastOpenedFolder"

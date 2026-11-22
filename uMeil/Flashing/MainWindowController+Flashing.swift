@@ -125,8 +125,10 @@ extension MainWindowController {
     func startWatchingForBoard() {
         boardMonitor.onChange = { [weak self] isConnected in
             self?.toolbar.showBoard(isConnected: isConnected)
+            self?.editor.statusBar.showBoard(isConnected: isConnected)
         }
         boardMonitor.start()
         toolbar.showBoard(isConnected: boardMonitor.isBoardConnected)
+        editor.statusBar.showBoard(isConnected: boardMonitor.isBoardConnected)
     }
 }
