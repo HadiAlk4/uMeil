@@ -83,6 +83,14 @@ enum EditorTheme {
         )
     }
 
+    /// Faint tint drawn behind the line the cursor is currently on.
+    static let currentLineColor = adaptive(
+        light: 0x1F2937,
+        lightAlpha: 0.05,
+        dark: 0xE6EDF3,
+        darkAlpha: 0.06
+    )
+
     /// Underline colors for live diagnostics reported while typing.
     /// The shading behind a snippet placeholder still waiting to be filled in.
     static let placeholderBackgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.18)

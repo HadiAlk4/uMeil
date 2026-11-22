@@ -198,6 +198,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         clearLiveDiagnostics()
         setMarkers([:])
         clearDebugMarks()
+        refreshEditorHighlights()
         editorStack.isHidden = false
         placeholderLabel.isHidden = true
         welcomeView.isHidden = true
@@ -241,6 +242,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         clearLiveDiagnostics()
         setMarkers([:])
         clearDebugMarks()
+        clearEditorHighlights()
         showPlaceholder(hasFolder: hasFolder)
         refreshTabBar()
         scheduleHighlighting(delay: .zero)
@@ -270,6 +272,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         dismissCodeHover()
         refreshPlaceholderHighlights()
         updateCursorPosition()
+        editorHighlightsDidChangeText()
         isModified = true
         // Wait for a short pause in typing before parsing again.
         scheduleHighlighting(delay: .milliseconds(40))

@@ -32,6 +32,9 @@ final class EditorTextView: NSTextView {
         }
     }
 
+    /// Editor visual highlight state (current line, etc.), drawn behind the text.
+    var highlightState = HighlightState()
+
     /// UTF-16 offset where the stopped execution line begins, or `nil` when not stopped here.
     var executionLineStart: Int? {
         didSet {
@@ -49,9 +52,15 @@ final class EditorTextView: NSTextView {
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
         drawExecutionLine(in: rect)
+        drawEditorHighlights(in: rect)
         drawPlaceholders(in: rect)
         drawInlineMessages(in: rect)
         drawInlineAnnotations(in: rect)
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
     }
 
     override func mouseDown(with event: NSEvent) {

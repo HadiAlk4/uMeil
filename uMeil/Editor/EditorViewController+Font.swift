@@ -17,5 +17,6 @@ extension EditorViewController {
         }
         textView.typingAttributes = EditorTheme.textAttributes
         ruler?.fontDidChange()
+        editorHighlightsDidChangeFont()
     }
 }

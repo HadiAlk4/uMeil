@@ -378,6 +378,7 @@ extension EditorViewController {
         guard !isLoading else { return }
         updateCursorPosition()
         placeholdersSelectionDidChange()
+        editorHighlightsDidChangeSelection()
         handleSelectionChangeForCodeIntelligence()
     }
 }
