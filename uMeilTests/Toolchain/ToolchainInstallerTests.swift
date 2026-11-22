@@ -17,7 +17,10 @@ struct ToolchainInstallerTests {
         try FakeTool.install(.compiler, in: bin, script: gccScript)
         let package = try makePackage(archiving: "arm-gnu-toolchain-14.2.rel1-darwin-arm64", in: temp)
 
-        let installed = try await ToolchainInstaller(toolchainsDirectory: toolchains).install(package)
+        let installed = try await ToolchainInstaller(
+            toolchainsDirectory: toolchains,
+            allowInsecureURLsForTesting: true
+        ).install(package)
 
         #expect(installed.lastPathComponent == "arm-gnu-toolchain-14.2.1")
         #expect(try visibleItems(in: toolchains) == ["arm-gnu-toolchain-14.2.1"])
@@ -44,7 +47,10 @@ struct ToolchainInstallerTests {
         try FakeTool.install(.compiler, in: bin, script: gccScript)
         let package = try makePackage(archiving: "bin", "share", in: temp)
 
-        let installed = try await ToolchainInstaller(toolchainsDirectory: toolchains).install(package)
+        let installed = try await ToolchainInstaller(
+            toolchainsDirectory: toolchains,
+            allowInsecureURLsForTesting: true
+        ).install(package)
 
         let gcc = installed.appending(path: "bin/arm-none-eabi-gcc")
         #expect(FileManager.default.isExecutableFile(atPath: gcc.path(percentEncoded: false)))
@@ -60,7 +66,10 @@ struct ToolchainInstallerTests {
         let tampered = ToolchainPackage(name: good.name, version: good.version, url: good.url, sha256: wrongChecksum)
 
         await #expect(throws: ToolchainInstallError.checksumMismatch(expected: wrongChecksum, actual: good.sha256)) {
-            try await ToolchainInstaller(toolchainsDirectory: toolchains).install(tampered)
+            try await ToolchainInstaller(
+                toolchainsDirectory: toolchains,
+                allowInsecureURLsForTesting: true
+            ).install(tampered)
         }
         #expect(try visibleAndHiddenItems(in: toolchains).isEmpty)
     }
@@ -78,7 +87,10 @@ struct ToolchainInstallerTests {
             sha256: good.sha256.uppercased()
         )
 
-        try await ToolchainInstaller(toolchainsDirectory: toolchains).install(package)
+        try await ToolchainInstaller(
+            toolchainsDirectory: toolchains,
+            allowInsecureURLsForTesting: true
+        ).install(package)
 
         #expect(try visibleItems(in: toolchains) == ["arm-gnu-toolchain-14.2.1"])
     }
@@ -97,7 +109,10 @@ struct ToolchainInstallerTests {
         )
 
         await #expect {
-            try await ToolchainInstaller(toolchainsDirectory: toolchains).install(package)
+            try await ToolchainInstaller(
+                toolchainsDirectory: toolchains,
+                allowInsecureURLsForTesting: true
+            ).install(package)
         } throws: { error in
             guard case ToolchainInstallError.extractionFailed = error else { return false }
             return true
@@ -114,9 +129,39 @@ struct ToolchainInstallerTests {
         try FakeTool.install(.compiler, in: bin, script: gccScript)
         let package = try makePackage(archiving: "toolchain", in: temp)
 
-        let installed = try await ToolchainInstaller(toolchainsDirectory: toolchains).install(package)
+        let installed = try await ToolchainInstaller(
+            toolchainsDirectory: toolchains,
+            allowInsecureURLsForTesting: true
+        ).install(package)
 
         #expect(try visibleItems(in: installed) == ["bin"])
+    }
+
+    @Test func preservesExistingInstallIfNewArchiveFailsExtraction() async throws {
+        let temp = try TemporaryDirectory()
+        let toolchains = temp.url.appending(path: "Toolchains", directoryHint: .isDirectory)
+        let existing = try temp.directory("Toolchains/arm-gnu-toolchain-14.2.1")
+        try Data("keep-me".utf8).write(to: existing.appending(path: "marker.txt"))
+        let garbage = Data("corrupt".utf8)
+        let archive = temp.url.appending(path: "broken.tar.gz")
+        try garbage.write(to: archive)
+        let package = ToolchainPackage(
+            name: "arm-gnu-toolchain",
+            version: "14.2.1",
+            url: archive,
+            sha256: Self.sha256(of: garbage)
+        )
+
+        await #expect {
+            try await ToolchainInstaller(
+                toolchainsDirectory: toolchains,
+                allowInsecureURLsForTesting: true
+            ).install(package)
+        } throws: { error in
+            guard case ToolchainInstallError.extractionFailed = error else { return false }
+            return true
+        }
+        #expect(try visibleItems(in: existing) == ["marker.txt"])
     }
 
     @Test func reportsProgressThroughEachStage() async throws {
@@ -127,7 +172,10 @@ struct ToolchainInstallerTests {
         let package = try makePackage(archiving: "toolchain", in: temp)
         let reported = OSAllocatedUnfairLock(initialState: [ToolchainInstallProgress]())
 
-        try await ToolchainInstaller(toolchainsDirectory: toolchains).install(package) { progress in
+        try await ToolchainInstaller(
+            toolchainsDirectory: toolchains,
+            allowInsecureURLsForTesting: true
+        ).install(package) { progress in
             reported.withLock { $0.append(progress) }
         }
 
@@ -193,4 +241,132 @@ struct ToolchainInstallerTests {
         guard FileManager.default.fileExists(atPath: path) else { return [] }
         return try FileManager.default.contentsOfDirectory(atPath: path).sorted()
     }
+}
+
+extension ToolchainInstallerTests {
+    @Test(arguments: [
+        ("", "1.0.0"),
+        ("..", "1.0.0"),
+        (".", "1.0.0"),
+        ("../escape", "1.0.0"),
+        ("bad/name", "1.0.0"),
+        ("bad:name", "1.0.0"),
+        ("bad\0name", "1.0.0"),
+        ("bad\nname", "1.0.0"),
+        (".hidden", "1.0.0"),
+        ("tool", ""),
+        ("tool", "1..0"),
+        ("tool", "1/0"),
+        ("tool", "1:0"),
+        ("tool", "1\0"),
+        ("tool", "1\r\n0")
+    ])
+    func rejectsUnsafePackageNamesAndVersions(name: String, version: String) async throws {
+        let temp = try TemporaryDirectory()
+        let toolchains = temp.url.appending(path: "Toolchains", directoryHint: .isDirectory)
+        let package = ToolchainPackage(
+            name: name,
+            version: version,
+            url: URL(string: "https://example.com/toolchain.tar.gz")!,
+            sha256: String(repeating: "a", count: 64)
+        )
+
+        await #expect {
+            try await ToolchainInstaller(toolchainsDirectory: toolchains).install(package)
+        } throws: { error in
+            guard case ToolchainInstallError.invalidPackage = error else { return false }
+            return true
+        }
+    }
+
+    @Test(arguments: [
+        "http://example.com/toolchain.tar.gz",
+        "file:///tmp/toolchain.tar.gz",
+        "ftp://example.com/toolchain.tar.gz"
+    ])
+    func refusesNonHTTPSDownloadsByDefault(urlString: String) async throws {
+        let temp = try TemporaryDirectory()
+        let toolchains = temp.url.appending(path: "Toolchains", directoryHint: .isDirectory)
+        let package = ToolchainPackage(
+            name: "arm-gnu-toolchain",
+            version: "14.2.1",
+            url: try #require(URL(string: urlString)),
+            sha256: String(repeating: "a", count: 64)
+        )
+
+        await #expect {
+            try await ToolchainInstaller(toolchainsDirectory: toolchains).install(package)
+        } throws: { error in
+            guard case ToolchainInstallError.invalidPackage = error else { return false }
+            return true
+        }
+    }
+
+    @Test func installsFromHTTPSUsingMockSession() async throws {
+        let temp = try TemporaryDirectory()
+        let toolchains = temp.url.appending(path: "Toolchains", directoryHint: .isDirectory)
+        let bin = try temp.directory("source/toolchain/bin")
+        try FakeTool.install(.compiler, in: bin, script: gccScript)
+        let localPackage = try makePackage(archiving: "toolchain", in: temp)
+        let archiveData = try Data(contentsOf: localPackage.url)
+
+        let httpsURL = try #require(URL(string: "https://downloads.example.com/\(UUID().uuidString)/toolchain.tar.gz"))
+        MockHTTPSProtocol.register(url: httpsURL, data: archiveData)
+        defer { MockHTTPSProtocol.unregister(url: httpsURL) }
+
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockHTTPSProtocol.self]
+        let session = URLSession(configuration: config)
+
+        let httpsPackage = ToolchainPackage(
+            name: localPackage.name,
+            version: localPackage.version,
+            url: httpsURL,
+            sha256: localPackage.sha256
+        )
+
+        let installed = try await ToolchainInstaller(toolchainsDirectory: toolchains, session: session)
+            .install(httpsPackage)
+
+        #expect(try visibleItems(in: installed) == ["bin"])
+    }
+}
+
+private final class MockHTTPSProtocol: URLProtocol, @unchecked Sendable {
+    private static let responses = OSAllocatedUnfairLock(initialState: [URL: Data]())
+
+    static func register(url: URL, data: Data) {
+        responses.withLock { $0[url] = data }
+    }
+
+    static func unregister(url: URL) {
+        responses.withLock { _ = $0.removeValue(forKey: url) }
+    }
+
+    override static func canInit(with request: URLRequest) -> Bool {
+        guard let url = request.url else { return false }
+        return responses.withLock { $0[url] != nil }
+    }
+
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let url = request.url, let data = Self.responses.withLock({ $0[url] }) else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        let response = HTTPURLResponse(
+            url: url,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Length": "\(data.count)"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }

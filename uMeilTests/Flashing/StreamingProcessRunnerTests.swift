@@ -138,4 +138,60 @@ struct StreamingProcessRunnerTests {
         #expect(Date().timeIntervalSince(started) < 10)
         #expect(output.exitCode != 0)
     }
+
+    @Test func pipeLineReaderRespectsCollectAllAndMaximumBytes() async throws {
+        let pipe = Pipe()
+        let lines = Lines()
+        let finalText = OSAllocatedUnfairLock<String?>(initialState: nil)
+
+        PipeLineReader.start(
+            pipe.fileHandleForReading,
+            collectAll: false,
+            onLine: { lines.add($0) },
+            onEnd: { text in finalText.withLock { $0 = text } }
+        )
+        try pipe.fileHandleForWriting.write(contentsOf: Data("first\nsecond\n".utf8))
+        try pipe.fileHandleForWriting.close()
+
+        while finalText.withLock({ $0 }) == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(lines.all == ["first", "second"])
+        #expect(finalText.withLock { $0 } == "")
+
+        let cappedPipe = Pipe()
+        let cappedLines = Lines()
+        let cappedText = OSAllocatedUnfairLock<String?>(initialState: nil)
+
+        PipeLineReader.start(
+            cappedPipe.fileHandleForReading,
+            collectAll: true,
+            maximumBytes: 8,
+            onLine: { cappedLines.add($0) },
+            onEnd: { text in cappedText.withLock { $0 = text } }
+        )
+        try cappedPipe.fileHandleForWriting.write(contentsOf: Data("12345\n67890\n".utf8))
+        try cappedPipe.fileHandleForWriting.close()
+
+        while cappedText.withLock({ $0 }) == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(cappedLines.all == ["12345", "67890"])
+        #expect(cappedText.withLock { $0 } == "12345\n67")
+    }
+
+    @Test func processRunnerCapsStdoutAndStderrWithoutDeadlocking() async throws {
+        let runner = ProcessRunner(maximumOutputBytes: 1024)
+        let output = try await runner.run(
+            shell,
+            arguments: [
+                "-c",
+                "head -c 5000 /dev/zero | tr '\\0' 'A'; head -c 5000 /dev/zero | tr '\\0' 'B' >&2"
+            ]
+        )
+
+        #expect(output.exitCode == 0)
+        #expect(output.standardOutput.utf8.count == 1024)
+        #expect(output.standardError.utf8.count == 1024)
+    }
 }

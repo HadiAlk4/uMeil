@@ -75,19 +75,24 @@ struct SVDField: Equatable, Sendable {
     var enumeratedValues: [SVDEnumeratedValue]
 
     var mask: UInt64 {
-        let ones: UInt64 = bitWidth >= 64 ? .max : (1 << UInt64(bitWidth)) - 1
+        guard (0..<64).contains(bitOffset), bitWidth > 0 else { return 0 }
+        let clampedWidth = min(bitWidth, 64 - bitOffset)
+        let ones: UInt64 = clampedWidth >= 64 ? .max : (UInt64(1) << UInt64(clampedWidth)) - 1
         return ones << UInt64(bitOffset)
     }
 
     /// This field's value inside `registerValue`.
     func value(in registerValue: UInt64) -> UInt64 {
-        (registerValue & mask) >> UInt64(bitOffset)
+        guard (0..<64).contains(bitOffset), bitWidth > 0 else { return 0 }
+        return (registerValue & mask) >> UInt64(bitOffset)
     }
 
     /// `registerValue` with this field set to `value`, other bits unchanged.
     /// Bits of `value` that do not fit in the field are dropped.
     func inserting(_ value: UInt64, into registerValue: UInt64) -> UInt64 {
-        (registerValue & ~mask) | ((value << UInt64(bitOffset)) & mask)
+        guard (0..<64).contains(bitOffset), bitWidth > 0 else { return registerValue }
+        let fieldMask = mask
+        return (registerValue & ~fieldMask) | ((value << UInt64(bitOffset)) & fieldMask)
     }
 
     /// The name the SVD gives `value`, such as `MOSC` for 3 in `OSCSRC`.

@@ -50,11 +50,14 @@ struct BuildResult: Sendable {
 
 enum BuildError: Error, Equatable, LocalizedError {
     case compilerNotFound
+    case unsafeProjectSetting(String)
 
     var errorDescription: String? {
         switch self {
         case .compilerNotFound:
             "The compiler (arm-none-eabi-gcc) is not installed. Install it from Window > Toolchain Status."
+        case .unsafeProjectSetting(let reason):
+            "The project has an unsafe build setting: \(reason)."
         }
     }
 }
@@ -71,12 +74,14 @@ struct BuildEngine: Sendable {
     /// Loads the project at `projectFile` and works out how to build it.
     static func plan(forProjectFile projectFile: URL, locator: ToolLocator = .standard()) throws -> BuildPlan {
         let project = try ProjectFile.load(from: projectFile)
+        let projectDirectory = projectFile.deletingLastPathComponent()
+        try BuildPlan.validate(project, in: projectDirectory)
         guard let compiler = locator.locate(.compiler) else {
             throw BuildError.compilerNotFound
         }
         return BuildPlan(
             project: project,
-            projectDirectory: projectFile.deletingLastPathComponent(),
+            projectDirectory: projectDirectory,
             environment: BuildEnvironment(compiler: compiler)
         )
     }
@@ -121,7 +126,9 @@ struct BuildEngine: Sendable {
                 try? FileManager.default.removeItem(at: plan.url(for: plan.elf))
                 return result
             }
-            try Self.joined(plan.linkArguments).write(to: linkArgumentsFile(plan), atomically: true, encoding: .utf8)
+            let linkArgs = linkArgumentsFile(plan)
+            try ProjectSecurity.ensureSafeFileDestination(linkArgs, in: plan.projectDirectory)
+            try Self.joined(plan.linkArguments).write(to: linkArgs, atomically: true, encoding: .utf8)
             result.didLink = true
         }
 
@@ -184,6 +191,8 @@ struct BuildEngine: Sendable {
         let log = plan.url(for: step.object + ".log")
 
         if output.exitCode == 0 {
+            try ProjectSecurity.ensureSafeFileDestination(arguments, in: plan.projectDirectory)
+            try ProjectSecurity.ensureSafeFileDestination(log, in: plan.projectDirectory)
             try Self.joined(step.arguments).write(to: arguments, atomically: true, encoding: .utf8)
             try output.standardError.write(to: log, atomically: true, encoding: .utf8)
         } else {
@@ -245,10 +254,15 @@ struct BuildEngine: Sendable {
     // MARK: - Helpers
 
     private func prepareDirectories(for plan: BuildPlan) throws {
-        let directories = Set(plan.compileSteps.map { plan.url(for: $0.object).deletingLastPathComponent() })
-            .union([plan.url(for: plan.elf).deletingLastPathComponent()])
-        for directory in directories {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var relativeDirectories: Set<String> = [BuildPlan.buildDirectoryName]
+        for step in plan.compileSteps {
+            let parts = step.object.split(separator: "/").dropLast()
+            if !parts.isEmpty {
+                relativeDirectories.insert(parts.joined(separator: "/"))
+            }
+        }
+        for directory in relativeDirectories.sorted() {
+            _ = try ProjectSecurity.ensureSafeSubdirectory(named: directory, in: plan.projectDirectory)
         }
     }
 
@@ -265,6 +279,7 @@ struct BuildEngine: Sendable {
     ) throws -> URL {
         let project = try ProjectFile.load(from: projectFile)
         let directory = projectFile.deletingLastPathComponent()
+        try BuildPlan.validate(project, in: directory)
         let compiler = locator.locate(.compiler)
         let environment = BuildEnvironment(
             compiler: compiler ?? URL(filePath: "clang"),
@@ -292,11 +307,12 @@ struct BuildEngine: Sendable {
             withJSONObject: entries,
             options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         )
-        let url = plan.url(for: "\(BuildPlan.buildDirectoryName)/compile_commands.json")
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(),
-            withIntermediateDirectories: true
+        let buildDirectory = try ProjectSecurity.ensureSafeSubdirectory(
+            named: BuildPlan.buildDirectoryName,
+            in: plan.projectDirectory
         )
+        let url = buildDirectory.appending(path: "compile_commands.json")
+        try ProjectSecurity.ensureSafeFileDestination(url, in: plan.projectDirectory)
         // Only rewrite it when it changes, so clangd does not re-index for nothing.
         if (try? Data(contentsOf: url)) != data {
             try data.write(to: url, options: .atomic)

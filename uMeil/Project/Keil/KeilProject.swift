@@ -37,9 +37,26 @@ struct KeilProject: Equatable, Sendable {
     /// system file. Paths as for `files`.
     var packFiles: [String]
 
+    /// Maximum `.uvprojx` file size uMeil will parse (16 MiB).
+    static let maximumFileSize = 16 * 1024 * 1024
+
+    /// Reads the `.uvprojx` file at `url`, enforcing `maximumFileSize` before
+    /// loading it into memory.
+    static func load(from url: URL) throws -> KeilProject {
+        let resolved = url.resolvingSymlinksInPath()
+        if let fileSize = try? resolved.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+           fileSize > maximumFileSize {
+            throw KeilImportError.fileTooLarge
+        }
+        return try parse(Data(contentsOf: url))
+    }
+
     /// Reads the contents of a `.uvprojx` file.
     static func parse(_ data: Data) throws -> KeilProject {
-        guard let document = try? XMLDocument(data: data),
+        guard data.count <= maximumFileSize else {
+            throw KeilImportError.fileTooLarge
+        }
+        guard let document = try? XMLDocument(data: data, options: .nodeLoadExternalEntitiesNever),
               let target = try? document.nodes(forXPath: "/Project/Targets/Target[1]").first
         else {
             throw KeilImportError.notAKeilProject
@@ -113,6 +130,7 @@ enum KeilImportError: Error, Equatable, LocalizedError {
     case unsupportedDevice(String)
     /// The folder already has a uMeil project.
     case alreadyImported(URL)
+    case fileTooLarge
 
     var errorDescription: String? {
         switch self {
@@ -124,6 +142,8 @@ enum KeilImportError: Error, Equatable, LocalizedError {
                 + Chip.allCases.map(\.rawValue).joined(separator: ", ") + "."
         case .alreadyImported(let url):
             "This folder already has a uMeil project, \(url.lastPathComponent)."
+        case .fileTooLarge:
+            "This Keil project file is too large to open (maximum 16 MB)."
         }
     }
 }

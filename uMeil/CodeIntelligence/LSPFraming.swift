@@ -2,10 +2,15 @@ import Foundation
 
 enum LSPFramingError: Error, Equatable {
     case invalidHeader
+    case headerTooLarge
+    case messageTooLarge
 }
 
 /// Encodes and decodes JSON-RPC messages using LSP's `Content-Length` framing.
 enum LSPFraming {
+    static let maximumMessageLength = 64 * 1024 * 1024
+    static let maximumHeaderLength = 16 * 1024
+
     private static let headerTerminatorCRLF = Data([0x0D, 0x0A, 0x0D, 0x0A])
     private static let headerTerminatorLF = Data([0x0A, 0x0A])
 
@@ -19,18 +24,19 @@ enum LSPFraming {
     /// Parses the `Content-Length` header value from a raw LSP header block.
     static func contentLength(in headerData: Data) -> Int? {
         guard let headerText = String(data: headerData, encoding: .ascii) else { return nil }
+        var resolvedLength: Int?
         for rawLine in headerText.split(whereSeparator: \.isNewline) {
             guard let colon = rawLine.firstIndex(of: ":") else { continue }
             let name = rawLine[..<colon].trimmingCharacters(in: .whitespaces)
             if name.caseInsensitiveCompare("Content-Length") == .orderedSame {
                 let value = rawLine[rawLine.index(after: colon)...].trimmingCharacters(in: .whitespaces)
-                if let length = Int(value), length >= 0 {
-                    return length
+                guard let length = Int(value), length >= 0, resolvedLength == nil else {
+                    return nil
                 }
-                return nil
+                resolvedLength = length
             }
         }
-        return nil
+        return resolvedLength
     }
 
     /// Accumulates incoming pipe chunks and yields complete JSON-RPC message payloads.
@@ -42,12 +48,27 @@ enum LSPFraming {
             buffer.append(chunk)
 
             var payloads: [Data] = []
-            while let boundary = findHeaderBoundary() {
+            while true {
+                guard let boundary = findHeaderBoundary() else {
+                    if buffer.count > LSPFraming.maximumHeaderLength {
+                        throw LSPFramingError.headerTooLarge
+                    }
+                    break
+                }
+                guard boundary.headerEnd - buffer.startIndex <= LSPFraming.maximumHeaderLength else {
+                    throw LSPFramingError.headerTooLarge
+                }
                 let headerData = buffer[..<boundary.headerEnd]
                 guard let length = LSPFraming.contentLength(in: headerData) else {
                     throw LSPFramingError.invalidHeader
                 }
-                let bodyEnd = boundary.bodyStart + length
+                guard length <= LSPFraming.maximumMessageLength else {
+                    throw LSPFramingError.messageTooLarge
+                }
+                let (bodyEnd, overflow) = boundary.bodyStart.addingReportingOverflow(length)
+                guard !overflow else {
+                    throw LSPFramingError.messageTooLarge
+                }
                 guard buffer.count >= bodyEnd else { break }
 
                 payloads.append(Data(buffer[boundary.bodyStart..<bodyEnd]))
@@ -57,8 +78,10 @@ enum LSPFraming {
         }
 
         private func findHeaderBoundary() -> (headerEnd: Int, bodyStart: Int)? {
-            let crlfRange = buffer.range(of: LSPFraming.headerTerminatorCRLF)
-            let lfRange = buffer.range(of: LSPFraming.headerTerminatorLF)
+            let searchEnd = min(buffer.endIndex, buffer.startIndex + LSPFraming.maximumHeaderLength + 4)
+            let searchRange = buffer.startIndex..<searchEnd
+            let crlfRange = buffer.range(of: LSPFraming.headerTerminatorCRLF, in: searchRange)
+            let lfRange = buffer.range(of: LSPFraming.headerTerminatorLF, in: searchRange)
 
             switch (crlfRange, lfRange) {
             case let (crlf?, lineFeed?):

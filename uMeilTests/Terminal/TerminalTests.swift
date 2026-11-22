@@ -103,6 +103,31 @@ struct TerminalLaunchConfigTests {
         #expect(config.executable == "/bin/zsh")
         #expect(config.execName == "-zsh")
     }
+
+    @Test func rejectsRelativeDirectoryAndSpecialFileShellCandidates() throws {
+        let temp = try TemporaryDirectory()
+        let dirPath = temp.url.path(percentEncoded: false)
+
+        // Relative SHELL and directory passwdShell must both be rejected.
+        let config1 = TerminalLaunchConfig.make(
+            folder: temp.url,
+            processEnvironment: ["SHELL": "zsh"],
+            homeDirectory: temp.url,
+            isExecutable: { _ in true },
+            isDirectory: { $0 == dirPath },
+            passwdShell: { dirPath }
+        )
+        #expect(config1.executable == "/bin/zsh")
+
+        // Real filesystem check: a directory with +x permission is not accepted as SHELL.
+        let config2 = TerminalLaunchConfig.make(
+            folder: temp.url,
+            processEnvironment: ["SHELL": dirPath],
+            homeDirectory: temp.url,
+            passwdShell: { "/dev/null" }
+        )
+        #expect(config2.executable == "/bin/zsh")
+    }
 }
 
 @MainActor

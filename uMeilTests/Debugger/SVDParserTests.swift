@@ -215,3 +215,133 @@ struct SVDParserTests {
         #expect(uart.register(named: "CTL")?.readHasSideEffects == false)
     }
 }
+
+extension SVDParserTests {
+    // MARK: - Hardening
+
+    @Test func refusesOversizedXMLFilesAndData() throws {
+        let oversized = Data(count: SVDParser.maximumXMLBytes + 1)
+        #expect(throws: SVDParser.Failure.fileTooLarge) {
+            try SVDParser.parse(oversized)
+        }
+
+        let temp = try TemporaryDirectory()
+        let largeFile = temp.url.appending(path: "huge.svd")
+        FileManager.default.createFile(atPath: largeFile.path(percentEncoded: false), contents: nil)
+        let handle = try FileHandle(forWritingTo: largeFile)
+        try handle.truncate(atOffset: UInt64(SVDParser.maximumXMLBytes + 1))
+        try handle.close()
+
+        #expect(throws: SVDParser.Failure.fileTooLarge) {
+            try SVDParser.parse(contentsOf: largeFile)
+        }
+    }
+
+    @Test func ignoresExternalEntitiesInSVDXML() throws {
+        let temp = try TemporaryDirectory()
+        let secret = temp.url.appending(path: "secret.txt")
+        try Data("SECRET_TOKEN_XYZ".utf8).write(to: secret)
+
+        let xml = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <!DOCTYPE device [
+          <!ENTITY xxe SYSTEM "\(secret.absoluteString)">
+        ]>
+        <device><name>&xxe;</name><peripherals/></device>
+        """
+        if let device = try? SVDParser.parse(Data(xml.utf8)) {
+            #expect(!device.name.contains("SECRET_TOKEN_XYZ"))
+        }
+    }
+
+    @Test func guardsIntegerOverflowsDimExplosionsAndDeepClusters() throws {
+        let nestedOpen = String(repeating: "<cluster><name>C</name><addressOffset>4</addressOffset>", count: 25)
+        let nestedClose = String(repeating: "</cluster>", count: 25)
+        let xml = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <device>
+          <name>EDGE</name>
+          <size>0xFFFFFFFFFFFFFFFF</size>
+          <peripherals>
+            <peripheral>
+              <name>P%s</name>
+              <baseAddress>0xFFFFFFFFFFFFFFF0</baseAddress>
+              <dim>10000</dim>
+              <dimIncrement>0x10</dimIncrement>
+              <registers>
+                <register>
+                  <name>BIG</name>
+                  <addressOffset>0</addressOffset>
+                  <size>128</size>
+                  <fields>
+                    <field><name>OVF1</name><lsb>0</lsb><msb>0xFFFFFFFFFFFFFFFF</msb></field>
+                    <field><name>OVF2</name><bitOffset>0xFFFFFFFFFFFFFFFF</bitOffset><bitWidth>1</bitWidth></field>
+                    <field><name>OVF3</name><bitRange>[999:0]</bitRange></field>
+                    <field><name>OVF4</name><bitOffset>0</bitOffset><bitWidth>1</bitWidth>
+                      <dim>5000</dim><dimIncrement>1</dimIncrement></field>
+                    <field><name>RANGE</name><bitOffset>0</bitOffset><bitWidth>1</bitWidth>
+                      <dim>2</dim><dimIndex>0-100000</dimIndex><dimIncrement>0</dimIncrement></field>
+                  </fields>
+                </register>
+                <register>
+                  <name>R%s</name>
+                  <addressOffset>0</addressOffset>
+                  <dim>6000</dim>
+                  <dimIncrement>4</dimIncrement>
+                </register>
+                \(nestedOpen)<register><name>DEEP</name><addressOffset>0</addressOffset></register>\(nestedClose)
+              </registers>
+            </peripheral>
+          </peripherals>
+        </device>
+        """
+        let device = try SVDParser.parse(Data(xml.utf8))
+        // Base address 0xFFFFFFFFFFFFFFF0 + 0x10 wraps/overflows on step 1, so only P0 (step 0) survives.
+        #expect(device.peripherals.count == 1)
+        let peripheral = try #require(device.peripherals.first)
+        let big = try #require(peripheral.register(named: "BIG"))
+        #expect(big.size == 32)
+        // OVF4 only yields bits 0..<64; RANGE has bitOffset 0 for all valid items capped <= 4096.
+        #expect(big.fields.allSatisfy { (0..<64).contains($0.bitOffset) && (1...64).contains($0.bitWidth) })
+        let rCount = peripheral.registers.filter { $0.name.hasPrefix("R") }.count
+        #expect(rCount == SVDParser.maximumDimCount)
+        #expect(!peripheral.registers.contains { $0.name.hasSuffix("DEEP") })
+    }
+
+    @Test func svdFieldBitOperationsDoNotTrapOnOutOfRangeInputs() {
+        let invalidFields = [
+            SVDField(
+                name: "N1", description: nil, bitOffset: -1, bitWidth: 4,
+                access: .readWrite, enumeratedValues: []
+            ),
+            SVDField(
+                name: "N2", description: nil, bitOffset: 0, bitWidth: -5,
+                access: .readWrite, enumeratedValues: []
+            ),
+            SVDField(
+                name: "N3", description: nil, bitOffset: 64, bitWidth: 1,
+                access: .readWrite, enumeratedValues: []
+            ),
+            SVDField(
+                name: "N4", description: nil, bitOffset: 0, bitWidth: 0,
+                access: .readWrite, enumeratedValues: []
+            ),
+            SVDField(
+                name: "N5", description: nil, bitOffset: Int.min, bitWidth: Int.max,
+                access: .readWrite, enumeratedValues: []
+            )
+        ]
+        for field in invalidFields {
+            #expect(field.mask == 0)
+            #expect(field.value(in: 0xDEAD_BEEF) == 0)
+            #expect(field.inserting(0xFF, into: 0x1234_5678) == 0x1234_5678)
+        }
+
+        let wideTop = SVDField(
+            name: "TOP", description: nil, bitOffset: 60, bitWidth: 16, access: .readWrite, enumeratedValues: []
+        )
+        #expect(wideTop.mask == 0xF000_0000_0000_0000)
+        #expect(wideTop.value(in: 0xA000_0000_0000_0000) == 0xA)
+        #expect(wideTop.inserting(0xB, into: 0x1234) == 0xB000_0000_0000_1234)
+    }
+}

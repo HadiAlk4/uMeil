@@ -151,4 +151,25 @@ struct MIParserTests {
             try MIParser.parse(line)
         }
     }
+
+    @Test func nestingDepthIsCappedAtSixtyFour() throws {
+        func nestedTuples(_ depth: Int) -> String {
+            "^done," + String(repeating: "a={", count: depth) + String(repeating: "}", count: depth)
+        }
+        func nestedLists(_ depth: Int) -> String {
+            "^done,a=" + String(repeating: "[", count: depth) + String(repeating: "]", count: depth)
+        }
+
+        _ = try MIParser.parse(nestedTuples(64))
+        _ = try MIParser.parse(nestedLists(64))
+
+        let tooDeepTuple = nestedTuples(65)
+        let tooDeepList = nestedLists(65)
+        #expect(throws: MIParseError(line: tooDeepTuple)) {
+            try MIParser.parse(tooDeepTuple)
+        }
+        #expect(throws: MIParseError(line: tooDeepList)) {
+            try MIParser.parse(tooDeepList)
+        }
+    }
 }

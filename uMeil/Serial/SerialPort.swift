@@ -71,8 +71,8 @@ final class SerialPort: @unchecked Sendable {
         onDisconnect: @escaping @Sendable () -> Void = {}
     ) throws {
         // Non-blocking, so opening does not wait for a carrier signal and
-        // reading never stalls the queue.
-        let descriptor = Darwin.open(path, O_RDWR | O_NOCTTY | O_NONBLOCK)
+        // reading never stalls the queue. O_CLOEXEC avoids leaking into children.
+        let descriptor = Darwin.open(path, O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC)
         guard descriptor >= 0 else {
             throw SerialPortError.cannotOpen(path: path, code: errno)
         }
@@ -169,6 +169,14 @@ final class SerialPort: @unchecked Sendable {
     private func waitUntilWritable() -> Bool {
         var poller = pollfd(fd: descriptor, events: Int16(POLLOUT), revents: 0)
         return poll(&poller, 1, 1000) > 0 && poller.revents & Int16(POLLOUT) != 0
+    }
+
+    /// Whether the underlying file descriptor has `FD_CLOEXEC` set.
+    var isCloseOnExec: Bool {
+        queue.sync {
+            guard state.isOpen else { return false }
+            return (fcntl(descriptor, F_GETFD) & FD_CLOEXEC) != 0
+        }
     }
 
     /// Closes the port. Nothing is delivered to `onData` after this returns.

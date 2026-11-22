@@ -30,12 +30,27 @@ struct FlashPlanTests {
         let steps = commands(in: makePlan()).filter { !$0.hasPrefix("echo ") && !$0.hasPrefix("set umeil_chip") }
 
         #expect(steps == [
+            "bindto localhost",
+            "gdb_port disabled",
+            "telnet_port disabled",
+            "tcl_port disabled",
             "init",
             "reset init",
             "flash write_image erase \"/tmp/Blinky/build/Blinky.elf\"",
             "verify_image \"/tmp/Blinky/build/Blinky.elf\"",
             "reset run",
             "shutdown"
+        ])
+    }
+
+    @Test func disablesNetworkServersAndBindsLocalhostBeforeInit() throws {
+        let cmds = commands(in: makePlan())
+        let initIndex = try #require(cmds.firstIndex(of: "init"))
+        #expect(Array(cmds.prefix(initIndex)) == [
+            "bindto localhost",
+            "gdb_port disabled",
+            "telnet_port disabled",
+            "tcl_port disabled"
         ])
     }
 

@@ -109,8 +109,11 @@ enum MIParser {
     }
 
     private struct Scanner {
+        private static let maximumNestingDepth = 64
+
         private let bytes: [UInt8]
         private var position = 0
+        private var depth = 0
 
         init(_ line: String) {
             bytes = Array(line.utf8)
@@ -216,6 +219,9 @@ enum MIParser {
         }
 
         private mutating func tuple() -> MIValue? {
+            guard depth < Self.maximumNestingDepth else { return nil }
+            depth += 1
+            defer { depth -= 1 }
             guard take("{") else { return nil }
             var fields: [MIField] = []
             if take("}") { return .tuple(fields) }
@@ -227,6 +233,9 @@ enum MIParser {
         }
 
         private mutating func list() -> MIValue? {
+            guard depth < Self.maximumNestingDepth else { return nil }
+            depth += 1
+            defer { depth -= 1 }
             guard take("[") else { return nil }
             var items: [MIValue] = []
             if take("]") { return .list(items) }

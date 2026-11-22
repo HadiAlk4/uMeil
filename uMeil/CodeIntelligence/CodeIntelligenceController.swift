@@ -26,10 +26,11 @@ final class CodeIntelligenceController {
         }
     }
     private var documentVersions: [URL: Int] = [:]
+    private var preparedCompileCommandsDirectory: URL?
     private let sessionBox = OSAllocatedUnfairLock<ClangdSession?>(uncheckedState: nil)
     private let openFileTaskBox = OSAllocatedUnfairLock<Task<Void, Never>?>(uncheckedState: nil)
 
-    private var session: ClangdSession? {
+    private(set) var session: ClangdSession? {
         get { sessionBox.withLockUnchecked { $0 } }
         set { sessionBox.withLockUnchecked { $0 = newValue } }
     }
@@ -63,6 +64,7 @@ final class CodeIntelligenceController {
     /// restarts `clangd` for `folder`.
     func folderOpened(_ folder: URL) {
         self.folder = folder
+        preparedCompileCommandsDirectory = nil
         stop()
         guard isEnabled else { return }
         prepareCompileCommands(in: folder)
@@ -72,6 +74,7 @@ final class CodeIntelligenceController {
     /// Stops `clangd` when the folder is closed and nothing replaces it.
     func folderClosed() {
         folder = nil
+        preparedCompileCommandsDirectory = nil
         stop()
     }
 
@@ -130,6 +133,7 @@ final class CodeIntelligenceController {
 
     func buildFinished(in folder: URL) {
         if isEnabled, session == nil {
+            prepareCompileCommands(in: folder)
             startSessionIfAvailable(in: folder)
         }
     }
@@ -178,20 +182,32 @@ final class CodeIntelligenceController {
     }
 
     private func prepareCompileCommands(in folder: URL) {
+        preparedCompileCommandsDirectory = nil
         guard let projectFile = BuildSummary.projectFile(in: folder) else { return }
-        _ = try? BuildEngine.prepareCompileCommands(forProjectFile: projectFile, locator: makeToolLocator())
+        guard let compileCommandsFile = try? BuildEngine.prepareCompileCommands(
+            forProjectFile: projectFile,
+            locator: makeToolLocator()
+        ) else {
+            return
+        }
+        preparedCompileCommandsDirectory = ClangdSession.normalize(compileCommandsFile.deletingLastPathComponent())
     }
 
     private func startSessionIfAvailable(in folder: URL) {
-        guard let clangd = makeToolLocator().locate(.clangd) else { return }
-        let buildDir = folder.appending(path: BuildPlan.buildDirectoryName, directoryHint: .isDirectory)
+        let locator = makeToolLocator()
+        guard let clangd = locator.locate(.clangd) else { return }
+        let buildDir = ClangdSession.normalize(
+            folder.appending(path: BuildPlan.buildDirectoryName, directoryHint: .isDirectory)
+        )
         let compileDB = buildDir.appending(path: "compile_commands.json")
-        let hasCompileDB = FileManager.default.fileExists(atPath: compileDB.path(percentEncoded: false))
+        let hasPreparedCompileDB = preparedCompileCommandsDirectory == buildDir
+            && FileManager.default.fileExists(atPath: compileDB.path(percentEncoded: false))
 
         session = ClangdSession(
             clangdExecutable: clangd,
             workspaceDirectory: folder,
-            compileCommandsDirectory: hasCompileDB ? buildDir : nil
+            compileCommandsDirectory: hasPreparedCompileDB ? buildDir : nil,
+            queryDriver: locator.locate(.compiler)
         ) { [weak self] params in
             await self?.handlePublishedDiagnostics(params)
         }

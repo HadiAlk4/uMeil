@@ -181,6 +181,60 @@ struct OpenFromOutsideTests {
         let openFolder = try #require(fileMenu.items.first { $0.title == "Open Folder…" })
         #expect(openFolder.keyEquivalentModifierMask == [.command, .shift])
     }
+
+    @Test func refusesToAutoOpenMainSourceEscapingTheProjectFolder() throws {
+        let outer = try TemporaryFolder()
+        let secret = outer.url.appending(path: "secret.txt")
+        try Data("do not open".utf8).write(to: secret)
+
+        let projectDir = outer.url.appending(path: "Project", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: projectDir.appending(path: "link.c"),
+            withDestinationURL: secret
+        )
+
+        var project = Project(
+            name: "Evil",
+            target: .init(chip: .tm4c1294ncpdt, board: nil),
+            sources: ["../secret.txt"],
+            includePaths: ["."],
+            build: .init(
+                cStandard: "gnu11",
+                optimization: .none,
+                defines: [],
+                compilerFlags: [],
+                linkerFlags: [],
+                linkerScript: "tm4c1294ncpdt.ld",
+                useDriverLib: false
+            )
+        )
+        let projectFile = projectDir.appending(path: "Evil.umeil")
+        try ProjectFile.save(project, to: projectFile)
+
+        let controller = try makeWindow()
+        controller.openItem(at: projectFile)
+        #expect(controller.folder == projectDir)
+        #expect(controller.editor.document == nil)
+
+        project.sources = ["link.c"]
+        try ProjectFile.save(project, to: projectFile)
+        controller.openItem(at: projectFile)
+        #expect(controller.editor.document == nil)
+
+        // Also test Keil reopen when pre-existing .umeil has an escaping sources.first.
+        let keilFolder = try TemporaryFolder()
+        let keilFile = try KeilFixture.make(in: keilFolder.url)
+        let imported = try KeilImporter.importProject(at: keilFile)
+        var reopenedProject = imported.project
+        reopenedProject.sources = ["../secret.txt"] + reopenedProject.sources
+        try ProjectFile.save(reopenedProject, to: imported.projectFile)
+
+        let keilController = try makeWindow(collectingNotesIn: NotesBox())
+        keilController.openItem(at: keilFile)
+        #expect(keilController.folder == keilFolder.url)
+        #expect(keilController.editor.document == nil)
+    }
 }
 
 /// Collects what a window would have shown in an alert.

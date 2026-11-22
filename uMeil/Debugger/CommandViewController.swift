@@ -3,6 +3,9 @@ import AppKit
 /// The `Command` panel: logs debugger, OpenOCD, build, and flash output, and
 /// lets the user enter text commands for GDB.
 final class CommandViewController: NSViewController {
+    /// The most text the command console keeps. Older lines are dropped first.
+    static let maximumLength = 500_000
+
     let textView = NSTextView()
     let commandField = NSTextField()
 
@@ -54,10 +57,26 @@ final class CommandViewController: NSViewController {
     func appendOutput(_ text: String) {
         loadViewIfNeeded()
         guard !text.isEmpty else { return }
-        let end = NSRange(location: (textView.string as NSString).length, length: 0)
-        textView.replaceCharacters(in: end, with: text)
-        textView.font = EditorTheme.font
-        textView.scrollRangeToVisible(NSRange(location: (textView.string as NSString).length, length: 0))
+        if let storage = textView.textStorage {
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: EditorTheme.font,
+                .foregroundColor: NSColor.labelColor
+            ]
+            storage.append(NSAttributedString(string: text, attributes: attributes))
+
+            let excess = storage.length - Self.maximumLength
+            if excess > 0 {
+                let line = (storage.string as NSString).lineRange(for: NSRange(location: excess - 1, length: 0))
+                let end = NSMaxRange(line)
+                storage.deleteCharacters(in: NSRange(location: 0, length: end < storage.length ? end : excess))
+            }
+            textView.scrollRangeToVisible(NSRange(location: storage.length, length: 0))
+        } else {
+            let end = NSRange(location: (textView.string as NSString).length, length: 0)
+            textView.replaceCharacters(in: end, with: text)
+            textView.font = EditorTheme.font
+            textView.scrollRangeToVisible(NSRange(location: (textView.string as NSString).length, length: 0))
+        }
     }
 
     func clear() {

@@ -55,12 +55,16 @@ final class GDBProcess: DebuggerConnection {
 
         PipeLineReader.start(
             outputPipe.fileHandleForReading,
+            collectAll: false,
             onLine: { continuation.yield($0) },
             onEnd: { _ in continuation.finish() }
         )
     }
 
     func send(_ line: String) {
+        guard !line.unicodeScalars.contains(where: { $0.value == 0x0A || $0.value == 0x0D || $0.value == 0x00 }) else {
+            return
+        }
         writeQueue.async { [input] in
             try? input.write(contentsOf: Data((line + "\n").utf8))
         }

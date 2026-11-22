@@ -101,6 +101,7 @@ extension ToolLocator {
 
         let path = (environment["PATH"] ?? "")
             .split(separator: ":")
+            .filter { $0.hasPrefix("/") }
             .map { URL(filePath: String($0), directoryHint: .isDirectory) }
 
         let homebrew = ["/opt/homebrew/bin", "/usr/local/bin"]

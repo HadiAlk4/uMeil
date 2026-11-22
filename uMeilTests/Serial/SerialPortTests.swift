@@ -179,4 +179,12 @@ struct SerialPortTests {
             == "uMeil is not allowed to open cu.usbmodem1.")
         #expect(SerialPortError.writeFailed(code: EIO).localizedDescription == "Could not send: Input/output error.")
     }
+
+    @Test func openedDescriptorSetsCloseOnExec() throws {
+        let terminal = try PseudoTerminal()
+        let port = try SerialRecorder().open(terminal)
+        defer { port.close() }
+
+        #expect(port.isCloseOnExec)
+    }
 }

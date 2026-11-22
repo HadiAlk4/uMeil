@@ -94,6 +94,23 @@ struct ToolLocatorTests {
         #expect(directories.map(Self.normalizedPath) == ["/opt/homebrew/bin", "/usr/local/bin"])
     }
 
+    @Test func ignoresRelativePathEntries() throws {
+        let temp = try TemporaryDirectory()
+
+        let directories = ToolLocator.defaultSearchDirectories(
+            environment: ["PATH": ".:./bin:relative/tools:../evil:/abs/bin::/other/bin"],
+            managedToolchainsDirectory: temp.url.appending(path: "Toolchains"),
+            applicationsDirectory: temp.url.appending(path: "Applications")
+        )
+
+        #expect(directories.map(Self.normalizedPath) == [
+            "/abs/bin",
+            "/other/bin",
+            "/opt/homebrew/bin",
+            "/usr/local/bin"
+        ])
+    }
+
     @Test func clangdSearchOrderIncludesDeveloperDirXcodeCommandLineToolsAndHomebrewLLVM() throws {
         let temp = try TemporaryDirectory()
         let devDir = temp.url.appending(path: "CustomXcode.app/Contents/Developer", directoryHint: .isDirectory)

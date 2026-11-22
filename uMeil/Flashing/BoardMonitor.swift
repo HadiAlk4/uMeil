@@ -1,6 +1,7 @@
 import Foundation
 import IOKit
 import IOKit.usb
+import os
 
 /// The numbers a USB device identifies itself with.
 struct USBDeviceID: Hashable, Sendable {
@@ -28,6 +29,11 @@ protocol BoardMonitoring: AnyObject {
     /// Called on the main thread when a board is plugged in or unplugged.
     var onChange: ((Bool) -> Void)? { get set }
     func start()
+    func stop()
+}
+
+extension BoardMonitoring {
+    func stop() {}
 }
 
 /// Watches USB for a board's debug probe, using IOKit.
@@ -42,14 +48,22 @@ final class USBBoardMonitor: BoardMonitoring {
     // reach them; `deinit` is not allowed to see them otherwise.
     private nonisolated(unsafe) var port: IONotificationPortRef?
     private nonisolated(unsafe) var iterators: [io_iterator_t] = []
+    private nonisolated(unsafe) var callbackToken: UInt?
+
+    private nonisolated static let activeMonitors = OSAllocatedUnfairLock(initialState: [UInt: CallbackBox]())
+    private nonisolated static let nextToken = OSAllocatedUnfairLock(initialState: UInt(1))
 
     var isBoardConnected: Bool { connectedCount > 0 }
+    var isRunning: Bool { port != nil && callbackToken != nil }
 
     init(device: USBDeviceID = Board.ekTM4C1294XL.debugProbe) {
         self.device = device
     }
 
     deinit {
+        if let token = callbackToken {
+            Self.activeMonitors.withLock { $0.removeValue(forKey: token) }
+        }
         for iterator in iterators {
             IOObjectRelease(iterator)
         }
@@ -83,22 +97,55 @@ final class USBBoardMonitor: BoardMonitoring {
         self.port = port
         IONotificationPortSetDispatchQueue(port, .main)
 
-        watch(kIOFirstMatchNotification, on: port) { context, iterator in
+        let token = Self.nextToken.withLock { next in
+            let current = next
+            next = next &+ 1
+            if next == 0 { next = 1 }
+            return current
+        }
+        callbackToken = token
+        let box = CallbackBox(self)
+        Self.activeMonitors.withLock { $0[token] = box }
+
+        let context = UnsafeMutableRawPointer(bitPattern: token)
+        watch(kIOFirstMatchNotification, on: port, context: context) { context, iterator in
             USBBoardMonitor.monitor(from: context)?.devicesChanged(iterator, by: 1)
         }
-        watch(kIOTerminatedNotification, on: port) { context, iterator in
+        watch(kIOTerminatedNotification, on: port, context: context) { context, iterator in
             USBBoardMonitor.monitor(from: context)?.devicesChanged(iterator, by: -1)
         }
     }
 
-    private func watch(_ notification: String, on port: IONotificationPortRef, callback: IOServiceMatchingCallback) {
+    /// Stops watching and releases all IOKit resources. Safe to call multiple times.
+    func stop() {
+        if let token = callbackToken {
+            Self.activeMonitors.withLock { $0.removeValue(forKey: token) }
+            callbackToken = nil
+        }
+        for iterator in iterators {
+            IOObjectRelease(iterator)
+        }
+        iterators.removeAll()
+        if let port {
+            IONotificationPortDestroy(port)
+            self.port = nil
+        }
+        connectedCount = 0
+    }
+
+    private func watch(
+        _ notification: String,
+        on port: IONotificationPortRef,
+        context: UnsafeMutableRawPointer?,
+        callback: IOServiceMatchingCallback
+    ) {
         var iterator: io_iterator_t = 0
         let result = IOServiceAddMatchingNotification(
             port,
             notification,
             Self.matchingDictionary(for: device) as CFDictionary,
             callback,
-            Unmanaged.passUnretained(self).toOpaque(),
+            context,
             &iterator
         )
         guard result == KERN_SUCCESS else { return }
@@ -113,11 +160,28 @@ final class USBBoardMonitor: BoardMonitoring {
     /// are delivered on the main queue, which is where the monitor lives.
     private nonisolated static func monitor(from context: UnsafeMutableRawPointer?) -> MainActorMonitor? {
         guard let context else { return nil }
-        return MainActorMonitor(monitor: Unmanaged<USBBoardMonitor>.fromOpaque(context).takeUnretainedValue())
+        let token = UInt(bitPattern: context)
+        guard let box = activeMonitors.withLock({ $0[token] }) else { return nil }
+        return MainActorMonitor(box: box)
+    }
+
+    /// Exposes the opaque token pointer for tests verifying post-teardown callback safety.
+    var callbackContextForTesting: UnsafeMutableRawPointer? {
+        callbackToken.flatMap { UnsafeMutableRawPointer(bitPattern: $0) }
+    }
+
+    /// Invokes the callback resolution path for tests verifying post-stop / post-deinit safety.
+    nonisolated static func dispatchNotificationForTesting(
+        context: UnsafeMutableRawPointer?,
+        iterator: io_iterator_t = 0,
+        change: Int = 1
+    ) {
+        monitor(from: context)?.devicesChanged(iterator, by: change)
     }
 
     /// Empties `iterator`, adding `change` to the count for each device in it.
     fileprivate func devicesChanged(_ iterator: io_iterator_t, by change: Int) {
+        guard iterator != 0 else { return }
         let wasConnected = isBoardConnected
         while case let device = IOIteratorNext(iterator), device != 0 {
             IOObjectRelease(device)
@@ -129,13 +193,21 @@ final class USBBoardMonitor: BoardMonitoring {
     }
 }
 
+private final class CallbackBox: @unchecked Sendable {
+    weak var monitor: USBBoardMonitor?
+
+    init(_ monitor: USBBoardMonitor) {
+        self.monitor = monitor
+    }
+}
+
 /// Carries a monitor from IOKit's C callback back onto the main actor.
 private struct MainActorMonitor {
-    let monitor: USBBoardMonitor
+    let box: CallbackBox
 
     nonisolated func devicesChanged(_ iterator: io_iterator_t, by change: Int) {
         MainActor.assumeIsolated {
-            monitor.devicesChanged(iterator, by: change)
+            box.monitor?.devicesChanged(iterator, by: change)
         }
     }
 }

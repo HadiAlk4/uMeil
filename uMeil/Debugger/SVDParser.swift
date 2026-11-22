@@ -7,14 +7,21 @@ import Foundation
 /// and all three ways of giving a field's bits (`bitOffset`/`bitWidth`,
 /// `lsb`/`msb`, `bitRange`).
 enum SVDParser {
+    static let maximumXMLBytes = 32 * 1024 * 1024
+    static let maximumDimCount = 4096
+    static let maximumClusterDepth = 16
+
     enum Failure: Error, Equatable, LocalizedError {
         case notSVD
+        case fileTooLarge
         case unknownBase(peripheral: String, derivedFrom: String)
 
         var errorDescription: String? {
             switch self {
             case .notSVD:
                 "The file is not a CMSIS-SVD device description."
+            case .fileTooLarge:
+                "The CMSIS-SVD file exceeds the 32 MiB size limit."
             case let .unknownBase(peripheral, base):
                 "Peripheral \(peripheral) is derived from \(base), which the file does not describe."
             }
@@ -29,7 +36,7 @@ enum SVDParser {
 
         func reading(_ element: XMLElement) -> Defaults {
             var copy = self
-            if let size = element.childText("size").flatMap(SVDParser.number) {
+            if let size = element.childText("size").flatMap(SVDParser.number), (1...64).contains(size) {
                 copy.size = Int(size)
             }
             if let access = element.childText("access").flatMap(SVDAccess.init(rawValue:)) {
@@ -43,11 +50,15 @@ enum SVDParser {
     }
 
     static func parse(contentsOf url: URL) throws -> SVDDevice {
-        try parse(Data(contentsOf: url))
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        let data = try handle.read(upToCount: maximumXMLBytes + 1) ?? Data()
+        return try parse(data)
     }
 
     static func parse(_ data: Data) throws -> SVDDevice {
-        let document = try XMLDocument(data: data)
+        guard data.count <= maximumXMLBytes else { throw Failure.fileTooLarge }
+        let document = try XMLDocument(data: data, options: .nodeLoadExternalEntitiesNever)
         guard let root = document.rootElement(), root.name == "device" else { throw Failure.notSVD }
         let defaults = Defaults().reading(root)
 
@@ -95,10 +106,12 @@ enum SVDParser {
             registers: registers
         )
 
-        return expand(element).map { index, step in
+        return expand(element).compactMap { index, step in
+            let (baseAddress, overflow) = address.addingReportingOverflow(step)
+            guard !overflow else { return nil }
             var copy = template
             copy.name = substitute(name, index)
-            copy.baseAddress = address + step
+            copy.baseAddress = baseAddress
             return copy
         }
     }
@@ -109,7 +122,8 @@ enum SVDParser {
         in parent: XMLElement,
         defaults: Defaults,
         offset: UInt64,
-        prefix: String
+        prefix: String,
+        depth: Int = 0
     ) -> [SVDRegister] {
         var result: [SVDRegister] = []
         for child in parent.children?.compactMap({ $0 as? XMLElement }) ?? [] {
@@ -117,16 +131,22 @@ enum SVDParser {
             case "register":
                 result += registers(from: child, defaults: defaults, offset: offset, prefix: prefix)
             case "cluster":
+                guard depth < maximumClusterDepth else { continue }
                 let clusterDefaults = defaults.reading(child)
                 let clusterOffset = child.childText("addressOffset").flatMap(number) ?? 0
+                let (clusterBase, baseOverflow) = offset.addingReportingOverflow(clusterOffset)
+                guard !baseOverflow else { continue }
                 let clusterName = child.childText("name") ?? ""
                 for (index, step) in expand(child) {
+                    let (childOffset, stepOverflow) = clusterBase.addingReportingOverflow(step)
+                    guard !stepOverflow else { continue }
                     let name = substitute(clusterName, index)
                     result += registers(
                         in: child,
                         defaults: clusterDefaults,
-                        offset: offset + clusterOffset + step,
-                        prefix: prefix + name + "_"
+                        offset: childOffset,
+                        prefix: prefix + name + "_",
+                        depth: depth + 1
                     )
                 }
             default:
@@ -148,12 +168,16 @@ enum SVDParser {
             .flatMap { fields(from: $0, access: defaults.access) }
             .sorted { $0.bitOffset < $1.bitOffset }
         let registerOffset = element.childText("addressOffset").flatMap(number) ?? 0
+        let (baseOffset, baseOverflow) = offset.addingReportingOverflow(registerOffset)
+        guard !baseOverflow else { return [] }
 
-        return expand(element).map { index, step in
-            SVDRegister(
+        return expand(element).compactMap { index, step in
+            let (addressOffset, stepOverflow) = baseOffset.addingReportingOverflow(step)
+            guard !stepOverflow else { return nil }
+            return SVDRegister(
                 name: prefix + substitute(name, index),
                 description: element.childText("description"),
-                addressOffset: offset + registerOffset + step,
+                addressOffset: addressOffset,
                 size: defaults.size,
                 access: defaults.access,
                 resetValue: defaults.resetValue,
@@ -166,18 +190,23 @@ enum SVDParser {
     // MARK: - Fields
 
     private static func fields(from element: XMLElement, access: SVDAccess) -> [SVDField] {
-        guard let (offset, width) = bitRange(of: element), width > 0 else { return [] }
+        guard let (offset, width) = bitRange(of: element),
+              (0..<64).contains(offset),
+              (1...64).contains(width)
+        else { return [] }
         let name = element.childText("name") ?? ""
         let access = element.childText("access").flatMap(SVDAccess.init(rawValue:)) ?? access
         let values = element.children(named: "enumeratedValues")
             .flatMap { $0.children(named: "enumeratedValue") }
             .compactMap(enumeratedValue)
 
-        return expand(element).map { index, step in
-            SVDField(
+        return expand(element).compactMap { index, step in
+            let (rawOffset, overflow) = UInt64(offset).addingReportingOverflow(step)
+            guard !overflow, rawOffset < 64 else { return nil }
+            return SVDField(
                 name: substitute(name, index),
                 description: element.childText("description"),
-                bitOffset: offset + Int(step),
+                bitOffset: Int(rawOffset),
                 bitWidth: width,
                 access: access,
                 enumeratedValues: values
@@ -186,19 +215,27 @@ enum SVDParser {
     }
 
     private static func bitRange(of element: XMLElement) -> (offset: Int, width: Int)? {
-        if let offset = element.childText("bitOffset").flatMap(number) {
-            let width = element.childText("bitWidth").flatMap(number) ?? 1
-            return (Int(offset), Int(width))
+        if let rawOffset = element.childText("bitOffset").flatMap(number) {
+            guard rawOffset < 64 else { return nil }
+            let rawWidth = element.childText("bitWidth").flatMap(number) ?? 1
+            guard (1...64).contains(rawWidth) else { return nil }
+            return (Int(rawOffset), Int(rawWidth))
         }
         if let lsb = element.childText("lsb").flatMap(number),
-           let msb = element.childText("msb").flatMap(number), msb >= lsb {
-            return (Int(lsb), Int(msb - lsb + 1))
+           let msb = element.childText("msb").flatMap(number) {
+            guard lsb < 64, msb < 64, msb >= lsb else { return nil }
+            let width = msb - lsb + 1
+            guard (1...64).contains(width) else { return nil }
+            return (Int(lsb), Int(width))
         }
         if let range = element.childText("bitRange") {
             // "[msb:lsb]"
             let parts = range.trimmingCharacters(in: CharacterSet(charactersIn: "[] "))
                 .split(separator: ":").compactMap { Int($0) }
-            if parts.count == 2, parts[0] >= parts[1] {
+            if parts.count == 2,
+               (0..<64).contains(parts[0]),
+               (0..<64).contains(parts[1]),
+               parts[0] >= parts[1] {
                 return (parts[1], parts[0] - parts[1] + 1)
             }
         }
@@ -212,35 +249,61 @@ enum SVDParser {
         else { return nil }
         return SVDEnumeratedValue(name: name, description: element.childText("description"), value: value)
     }
+}
 
+extension SVDParser {
     // MARK: - Arrays
 
     /// The copies a `dim` element stands for: each one's index text and its
     /// distance from the first. One copy, with no index, without `dim`.
     private static func expand(_ element: XMLElement) -> [(index: String, step: UInt64)] {
-        guard let count = element.childText("dim").flatMap(number), count > 0 else { return [("", 0)] }
+        guard let rawCount = element.childText("dim").flatMap(number), rawCount > 0 else { return [("", 0)] }
+        let count = Int(min(rawCount, UInt64(maximumDimCount)))
         let increment = element.childText("dimIncrement").flatMap(number) ?? 0
-        let indices = dimIndices(element.childText("dimIndex"), count: Int(count))
-        return indices.enumerated().map { ($1, UInt64($0) * increment) }
+        let indices = dimIndices(element.childText("dimIndex"), count: count)
+        return indices.enumerated().compactMap { offset, index in
+            let (step, overflow) = UInt64(offset).multipliedReportingOverflow(by: increment)
+            guard !overflow else { return nil }
+            return (index, step)
+        }
     }
 
     /// `dimIndex` is a list (`A,B,C`), a range (`0-7`), or absent (counting from 0).
     private static func dimIndices(_ text: String?, count: Int) -> [String] {
+        let cappedCount = min(max(count, 0), maximumDimCount)
         guard let text = text?.trimmingCharacters(in: .whitespaces), !text.isEmpty else {
-            return (0..<count).map(String.init)
+            return (0..<cappedCount).map(String.init)
         }
         if text.contains(",") {
-            return text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            return text.split(separator: ",", maxSplits: maximumDimCount)
+                .prefix(maximumDimCount)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
         }
         let bounds = text.split(separator: "-")
         if bounds.count == 2, let first = Int(bounds[0]), let last = Int(bounds[1]), last >= first {
-            return (first...last).map(String.init)
+            var result: [String] = []
+            var current = first
+            while result.count < maximumDimCount {
+                result.append(String(current))
+                if current == last { break }
+                current += 1
+            }
+            return result
         }
         if bounds.count == 2, let first = bounds[0].unicodeScalars.first, let last = bounds[1].unicodeScalars.first,
            bounds[0].count == 1, bounds[1].count == 1, last.value >= first.value {
-            return (first.value...last.value).compactMap { Unicode.Scalar($0).map { String(Character($0)) } }
+            var result: [String] = []
+            var current = first.value
+            while result.count < maximumDimCount {
+                if let scalar = Unicode.Scalar(current) {
+                    result.append(String(Character(scalar)))
+                }
+                if current == last.value { break }
+                current += 1
+            }
+            return result
         }
-        return (0..<count).map(String.init)
+        return (0..<cappedCount).map(String.init)
     }
 
     /// `GPIO%s` with `A` becomes `GPIOA`; `DATA[%s]` with `3` becomes `DATA3`.

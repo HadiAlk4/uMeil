@@ -325,4 +325,43 @@ struct CompileCommandsPreparationTests {
         #expect(arguments.starts(with: ["clang", "--target=arm-none-eabi"]))
         #expect(arguments.contains("-DPART_TM4C1294NCPDT"))
     }
+
+    @Test func rejectsUnsafeProjectSettingsAndSymlinkedBuildDirectories() async throws {
+        let folder = try TemporaryDirectory()
+        let projectFile = try makeBlinkyProject(in: folder)
+        let projectDir = projectFile.deletingLastPathComponent()
+
+        var project = try ProjectFile.load(from: projectFile)
+        project.build.compilerFlags = ["-fplugin=/tmp/evil.so"]
+        let unsafeFile = projectDir.appending(path: "Unsafe.umeil")
+        try ProjectFile.save(project, to: unsafeFile)
+
+        let bin = try folder.directory("bin")
+        _ = try FakeTool.install(.compiler, in: bin, script: "exit 0")
+        let locator = ToolLocator(searchDirectories: [bin])
+
+        #expect(throws: BuildError.self) {
+            try BuildEngine.plan(forProjectFile: unsafeFile, locator: locator)
+        }
+        #expect(throws: BuildError.self) {
+            try BuildEngine.prepareCompileCommands(forProjectFile: unsafeFile, locator: locator)
+        }
+
+        let outside = try TemporaryDirectory()
+        let buildDir = projectDir.appending(path: "build")
+        try FileManager.default.createSymbolicLink(at: buildDir, withDestinationURL: outside.url)
+
+        #expect(throws: ProjectSecurityError.symlinkNotAllowed(buildDir)) {
+            try BuildEngine.prepareCompileCommands(forProjectFile: projectFile, locator: locator)
+        }
+        #expect(!FileManager.default.fileExists(atPath: outside.url.appending(path: "compile_commands.json").path))
+
+        let plan = try BuildEngine.plan(forProjectFile: projectFile, locator: locator)
+        do {
+            _ = try await BuildEngine().build(plan)
+            Issue.record("Expected build to refuse symlinked build directory")
+        } catch let error as ProjectSecurityError {
+            #expect(error == .symlinkNotAllowed(buildDir))
+        }
+    }
 }

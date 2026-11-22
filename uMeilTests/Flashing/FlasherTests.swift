@@ -37,7 +37,10 @@ struct FlasherTests {
 
         let result = await Flasher(runner: FakeOpenOCD(log: FlashLog.success)).flash(plan) { _ in }
 
-        #expect(result.log.hasPrefix("$ openocd -f board/ek-tm4c1294xl.cfg -c init "))
+        #expect(result.log.hasPrefix(
+            "$ openocd -f board/ek-tm4c1294xl.cfg -c bindto localhost -c gdb_port disabled"
+                + " -c telnet_port disabled -c tcl_port disabled -c init "
+        ))
         #expect(result.log.hasSuffix(FlashLog.success))
     }
 

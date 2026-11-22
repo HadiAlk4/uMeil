@@ -70,11 +70,32 @@ class UpdateReleaseFilesTests(unittest.TestCase):
         self.assertEqual(ET.parse(self.appcast).getroot().find("channel").findall("item"), [])
 
     def test_the_cask_gets_the_version_and_checksum(self):
+        # The shipped Casks/umeil.rb uses :no_check while v0.1.0 is unreleased (never a fake digest),
+        # and update_cask must always replace it with a validated 64-hex SHA-256.
+        self.assertIn("  sha256 :no_check", self.cask.read_text())
         self.assertTrue(release_files.update_cask(self.cask, RELEASE))
         text = self.cask.read_text()
         self.assertIn('  version "0.2.0"\n', text)
         self.assertIn(f'  sha256 "{"ab" * 32}"\n', text)
+        self.assertNotIn(":no_check", text)
         self.assertFalse(release_files.update_cask(self.cask, RELEASE))
+
+    def test_update_cask_rejects_no_check_and_invalid_inputs(self):
+        before = self.cask.read_text()
+        for bad_release in (
+            dict(RELEASE, SHA256=":no_check"),
+            dict(RELEASE, SHA256="no_check"),
+            dict(RELEASE, SHA256="AB" * 32),
+            dict(RELEASE, SHA256="ab" * 31),
+            dict(RELEASE, SHA256="zz" * 32),
+            dict(RELEASE, SHA256=""),
+            dict(RELEASE, VERSION='0.2.0"\n  system "id'),
+            dict(RELEASE, VERSION="v0.2.0"),
+        ):
+            with self.subTest(bad_release=bad_release):
+                with self.assertRaises(SystemExit):
+                    release_files.update_cask(self.cask, bad_release)
+                self.assertEqual(self.cask.read_text(), before)
 
     def test_the_unsigned_note_hides_only_once_notarized(self):
         self.assertFalse(release_files.update_site(self.site, dict(RELEASE, NOTARIZED="no")))
@@ -86,8 +107,62 @@ class UpdateReleaseFilesTests(unittest.TestCase):
         env.write_text("VERSION=1.0\nBUILD=1\nSHA256=" + "0" * 64 + "\nLENGTH=1\n")
         with self.assertRaises(SystemExit):
             release_files.read_release(env)
-        env.write_text("VERSION=1.0.0\nBUILD=1\nSHA256=" + "0" * 64 + "\nLENGTH=1\nED_SIGNATURE=\n")
-        self.assertEqual(release_files.read_release(env)["ED_SIGNATURE"], "")
+        env.write_text(
+            "VERSION=1.0.0\nBUILD=1\nSHA256=" + "0" * 64 + "\nLENGTH=1\nSIGNED=yes\nNOTARIZED=no\nED_SIGNATURE=\n"
+        )
+        parsed = release_files.read_release(env)
+        self.assertEqual(parsed["ED_SIGNATURE"], "")
+        self.assertEqual(parsed["SIGNED"], "yes")
+        self.assertEqual(parsed["NOTARIZED"], "no")
+
+    def _write_env(self, **overrides):
+        data = dict(RELEASE, **overrides)
+        env = self.folder / "release.env"
+        env.write_text("".join(f"{k}={v}\n" for k, v in data.items()))
+        return env
+
+    def test_read_release_rejects_malformed_fields(self):
+        invalid_cases = [
+            {"VERSION": "1.0"},
+            {"VERSION": "v1.0.0"},
+            {"VERSION": "1.0.0;id"},
+            {"BUILD": "abc"},
+            {"BUILD": "-1"},
+            {"BUILD": "1.2"},
+            {"BUILD": "\u0661"},
+            {"BUILD": ""},
+            {"LENGTH": "abc"},
+            {"LENGTH": "-5"},
+            {"LENGTH": "10MB"},
+            {"LENGTH": "\u0662"},
+            {"LENGTH": ""},
+            {"SHA256": ":no_check"},
+            {"SHA256": "AB" * 32},
+            {"SHA256": "0" * 63},
+            {"SHA256": "g" * 64},
+            {"SIGNED": "true"},
+            {"SIGNED": ""},
+            {"NOTARIZED": "1"},
+            {"NOTARIZED": ""},
+            {"ED_SIGNATURE": "c2ln bmF0dXJl"},
+            {"ED_SIGNATURE": " c2lnbmF0dXJl"},
+            {"ED_SIGNATURE": "c2lnbmF0dXJl "},
+            {"ED_SIGNATURE": "c2ln\tbmF0dXJl"},
+            {"ED_SIGNATURE": "c2ln\x00bmF0dXJl"},
+            {"ED_SIGNATURE": "c2ln\x0bbmF0dXJl"},
+            {"ED_SIGNATURE": "not-valid-base64!"},
+            {"ED_SIGNATURE": "abc"},
+            {"ED_SIGNATURE": "===="},
+        ]
+        for overrides in invalid_cases:
+            with self.subTest(overrides=overrides):
+                env = self._write_env(**overrides)
+                with self.assertRaises(SystemExit):
+                    release_files.read_release(env)
+
+    def test_read_release_accepts_valid_padded_ed_signature(self):
+        env = self._write_env(ED_SIGNATURE="YWJjZA==")
+        self.assertEqual(release_files.read_release(env)["ED_SIGNATURE"], "YWJjZA==")
 
 
 if __name__ == "__main__":

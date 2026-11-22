@@ -42,9 +42,18 @@ enum KeilStartup {
                 continue
             }
             let value = String(words[directive + 1])
-            names.append(value == "0" ? nil : value)
+            if value == "0" {
+                names.append(nil)
+            } else {
+                names.append(isValidIdentifier(value) ? value : "Default_Handler")
+            }
         }
         return names.count >= coreVectorCount ? names : nil
+    }
+
+    /// Whether `name` is a safe C identifier (`^[A-Za-z_][A-Za-z0-9_]*$`).
+    static func isValidIdentifier(_ name: String) -> Bool {
+        name.wholeMatch(of: #/[A-Za-z_][A-Za-z0-9_]*/#) != nil
     }
 
     /// C source for a startup file with `vectors` as its vector table.
@@ -53,7 +62,10 @@ enum KeilStartup {
     /// chip's real one, so an interrupt nobody named still has somewhere safe
     /// to go.
     static func gnuSource(vectors: [String?], interruptCount: Int, basedOn original: String?) -> String {
-        var table = vectors
+        var table = vectors.map { name -> String? in
+            guard let name else { return nil }
+            return isValidIdentifier(name) ? name : "Default_Handler"
+        }
         while table.count < coreVectorCount + interruptCount {
             table.append("Default_Handler")
         }
@@ -76,7 +88,7 @@ enum KeilStartup {
             return "    \(value),\(label)"
         }
 
-        let origin = original.map { "from the vector table in \($0)" } ?? "for the Cortex-M4"
+        let origin = sanitizedOrigin(original).map { "from the vector table in \($0)" } ?? "for the Cortex-M4"
         return """
         // Startup code for the GNU toolchain, written by uMeil \(origin).
         //
@@ -101,6 +113,25 @@ enum KeilStartup {
 
         \(resetCode)
         """
+    }
+
+    private static func sanitizedOrigin(_ original: String?) -> String? {
+        guard let original else { return nil }
+        let base = original
+            .split { $0 == "/" || $0 == "\\" }
+            .last
+            .map(String.init) ?? ""
+        var cleaned = String(base.unicodeScalars.filter { scalar in
+            scalar.value >= 0x20
+                && !(scalar.value >= 0x7F && scalar.value <= 0x9F)
+                && scalar != "\u{2028}"
+                && scalar != "\u{2029}"
+        })
+        while cleaned.contains("*/") {
+            cleaned = cleaned.replacing("*/", with: "_")
+        }
+        cleaned = cleaned.trimmingCharacters(in: .whitespaces)
+        return cleaned.isEmpty ? nil : cleaned
     }
 
     /// The part of the startup file before the vector table.

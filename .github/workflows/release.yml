@@ -23,9 +23,7 @@ on:
   push:
     tags: ["v*.*.*"]
 
-permissions:
-  contents: write
-  actions: write
+permissions: {}
 
 concurrency:
   group: release
@@ -35,15 +33,23 @@ jobs:
   release:
     name: Build and publish
     runs-on: macos-latest
+    permissions:
+      contents: write
+      actions: write
     steps:
+      - name: Validate release tag and read version
+        id: version
+        run: |
+          if [[ ! $GITHUB_REF_NAME =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "error: invalid release tag '$GITHUB_REF_NAME'" >&2
+            exit 1
+          fi
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v7
         with:
           # The build number is the number of commits, so fetch them all.
           fetch-depth: 0
-
-      - name: Read the version from the tag
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Install the Developer ID certificate
         env:
@@ -59,7 +65,15 @@ jobs:
           security unlock-keychain -p "$keychain_password" "$keychain"
           security import "$RUNNER_TEMP/certificate.p12" -P "$PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
           security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain" > /dev/null
-          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          existing_keychains=()
+          while IFS= read -r kc; do
+            kc="${kc#"${kc%%[![:space:]]*}"}"
+            kc="${kc%"${kc##*[![:space:]]}"}"
+            kc="${kc#\"}"
+            kc="${kc%\"}"
+            [[ -n $kc ]] && existing_keychains+=("$kc")
+          done < <(security list-keychains -d user)
+          security list-keychains -d user -s "$keychain" "${existing_keychains[@]+"${existing_keychains[@]}"}"
           rm "$RUNNER_TEMP/certificate.p12"
 
       - name: Write the notarization key
@@ -72,33 +86,61 @@ jobs:
 
       - name: Build, sign and notarize
         env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
           DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
           DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
           NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
           NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
           SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
-        run: Scripts/make-release.sh "${{ steps.version.outputs.version }}"
+        run: Scripts/make-release.sh "$RELEASE_VERSION"
 
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          source dist/release.env
+          VERSION=""
+          SHA256=""
+          NOTARIZED=""
+          while IFS='=' read -r key value || [[ -n $key ]]; do
+            value=${value%$'\r'}
+            case "$key" in
+              VERSION) VERSION="$value" ;;
+              SHA256) SHA256="$value" ;;
+              NOTARIZED) NOTARIZED="$value" ;;
+            esac
+          done < dist/release.env
+          if [[ ! $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "error: invalid VERSION in dist/release.env" >&2
+            exit 1
+          fi
+          if [[ ! $SHA256 =~ ^[0-9a-f]{64}$ ]]; then
+            echo "error: invalid SHA256 in dist/release.env" >&2
+            exit 1
+          fi
+          if [[ ! $NOTARIZED =~ ^(yes|no)$ ]]; then
+            echo "error: invalid NOTARIZED in dist/release.env" >&2
+            exit 1
+          fi
           notes="Apple Silicon, macOS 14 or later."
           if [[ $NOTARIZED != yes ]]; then
             notes+=$'\n\n'"This build is not notarized by Apple. The first time you open it, macOS will block it: open it once, then choose Open Anyway in System Settings > Privacy & Security."
           fi
           notes+=$'\n\n'"SHA-256: \`$SHA256\`"
+          extra_args=()
+          if [[ $VERSION == *-* ]]; then
+            extra_args+=(--prerelease)
+          fi
           gh release create "$GITHUB_REF_NAME" \
             "dist/uMeil-$VERSION.dmg" dist/uMeil.dmg \
             --title "uMeil $VERSION" \
             --notes "$notes" \
-            $([[ $VERSION == *-* ]] && echo --prerelease)
+            "${extra_args[@]+"${extra_args[@]}"}"
 
       - name: Update the website's feed and the Homebrew cask
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           # dist/ is ignored by git, so it survives the switch to main.
           git fetch origin main
@@ -107,7 +149,7 @@ jobs:
           if git diff --quiet; then exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "Point the website and the Homebrew cask at uMeil ${{ steps.version.outputs.version }}."
+          git commit -am "Point the website and the Homebrew cask at uMeil $RELEASE_VERSION."
           git push origin HEAD:main
           # A push made with the workflow's token starts no other workflows,
           # so start the website's by hand.

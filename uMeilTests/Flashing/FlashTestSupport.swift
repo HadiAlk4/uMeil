@@ -200,6 +200,10 @@ final class FakeBoardMonitor: BoardMonitoring {
         isStarted = true
     }
 
+    func stop() {
+        isStarted = false
+    }
+
     func setConnected(_ isConnected: Bool) {
         isBoardConnected = isConnected
         onChange?(isConnected)

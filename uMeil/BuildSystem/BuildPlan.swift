@@ -73,6 +73,47 @@ struct BuildPlan: Equatable, Sendable {
     /// The folder, inside the project folder, that holds everything a build produces.
     static let buildDirectoryName = "build"
 
+    /// C language standards accepted for `-std=`.
+    static let allowedCStandards: Set<String> = [
+        "c89", "gnu89", "c90", "gnu90", "c99", "gnu99",
+        "c11", "gnu11", "c17", "c18", "gnu17", "gnu18",
+        "c2x", "gnu2x", "c23", "gnu23"
+    ]
+
+    /// Rejects unsafe build settings, response files, dangerous compiler/linker
+    /// flags, or paths escaping `projectDirectory`.
+    static func validate(_ project: Project, in projectDirectory: URL) throws {
+        guard allowedCStandards.contains(project.build.cStandard) else {
+            throw BuildError.unsafeProjectSetting("unsupported C standard “\(project.build.cStandard)”")
+        }
+        for define in project.build.defines {
+            guard !define.isEmpty,
+                  !define.trimmingCharacters(in: .whitespaces).isEmpty,
+                  !ProjectSecurity.containsControlOrNewline(define)
+            else {
+                throw BuildError.unsafeProjectSetting("invalid preprocessor definition “\(define)”")
+            }
+        }
+        for source in project.sources {
+            guard source != ".", ProjectSecurity.safeRelativeURL(for: source, in: projectDirectory) != nil else {
+                throw BuildError.unsafeProjectSetting("unsafe source path “\(source)”")
+            }
+        }
+        for includePath in project.includePaths {
+            guard ProjectSecurity.safeRelativeURL(for: includePath, in: projectDirectory) != nil else {
+                throw BuildError.unsafeProjectSetting("unsafe include path “\(includePath)”")
+            }
+        }
+        let linkerScript = project.build.linkerScript
+        guard linkerScript != ".",
+              ProjectSecurity.safeRelativeURL(for: linkerScript, in: projectDirectory) != nil
+        else {
+            throw BuildError.unsafeProjectSetting("unsafe linker script path “\(linkerScript)”")
+        }
+        try validateFlags(project.build.compilerFlags, role: "compiler", in: projectDirectory)
+        try validateFlags(project.build.linkerFlags, role: "linker", in: projectDirectory)
+    }
+
     init(project: Project, projectDirectory: URL, environment: BuildEnvironment) {
         self.projectDirectory = projectDirectory
         self.environment = environment
@@ -171,13 +212,187 @@ struct BuildPlan: Equatable, Sendable {
     }
 
     /// The project name as a safe file name.
-    private static func fileName(for projectName: String) -> String {
-        let cleaned = projectName.map { $0 == "/" || $0 == ":" ? "_" : $0 }
-        return cleaned.isEmpty ? "firmware" : String(cleaned)
+    static func fileName(for projectName: String) -> String {
+        let scalars = projectName.unicodeScalars.map { scalar -> UnicodeScalar in
+            let isUnsafeChar = scalar == "/" || scalar == ":" || scalar == "\\"
+            let isControlOrNewline = scalar.value < 0x20
+                || (scalar.value >= 0x7F && scalar.value <= 0x9F)
+                || scalar == "\u{2028}"
+                || scalar == "\u{2029}"
+            return (isUnsafeChar || isControlOrNewline) ? "_" : scalar
+        }
+        let cleaned = String(String.UnicodeScalarView(scalars))
+        let stripped = String(cleaned.drop { $0 == "." || $0 == "-" })
+        return stripped.isEmpty ? "firmware" : stripped
     }
 
     /// Resolves a path used in a command against the project folder.
     func url(for path: String) -> URL {
         path.hasPrefix("/") ? URL(filePath: path) : projectDirectory.appending(path: path)
+    }
+}
+
+// MARK: - Flag Validation
+
+private extension BuildPlan {
+    static let forbiddenDriverPrefixes: [String] = [
+        "-B", "-fplugin", "--plugin", "-plugin", "-specs", "--specs", "-o",
+        "-MF", "-MT", "-MQ", "-MD", "-MMD", "-imacros", "-include",
+        "-dumpbase", "-dumpdir", "-auxbase", "-fprofile", "-fdump", "-T", "-isysroot"
+    ]
+
+    static let forbiddenExactOrEqualsFlags: [String] = [
+        "-wrapper", "--wrapper", "-fuse-ld", "--output", "--prefix",
+        "-ftest-coverage", "--coverage", "-save-temps", "--save-temps", "--script",
+        "-Xlinker", "-Xpreprocessor", "-Xassembler", "--sysroot"
+    ]
+
+    static let separatePathPrefixes = ["-L", "-I", "-isystem", "-iquote", "-idirafter"]
+
+    static func validateFlags(_ flags: [String], role: String, in projectDirectory: URL) throws {
+        var index = 0
+        while index < flags.count {
+            let flag = flags[index]
+            guard !flag.isEmpty,
+                  !flag.trimmingCharacters(in: .whitespaces).isEmpty,
+                  !ProjectSecurity.containsControlOrNewline(flag),
+                  !flag.hasPrefix("@"),
+                  flag.hasPrefix("-")
+            else {
+                throw BuildError.unsafeProjectSetting("unsafe \(role) flag “\(flag)”")
+            }
+            if try consumeTwoArgFlag(flag, flags: flags, index: &index, role: role, in: projectDirectory) {
+                continue
+            }
+            try validateSingleFlag(flag, role: role, in: projectDirectory)
+            index += 1
+        }
+    }
+
+    static func consumeTwoArgFlag(
+        _ flag: String,
+        flags: [String],
+        index: inout Int,
+        role: String,
+        in projectDirectory: URL
+    ) throws -> Bool {
+        let expectsPath = separatePathPrefixes.contains(flag) || flag == "--library-path"
+        let expectsValue = flag == "-D" || flag == "-U" || flag == "-l"
+        guard expectsPath || expectsValue else { return false }
+        guard index + 1 < flags.count else {
+            throw BuildError.unsafeProjectSetting("incomplete \(role) flag “\(flag)”")
+        }
+        let next = flags[index + 1]
+        if expectsPath {
+            try validateFlagPath(next, flag: flag, role: role, in: projectDirectory)
+        } else if flag == "-l" {
+            try validateLibraryName(next, role: role)
+        } else {
+            guard !next.isEmpty, !ProjectSecurity.containsControlOrNewline(next), !next.hasPrefix("@") else {
+                throw BuildError.unsafeProjectSetting("unsafe \(role) argument “\(next)”")
+            }
+        }
+        index += 2
+        return true
+    }
+
+    static func validateSingleFlag(_ flag: String, role: String, in projectDirectory: URL) throws {
+        let matchesPrefix = forbiddenDriverPrefixes.contains { flag.hasPrefix($0) }
+        let matchesExact = forbiddenExactOrEqualsFlags.contains { flag == $0 || flag.hasPrefix("\($0)=") }
+        guard !matchesPrefix, !matchesExact else {
+            throw BuildError.unsafeProjectSetting("disallowed \(role) flag “\(flag)”")
+        }
+        guard flag != "-Wl", flag != "-Wp", flag != "-Wa" else {
+            throw BuildError.unsafeProjectSetting("incomplete \(role) flag “\(flag)”")
+        }
+        if flag.hasPrefix("-Wl,") {
+            try validateLinkerPassThrough(String(flag.dropFirst(4)), in: projectDirectory)
+        } else if flag.hasPrefix("-Wp,") || flag.hasPrefix("-Wa,") {
+            let subFlags = String(flag.dropFirst(4)).split(separator: ",", omittingEmptySubsequences: false)
+            try validateFlags(subFlags.map(String.init), role: role, in: projectDirectory)
+        } else if flag.hasPrefix("--library-path=") {
+            let path = String(flag.dropFirst("--library-path=".count))
+            try validateFlagPath(path, flag: flag, role: role, in: projectDirectory)
+        } else if let prefix = separatePathPrefixes.first(where: { flag.hasPrefix($0) && flag.count > $0.count }) {
+            let path = String(flag.dropFirst(prefix.count))
+            try validateFlagPath(path, flag: flag, role: role, in: projectDirectory)
+        } else if flag.hasPrefix("-l"), flag.count > 2 {
+            try validateLibraryName(String(flag.dropFirst(2)), role: role)
+        }
+    }
+
+    static func validateLinkerPassThrough(_ argumentList: String, in projectDirectory: URL) throws {
+        let tokens = argumentList.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+        var index = 0
+        while index < tokens.count {
+            let step = try validateLinkerToken(tokens, at: index, argumentList: argumentList, in: projectDirectory)
+            index += step
+        }
+    }
+
+    static func validateLinkerToken(
+        _ tokens: [String],
+        at index: Int,
+        argumentList: String,
+        in projectDirectory: URL
+    ) throws -> Int {
+        let token = tokens[index]
+        guard !token.isEmpty, !ProjectSecurity.containsControlOrNewline(token), !token.hasPrefix("@") else {
+            throw BuildError.unsafeProjectSetting("unsafe linker flag “-Wl,\(argumentList)”")
+        }
+        guard !isForbiddenLinkerToken(token) else {
+            throw BuildError.unsafeProjectSetting("disallowed linker flag “-Wl,\(token)”")
+        }
+        if token == "-L" || token == "--library-path" {
+            guard index + 1 < tokens.count else {
+                throw BuildError.unsafeProjectSetting("incomplete linker flag “-Wl,\(token)”")
+            }
+            try validateFlagPath(tokens[index + 1], flag: "-Wl,\(token)", role: "linker", in: projectDirectory)
+            return 2
+        }
+        if token.hasPrefix("-L"), token.count > 2 {
+            try validateFlagPath(String(token.dropFirst(2)), flag: "-Wl,\(token)", role: "linker", in: projectDirectory)
+        } else if token.hasPrefix("--library-path=") {
+            let path = String(token.dropFirst("--library-path=".count))
+            try validateFlagPath(path, flag: "-Wl,\(token)", role: "linker", in: projectDirectory)
+        } else if twoArgLinkerFlags.contains(token) {
+            guard index + 1 < tokens.count, !tokens[index + 1].isEmpty else {
+                throw BuildError.unsafeProjectSetting("incomplete linker flag “-Wl,\(token)”")
+            }
+            if token == "-l" { try validateLibraryName(tokens[index + 1], role: "linker") }
+            return 2
+        } else if !token.hasPrefix("-") {
+            throw BuildError.unsafeProjectSetting("unsafe linker argument “-Wl,\(token)”")
+        }
+        return 1
+    }
+
+    static let twoArgLinkerFlags: Set<String> = [
+        "-l", "-u", "--undefined", "-e", "--entry", "-z", "--wrap", "-defsym", "--defsym"
+    ]
+
+    static func isForbiddenLinkerToken(_ token: String) -> Bool {
+        let prefixes = ["-Map", "--Map", "-plugin", "--plugin", "--dependency-file", "-dependency-file",
+                        "-o", "-T", "-isysroot"]
+        let exactOrEquals = ["--output", "--script", "--sysroot", "-rpath", "--rpath"]
+        return prefixes.contains { token.hasPrefix($0) }
+            || exactOrEquals.contains { token == $0 || token.hasPrefix("\($0)=") }
+    }
+
+    static func validateFlagPath(_ path: String, flag: String, role: String, in projectDirectory: URL) throws {
+        guard !path.hasPrefix("="), ProjectSecurity.safeRelativeURL(for: path, in: projectDirectory) != nil else {
+            throw BuildError.unsafeProjectSetting("unsafe \(role) path in “\(flag)”")
+        }
+    }
+
+    static func validateLibraryName(_ name: String, role: String) throws {
+        guard !name.isEmpty, !ProjectSecurity.containsControlOrNewline(name),
+              !name.hasPrefix("@"), !name.hasPrefix("-") else {
+            throw BuildError.unsafeProjectSetting("unsafe \(role) library “\(name)”")
+        }
+        guard !name.hasPrefix(":") || (!name.dropFirst().isEmpty && !name.contains("/")
+            && !name.contains("\\") && !name.contains("..")) else {
+            throw BuildError.unsafeProjectSetting("unsafe \(role) library “\(name)”")
+        }
     }
 }

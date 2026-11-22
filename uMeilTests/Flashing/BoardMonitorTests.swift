@@ -43,4 +43,31 @@ struct BoardMonitorTests {
         #expect(monitor.device == probe)
         #expect(monitor.isBoardConnected == USBBoardMonitor.isPresent(probe))
     }
+
+    @Test func stopIsIdempotentAndIgnoresStaleCallbacksAfterTeardown() {
+        var monitor: USBBoardMonitor? = USBBoardMonitor(device: USBDeviceID(vendorID: 0xFFFE, productID: 0xFFFD))
+        monitor?.start()
+        let context = monitor?.callbackContextForTesting
+        #expect(monitor?.isRunning == true)
+        #expect(context != nil)
+
+        monitor?.stop()
+        monitor?.stop()
+        #expect(monitor?.isRunning == false)
+        #expect(monitor?.isBoardConnected == false)
+
+        // Calling with an invalidated context after stop must be a safe no-op.
+        USBBoardMonitor.dispatchNotificationForTesting(context: context)
+
+        // Restarting after stop works, and deallocating without stop also invalidates the context.
+        monitor?.start()
+        let secondContext = monitor?.callbackContextForTesting
+        #expect(monitor?.isRunning == true)
+        #expect(secondContext != nil)
+        weak var weakMonitor = monitor
+        monitor = nil
+        #expect(weakMonitor == nil)
+
+        USBBoardMonitor.dispatchNotificationForTesting(context: secondContext)
+    }
 }

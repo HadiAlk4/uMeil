@@ -172,41 +172,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         }
     }
 
-    /// Opens a folder or file handed to the app from outside: dropped on the
-    /// Dock icon, opened from Finder, or passed to `open -a uMeil`.
-    ///
-    /// A folder is shown as it is. A project file opens its folder with the
-    /// project's first source showing. A Keil project is opened as a uMeil
-    /// project, imported the first time. Any other file opens its folder with
-    /// that file showing.
-    func openItem(at url: URL) {
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false), isDirectory: &isDirectory),
-              confirmDiscardingChanges()
-        else { return }
-
-        window?.makeKeyAndOrderFront(nil)
-        if isDirectory.boolValue {
-            openFolder(url)
-            return
-        }
-
-        if url.pathExtension == KeilImporter.fileExtension {
-            openKeilProjectShowingNotes(at: url)
-            return
-        }
-
-        let parent = url.deletingLastPathComponent()
-        openFolder(parent)
-        if url.pathExtension == ProjectFile.fileExtension,
-           let main = (try? ProjectFile.load(from: url))?.sources.first {
-            openFile(parent.appending(path: main))
-        } else {
-            // Also a project file that cannot be read, so it can be fixed.
-            openFile(url)
-        }
-    }
-
     // MARK: - Files
 
     /// Opens `url` in the editor and selects it in the navigator. Unsaved
@@ -347,6 +312,44 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
 // Kept out of the class body to keep it short. Same file, so the private
 // members above are still in reach.
 extension MainWindowController {
+    /// Opens a folder or file handed to the app from outside: dropped on the
+    /// Dock icon, opened from Finder, or passed to `open -a uMeil`.
+    ///
+    /// A folder is shown as it is. A project file opens its folder with the
+    /// project's first source showing. A Keil project is opened as a uMeil
+    /// project, imported the first time. Any other file opens its folder with
+    /// that file showing.
+    func openItem(at url: URL) {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false), isDirectory: &isDirectory),
+              confirmDiscardingChanges()
+        else { return }
+
+        window?.makeKeyAndOrderFront(nil)
+        if isDirectory.boolValue {
+            openFolder(url)
+            return
+        }
+
+        if url.pathExtension == KeilImporter.fileExtension {
+            openKeilProjectShowingNotes(at: url)
+            return
+        }
+
+        let parent = url.deletingLastPathComponent()
+        openFolder(parent)
+        if url.pathExtension == ProjectFile.fileExtension,
+           let project = try? ProjectFile.load(from: url) {
+            if let main = project.sources.first,
+               let mainURL = ProjectSecurity.safeRelativeURL(for: main, in: parent) {
+                openFile(mainURL)
+            }
+        } else {
+            // Also a project file that cannot be read, so it can be fixed.
+            openFile(url)
+        }
+    }
+
     // MARK: - Unsaved changes
 
     /// If the open file has unsaved changes, asks whether to save them.

@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 import os
 
@@ -17,12 +18,15 @@ struct ToolchainPackage: Codable, Equatable, Sendable {
 }
 
 enum ToolchainInstallError: Error, Equatable, LocalizedError {
+    case invalidPackage(String)
     case downloadFailed(statusCode: Int)
     case checksumMismatch(expected: String, actual: String)
     case extractionFailed(String)
 
     var errorDescription: String? {
         switch self {
+        case .invalidPackage(let details):
+            "The toolchain package cannot be installed. \(details)"
         case .downloadFailed(let statusCode):
             "The download failed (HTTP \(statusCode))."
         case .checksumMismatch:
@@ -47,6 +51,8 @@ struct ToolchainInstaller: Sendable {
     var toolchainsDirectory: URL = AppPaths.toolchainsDirectory
     var session: URLSession = .shared
     var runner: any ProcessRunning = ProcessRunner()
+    /// Tests use `file://` archives to exercise downloading without the network.
+    var allowInsecureURLsForTesting: Bool = false
 
     /// Installs `package` and returns the folder it was installed into.
     ///
@@ -61,6 +67,7 @@ struct ToolchainInstaller: Sendable {
         _ package: ToolchainPackage,
         progress: @escaping @Sendable (ToolchainInstallProgress) -> Void = { _ in }
     ) async throws -> URL {
+        try validate(package)
         let fileManager = FileManager.default
 
         let (archive, response) = try await download(package.url) { fraction in
@@ -91,11 +98,51 @@ struct ToolchainInstaller: Sendable {
         try await extract(archive, into: staging)
 
         let destination = toolchainsDirectory.appending(path: package.installDirectoryName, directoryHint: .isDirectory)
-        if fileManager.fileExists(atPath: destination.path(percentEncoded: false)) {
-            try fileManager.removeItem(at: destination)
+        let source = try Self.contentRoot(of: staging)
+        var statInfo = stat()
+        if lstat(destination.path(percentEncoded: false), &statInfo) == 0 {
+            if (statInfo.st_mode & S_IFMT) == S_IFLNK {
+                try fileManager.removeItem(at: destination)
+                try fileManager.moveItem(at: source, to: destination)
+            } else {
+                _ = try fileManager.replaceItemAt(destination, withItemAt: source)
+            }
+        } else {
+            try fileManager.moveItem(at: source, to: destination)
         }
-        try fileManager.moveItem(at: Self.contentRoot(of: staging), to: destination)
         return destination
+    }
+
+    private func validate(_ package: ToolchainPackage) throws {
+        guard Self.isSafePathComponent(package.name),
+              Self.isSafePathComponent(package.version)
+        else {
+            throw ToolchainInstallError.invalidPackage("Package name and version must be safe single path components.")
+        }
+        let scheme = package.url.scheme?.lowercased()
+        let isValidHTTPS = scheme == "https" && !(package.url.host ?? "").isEmpty
+        let isAllowedTestFile = allowInsecureURLsForTesting && scheme == "file"
+        guard isValidHTTPS || isAllowedTestFile else {
+            throw ToolchainInstallError.invalidPackage("Package URLs must use HTTPS.")
+        }
+    }
+
+    static func isSafePathComponent(_ component: String) -> Bool {
+        guard !component.isEmpty,
+              component != ".",
+              component != "..",
+              !component.contains(".."),
+              !component.hasPrefix(".")
+        else { return false }
+        return component.unicodeScalars.allSatisfy { scalar in
+            let value = scalar.value
+            return (value >= 0x30 && value <= 0x39)
+                || (value >= 0x41 && value <= 0x5A)
+                || (value >= 0x61 && value <= 0x7A)
+                || value == 0x2D
+                || value == 0x5F
+                || value == 0x2E
+        }
     }
 
     /// Downloads `url` to a temporary file, reporting the fraction completed

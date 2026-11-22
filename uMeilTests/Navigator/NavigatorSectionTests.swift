@@ -6,8 +6,12 @@ import Testing
 @MainActor
 struct NavigatorSectionTests {
     private func makeFiles(_ paths: [String], in temp: TemporaryDirectory) throws {
+        try makeFiles(paths, in: temp.url)
+    }
+
+    private func makeFiles(_ paths: [String], in folder: URL) throws {
         for path in paths {
-            let url = temp.url.appending(path: path)
+            let url = folder.appending(path: path)
             try FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(),
                 withIntermediateDirectories: true
@@ -115,5 +119,63 @@ struct NavigatorSectionTests {
 
         #expect(navigator.sections.isEmpty)
         #expect((navigator.outlineView.item(atRow: 0) as? FileNode)?.name == "main.c")
+    }
+
+    @Test func excludesEscapingPathsAndOutsideSymlinksWhileKeepingValidPaths() throws {
+        let outer = try TemporaryDirectory()
+        let folder = try outer.directory("project")
+        let outsideDir = try outer.directory("outsideDir")
+        try makeFiles(["secret.c", "startup_secret.c", "outside.ld", "outsideDir/nested.c"], in: outer)
+        try makeFiles(["src/main.c", "startup/startup.c", "chip.ld"], in: folder)
+
+        let fileManager = FileManager.default
+        try fileManager.createSymbolicLink(
+            at: folder.appending(path: "escape_file.c"),
+            withDestinationURL: outer.url.appending(path: "secret.c")
+        )
+        try fileManager.createSymbolicLink(
+            at: folder.appending(path: "escape_dir"),
+            withDestinationURL: outsideDir
+        )
+        try fileManager.createSymbolicLink(
+            at: folder.appending(path: "startup/escape_startup.c"),
+            withDestinationURL: outer.url.appending(path: "startup_secret.c")
+        )
+
+        let project = project(
+            sources: [
+                "src/main.c",
+                "../secret.c",
+                "src/../../secret.c",
+                "/etc/passwd",
+                "escape_file.c",
+                "escape_dir/nested.c",
+                "startup/startup.c",
+                "../startup_secret.c",
+                "startup/escape_startup.c"
+            ],
+            linkerScript: "chip.ld"
+        )
+
+        let groups = NavigatorSection.projectFiles(of: project, in: folder)
+
+        #expect(groups.map(\.kind) == [.sources, .startup, .linkerScript])
+        #expect(groups.map { $0.files.map(\.lastPathComponent) } == [["main.c"], ["startup.c"], ["chip.ld"]])
+        #expect(groups[0].files == [folder.standardizedFileURL.appending(path: "src/main.c")])
+    }
+
+    @Test func excludesEscapingAndSymlinkedLinkerScripts() throws {
+        let outer = try TemporaryDirectory()
+        let folder = try outer.directory("project")
+        try makeFiles(["outside.ld"], in: outer)
+        try FileManager.default.createSymbolicLink(
+            at: folder.appending(path: "escape.ld"),
+            withDestinationURL: outer.url.appending(path: "outside.ld")
+        )
+
+        for unsafeScript in ["../outside.ld", "/etc/passwd", "escape.ld"] {
+            let project = project(sources: [], linkerScript: unsafeScript)
+            #expect(NavigatorSection.projectFiles(of: project, in: folder).isEmpty)
+        }
     }
 }

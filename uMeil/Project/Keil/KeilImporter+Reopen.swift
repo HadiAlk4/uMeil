@@ -26,7 +26,7 @@ extension KeilImporter {
     /// adds the course library to its sources if it was missing.
     private static func refreshProject(_ projectFile: URL, from keilFile: URL, linkerScript: URL) throws -> KeilImport {
         var project = try ProjectFile.load(from: projectFile)
-        let keil = try KeilProject.parse(Data(contentsOf: keilFile))
+        let keil = try KeilProject.load(from: keilFile)
         guard let chip = Chip(rawValue: keil.device) else {
             throw KeilImportError.unsupportedDevice(keil.device)
         }
@@ -84,11 +84,17 @@ extension KeilImporter {
         overwriteEdited: Bool,
         notes: inout [String]
     ) throws -> SupportFiles {
-        let support = context.folder.appending(path: supportDirectoryName, directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        let support = try ProjectSecurity.ensureSafeSubdirectory(named: supportDirectoryName, in: context.folder)
 
         func write(_ text: String, to name: String) throws {
-            let url = support.appending(path: name)
+            guard !name.isEmpty, !name.contains("/"), !name.contains("\\"),
+                  name != ".", name != "..",
+                  !ProjectSecurity.containsControlOrNewline(name)
+            else {
+                throw ProjectSecurityError.unsafePath(name)
+            }
+            let url = support.appending(path: name, directoryHint: .notDirectory)
+            try ProjectSecurity.ensureSafeFileDestination(url, in: context.folder)
             if !overwriteEdited, let existing = try? String(contentsOf: url, encoding: .utf8) {
                 guard existing != text else { return }
                 guard isGenerated(existing) else {

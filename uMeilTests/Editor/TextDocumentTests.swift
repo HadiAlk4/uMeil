@@ -81,4 +81,22 @@ struct TextDocumentTests {
 
         #expect(try TextDocument.load(from: url).text.isEmpty)
     }
+
+    @Test func refusesFilesLargerThanMaximumSize() throws {
+        #expect(TextDocument.maximumFileSize == 10 * 1024 * 1024)
+        let temp = try TemporaryDirectory()
+        let oversized = temp.url.appending(path: "huge.c")
+        let payload = Data(repeating: UInt8(ascii: "a"), count: TextDocument.maximumFileSize + 1)
+        try payload.write(to: oversized)
+
+        #expect(throws: TextDocumentError.fileTooLarge) {
+            try TextDocument.load(from: oversized)
+        }
+
+        let symlink = temp.url.appending(path: "huge_link.c")
+        try FileManager.default.createSymbolicLink(at: symlink, withDestinationURL: oversized)
+        #expect(throws: TextDocumentError.fileTooLarge) {
+            try TextDocument.load(from: symlink)
+        }
+    }
 }

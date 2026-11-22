@@ -41,6 +41,7 @@ struct ClangdIntegrationTests {
             clangdExecutable: clangd,
             workspaceDirectory: folder,
             compileCommandsDirectory: folder.appending(path: "build"),
+            queryDriver: ToolLocator.standard().locate(.compiler),
             changeDebounce: .zero
         ) { params in
             continuation.yield(params)
@@ -182,6 +183,7 @@ struct ClangdIntegrationTests {
             clangdExecutable: clangd,
             workspaceDirectory: folder,
             compileCommandsDirectory: folder.appending(path: "build"),
+            queryDriver: ToolLocator.standard().locate(.compiler),
             changeDebounce: .milliseconds(20)
         ) { params in
             continuation.yield(params)
@@ -204,6 +206,52 @@ struct ClangdIntegrationTests {
             }
         }
         #expect(sawBroken)
+        await session.stop()
+        continuation.finish()
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func ignoresWorkspaceClangdConfigFile() async throws {
+        let clangd = try #require(ToolLocator.standard().locate(.clangd))
+        let temp = try TemporaryDirectory()
+        let template = try #require(try ProjectTemplate.all().first { $0.identifier == "Blinky" })
+        let projectFile = try template.createProject(named: "Blinky", in: temp.url)
+        try BuildEngine.prepareCompileCommands(forProjectFile: projectFile)
+
+        let folder = projectFile.deletingLastPathComponent()
+        let clangdConfig = """
+        CompileFlags:
+          Add: [-DPOISON_FROM_CLANGD_CONFIG=1]
+        """
+        try Data(clangdConfig.utf8).write(to: folder.appending(path: ".clangd"))
+
+        let mainC = folder.appending(path: "src/main.c")
+        let guarded = """
+        #ifdef POISON_FROM_CLANGD_CONFIG
+        #error "clangd loaded workspace .clangd config"
+        #endif
+        """ + "\n" + (try String(contentsOf: mainC, encoding: .utf8))
+        try Data(guarded.utf8).write(to: mainC)
+
+        let (stream, continuation) = AsyncStream.makeStream(of: LSPPublishDiagnosticsParams.self)
+        let session = ClangdSession(
+            clangdExecutable: clangd,
+            workspaceDirectory: folder,
+            compileCommandsDirectory: folder.appending(path: "build"),
+            queryDriver: ToolLocator.standard().locate(.compiler),
+            changeDebounce: .zero
+        ) { params in
+            continuation.yield(params)
+        }
+        try await session.openDocument(url: mainC, text: guarded)
+
+        let wanted = ClangdSession.normalize(mainC)
+        var initial: LSPPublishDiagnosticsParams?
+        for await params in stream where params.url.map(ClangdSession.normalize) == wanted {
+            initial = params
+            break
+        }
+        #expect(initial?.diagnostics.isEmpty == true)
         await session.stop()
         continuation.finish()
     }

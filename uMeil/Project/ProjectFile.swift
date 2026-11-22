@@ -19,10 +19,18 @@ enum ProjectFile {
     /// When the format changes, raise `currentVersion` and add the step here.
     static let migrations: [Int: Migration] = [:]
 
+    /// Maximum `.umeil` file size uMeil will load (16 MiB).
+    static let maximumFileSize = 16 * 1024 * 1024
+
     private static let versionKey = "formatVersion"
 
     static func load(from url: URL) throws -> Project {
-        try decode(Data(contentsOf: url))
+        let resolved = url.resolvingSymlinksInPath()
+        if let fileSize = try? resolved.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+           fileSize > maximumFileSize {
+            throw ProjectFileError.invalid("the file is too large")
+        }
+        return try decode(Data(contentsOf: url))
     }
 
     static func save(_ project: Project, to url: URL) throws {
@@ -36,6 +44,9 @@ enum ProjectFile {
         currentVersion: Int = currentVersion,
         migrations: [Int: Migration] = migrations
     ) throws -> Project {
+        guard data.count <= maximumFileSize else {
+            throw ProjectFileError.invalid("the file is too large")
+        }
         guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw ProjectFileError.notAProjectFile
         }

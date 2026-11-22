@@ -29,6 +29,11 @@ actor GDBSession {
     /// error, and `DebugError.sessionEnded` if it quits first.
     @discardableResult
     func send(_ command: String) async throws -> MIValue {
+        guard !command.unicodeScalars.contains(where: {
+            $0.value == 0x0A || $0.value == 0x0D || $0.value == 0x00
+        }) else {
+            throw DebugError.refused("Invalid debugger command.")
+        }
         guard !hasEnded else { throw DebugError.sessionEnded }
         let token = nextToken
         nextToken += 1

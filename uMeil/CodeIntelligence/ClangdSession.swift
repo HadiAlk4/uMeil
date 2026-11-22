@@ -6,6 +6,7 @@ actor ClangdSession {
     let clangdExecutable: URL
     let workspaceDirectory: URL
     let compileCommandsDirectory: URL?
+    let queryDriver: URL?
     let changeDebounce: Duration
     private let onDiagnostics: @Sendable (LSPPublishDiagnosticsParams) async -> Void
 
@@ -23,30 +24,16 @@ actor ClangdSession {
         clangdExecutable: URL,
         workspaceDirectory: URL,
         compileCommandsDirectory: URL? = nil,
+        queryDriver: URL? = nil,
         changeDebounce: Duration = .milliseconds(100),
         onDiagnostics: @escaping @Sendable (LSPPublishDiagnosticsParams) async -> Void
     ) {
         self.clangdExecutable = clangdExecutable
         self.workspaceDirectory = workspaceDirectory.resolvingSymlinksInPath().standardizedFileURL
         self.compileCommandsDirectory = compileCommandsDirectory?.resolvingSymlinksInPath().standardizedFileURL
+        self.queryDriver = Self.canonicalQueryDriver(for: queryDriver)
         self.changeDebounce = changeDebounce
         self.onDiagnostics = onDiagnostics
-    }
-
-    /// Builds the command-line flags used to start `clangd`.
-    static func launchArguments(compileCommandsDirectory: URL?) -> [String] {
-        var arguments: [String] = []
-        if let compileCommandsDirectory {
-            arguments.append("--compile-commands-dir=\(compileCommandsDirectory.path(percentEncoded: false))")
-        }
-        // Let clangd query arm-none-eabi-gcc for its built-in target and newlib include paths.
-        arguments.append("--query-driver=**/\(Tool.compiler.executableName)")
-        // Keep completions pure so accepting a function does not insert headers unexpectedly.
-        arguments.append("--header-insertion=never")
-        // Bound background worker threads and keep PCHs in memory for responsiveness.
-        arguments.append("-j=2")
-        arguments.append("--pch-storage=memory")
-        return arguments
     }
 
     /// Starts `clangd` if it is not already running.
@@ -184,11 +171,14 @@ actor ClangdSession {
             filtered.diagnostics.removeAll { $0.code == "unused-includes" }
             await self?.forwardDiagnostics(filtered)
         }
-        let task = Task { [clangdExecutable, workspaceDirectory, compileCommandsDirectory, forwarder] in
+        let task = Task { [clangdExecutable, workspaceDirectory, compileCommandsDirectory, queryDriver, forwarder] in
             try Task.checkCancellation()
             let transport = try ProcessLSPTransport(
                 executable: clangdExecutable,
-                arguments: Self.launchArguments(compileCommandsDirectory: compileCommandsDirectory),
+                arguments: Self.launchArguments(
+                    compileCommandsDirectory: compileCommandsDirectory,
+                    queryDriver: queryDriver
+                ),
                 currentDirectory: workspaceDirectory
             )
             let client = LSPClient(transport: transport, onDiagnostics: forwarder)
@@ -273,5 +263,54 @@ actor ClangdSession {
 
     static func normalize(_ url: URL) -> URL {
         url.resolvingSymlinksInPath().standardizedFileURL
+    }
+}
+
+extension ClangdSession {
+    /// Builds the command-line flags used to start `clangd`.
+    static func launchArguments(compileCommandsDirectory: URL?, queryDriver: URL? = nil) -> [String] {
+        var arguments: [String] = []
+        if let compileCommandsDirectory {
+            arguments.append("--compile-commands-dir=\(compileCommandsDirectory.path(percentEncoded: false))")
+        }
+        if let queryDriverArg = queryDriverArgument(for: queryDriver) {
+            arguments.append(queryDriverArg)
+        }
+        // Disable workspace and user `.clangd` configs so untrusted folders cannot override tools or flags.
+        arguments.append("--enable-config=false")
+        // Keep completions pure so accepting a function does not insert headers unexpectedly.
+        arguments.append("--header-insertion=never")
+        // Bound background worker threads and keep PCHs in memory for responsiveness.
+        arguments.append("-j=2")
+        arguments.append("--pch-storage=memory")
+        return arguments
+    }
+
+    private static func queryDriverArgument(for queryDriver: URL?) -> String? {
+        guard let resolved = canonicalQueryDriver(for: queryDriver) else { return nil }
+        return "--query-driver=\(resolved.path(percentEncoded: false))"
+    }
+
+    private static func canonicalQueryDriver(for queryDriver: URL?) -> URL? {
+        guard let queryDriver, queryDriver.isFileURL else { return nil }
+        let rawPath = queryDriver.path(percentEncoded: false)
+        guard isSafeQueryDriverPath(rawPath) else { return nil }
+        let resolved = queryDriver.resolvingSymlinksInPath().standardizedFileURL
+        let canonicalPath = resolved.path(percentEncoded: false)
+        guard isSafeQueryDriverPath(canonicalPath),
+              !resolved.path(percentEncoded: true).contains("%00")
+        else {
+            return nil
+        }
+        return resolved
+    }
+
+    private static func isSafeQueryDriverPath(_ path: String) -> Bool {
+        !path.isEmpty && !path.unicodeScalars.contains { scalar in
+            switch scalar {
+            case ",", "*", "?", "\n", "\r", "\0": true
+            default: false
+            }
+        }
     }
 }

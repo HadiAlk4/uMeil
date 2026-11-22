@@ -14,8 +14,9 @@ struct DebugPlan: Equatable, Sendable {
     var chip: Chip
 
     /// `mi3` is the newest version of the machine interface. `-nx` keeps the
-    /// user's own `.gdbinit` out of the session.
-    var gdbArguments: [String] { ["--interpreter=mi3", "-q", "-nx"] }
+    /// user's own `.gdbinit` out of the session, and `set auto-load off`
+    /// prevents loading untrusted project-local scripts or `.gdbinit` files.
+    var gdbArguments: [String] { ["--interpreter=mi3", "-q", "-nx", "-iex", "set auto-load off"] }
 
     /// Commands that set GDB up and connect it to the chip.
     var connectCommands: [String] {
@@ -50,26 +51,46 @@ struct DebugPlan: Equatable, Sendable {
     private var openOCDCommand: String {
         [
             Self.shellQuoted(openOCD.path(percentEncoded: false)),
+            "-c", "'bindto localhost'",
             "-c", "'gdb_port pipe'",
+            "-c", "'telnet_port disabled'",
+            "-c", "'tcl_port disabled'",
             "-f", Self.shellQuoted(chip.openOCDConfig)
         ].joined(separator: " ")
     }
 
     // MARK: - Quoting
 
-    /// `text` as one word for the shell, whatever characters it contains.
+    /// `text` as one word for the shell, stripping line breaks and NUL so it
+    /// cannot split a GDB/MI command line.
     static func shellQuoted(_ text: String) -> String {
-        "'" + text.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
+        let sanitized = String(String.UnicodeScalarView(
+            text.unicodeScalars.filter { $0.value != 0x0A && $0.value != 0x0D && $0.value != 0x00 }
+        ))
+        return "'" + sanitized.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
     }
 
-    /// `text` as a quoted string in a GDB/MI command.
+    /// `text` as a quoted string in a GDB/MI command, escaping line breaks/tabs
+    /// and stripping NUL and remaining ASCII control characters.
     static func cQuoted(_ text: String) -> String {
         var quoted = "\""
-        for character in text {
-            if character == "\"" || character == "\\" {
-                quoted.append("\\")
+        for scalar in text.unicodeScalars {
+            switch scalar.value {
+            case 0x22:
+                quoted.append("\\\"")
+            case 0x5C:
+                quoted.append("\\\\")
+            case 0x0A:
+                quoted.append("\\n")
+            case 0x0D:
+                quoted.append("\\r")
+            case 0x09:
+                quoted.append("\\t")
+            case ..<0x20, 0x7F:
+                continue
+            default:
+                quoted.unicodeScalars.append(scalar)
             }
-            quoted.append(character)
         }
         return quoted + "\""
     }

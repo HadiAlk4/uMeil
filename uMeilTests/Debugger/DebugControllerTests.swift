@@ -290,4 +290,17 @@ struct DebugControllerTests {
         #expect(await controller.executableLines(in: mainC) == [21, 28, 31])
         #expect(gdb.commands.filter { $0.hasPrefix("-symbol-list-lines") }.count == 1)
     }
+
+    @Test func logIsCappedAndTrimsOldestLines() async throws {
+        let gdb = FakeBlinky.debugger()
+        let controller = try await startedAtMain(gdb)
+        let prefix = String(repeating: "a", count: 400)
+        for index in 0..<1500 {
+            gdb.print("\(prefix)-\(index)")
+        }
+
+        await waitUntil("the final log line arrives") { controller.log.hasSuffix("-\(1499)\n") }
+        #expect(controller.log.count <= DebugController.maximumLogLength)
+        #expect(!controller.log.contains("\(prefix)-0\n"))
+    }
 }

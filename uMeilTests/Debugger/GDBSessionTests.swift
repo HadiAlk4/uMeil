@@ -178,13 +178,14 @@ struct GDBSessionTests {
 
         try await session.start(plan)
 
-        #expect(plan.gdbArguments == ["--interpreter=mi3", "-q", "-nx"])
+        #expect(plan.gdbArguments == ["--interpreter=mi3", "-q", "-nx", "-iex", "set auto-load off"])
         #expect(gdb.commands == [
             "-gdb-set mi-async on",
             "-gdb-set confirm off",
             #"-file-exec-and-symbols "/tmp/My \"Blinky\"/build/Blinky.elf""#,
             #"-target-select extended-remote | '/Application Support/it'\''s/openocd'"#
-                + " -c 'gdb_port pipe' -f 'board/ek-tm4c1294xl.cfg'",
+                + " -c 'bindto localhost' -c 'gdb_port pipe' -c 'telnet_port disabled'"
+                + " -c 'tcl_port disabled' -f 'board/ek-tm4c1294xl.cfg'",
             #"-interpreter-exec console "monitor reset halt""#,
             "-target-download",
             #"-interpreter-exec console "monitor reset halt""#,

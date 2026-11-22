@@ -4,6 +4,8 @@ on:
   push:
   pull_request:
 
+permissions: { contents: read }
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -37,6 +39,7 @@ jobs:
             -scheme uMeil \
             -destination 'platform=macOS,arch=arm64' \
             -derivedDataPath DerivedData \
+            -onlyUsePackageVersionsFromResolvedFile \
             -resultBundlePath TestResults.xcresult
 
       # The log lists failing tests but not why; the result bundle has the
@@ -89,6 +92,7 @@ jobs:
             -scheme uMeil \
             -destination 'platform=macOS,arch=arm64' \
             -derivedDataPath DerivedData \
+            -onlyUsePackageVersionsFromResolvedFile \
             -only-testing:uMeilTests/HardwareInTheLoopTests
 
   lint:
@@ -102,6 +106,9 @@ jobs:
 
       - name: Lint
         run: swiftlint lint --strict
+
+      - name: Check release script syntax
+        run: bash -n Scripts/make-release.sh
 
       - name: Test the release scripts
         run: python3 -m unittest discover -s Scripts -p 'test_*.py'

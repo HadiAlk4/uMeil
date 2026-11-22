@@ -28,8 +28,13 @@ extension ProcessRunning {
 
 /// Runs a real process and collects everything it prints.
 struct ProcessRunner: ProcessRunning {
+    static let defaultMaximumOutputBytes = 32 * 1024 * 1024
+
+    var maximumOutputBytes: Int = defaultMaximumOutputBytes
+
     func run(_ executable: URL, arguments: [String], currentDirectory: URL?) async throws -> ProcessOutput {
-        try await withCheckedThrowingContinuation { continuation in
+        let cap = max(0, maximumOutputBytes)
+        return try await withCheckedThrowingContinuation { continuation in
             let process = Process()
             let outputPipe = Pipe()
             let errorPipe = Pipe()
@@ -47,6 +52,7 @@ struct ProcessRunner: ProcessRunning {
             let capture = ProcessCapture(
                 stdoutHandle: stdoutHandle,
                 stderrHandle: stderrHandle,
+                maximumBytes: cap,
                 continuation: continuation
             )
 
@@ -95,24 +101,37 @@ private final class ProcessCapture: @unchecked Sendable {
     private let state = OSAllocatedUnfairLock(uncheckedState: State())
     private let stdoutHandle: FileHandle
     private let stderrHandle: FileHandle
+    private let maximumBytes: Int
     private let continuation: CheckedContinuation<ProcessOutput, Error>
 
     init(
         stdoutHandle: FileHandle,
         stderrHandle: FileHandle,
+        maximumBytes: Int,
         continuation: CheckedContinuation<ProcessOutput, Error>
     ) {
         self.stdoutHandle = stdoutHandle
         self.stderrHandle = stderrHandle
+        self.maximumBytes = maximumBytes
         self.continuation = continuation
     }
 
     func appendStdout(_ data: Data) {
-        state.withLockUnchecked { $0.stdout.append(data) }
+        state.withLockUnchecked { state in
+            let remaining = maximumBytes - state.stdout.count
+            if remaining > 0 {
+                state.stdout.append(data.prefix(remaining))
+            }
+        }
     }
 
     func appendStderr(_ data: Data) {
-        state.withLockUnchecked { $0.stderr.append(data) }
+        state.withLockUnchecked { state in
+            let remaining = maximumBytes - state.stderr.count
+            if remaining > 0 {
+                state.stderr.append(data.prefix(remaining))
+            }
+        }
     }
 
     func markStdoutClosed() {

@@ -14,6 +14,8 @@ Usage:
 Running it twice for the same release changes nothing the second time.
 """
 
+import base64
+import binascii
 import re
 import sys
 from datetime import datetime, timezone
@@ -25,20 +27,58 @@ ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY = "https://github.com/HadiAlk4/uMeil"
 MINIMUM_MACOS = "14.0"
 
+VERSION_RE = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?")
+UINT_RE = re.compile(r"[0-9]+")
+SHA256_RE = re.compile(r"[0-9a-f]{64}")
+YES_NO_RE = re.compile(r"(yes|no)")
+BASE64_RE = re.compile(r"[A-Za-z0-9+/]+={0,2}")
+
+
+def _validate_version(version):
+    if not VERSION_RE.fullmatch(version):
+        raise SystemExit(f"{version} is not a version like 1.2.3")
+
+
+def _validate_sha256(sha256):
+    if sha256 == ":no_check" or not SHA256_RE.fullmatch(sha256):
+        raise SystemExit("SHA256 is not a 64-character lowercase SHA-256 checksum")
+
+
+def _validate_ed_signature(signature):
+    if not signature:
+        return
+    if any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in signature):
+        raise SystemExit("ED_SIGNATURE must not contain whitespace or control characters")
+    if not BASE64_RE.fullmatch(signature):
+        raise SystemExit("ED_SIGNATURE is not valid base64")
+    try:
+        base64.b64decode(signature.encode("ascii"), validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise SystemExit("ED_SIGNATURE is not valid base64") from exc
+
 
 def read_release(path):
     values = {}
-    for line in Path(path).read_text().splitlines():
+    for raw_line in Path(path).read_text(encoding="utf-8").split("\n"):
+        line = raw_line[:-1] if raw_line.endswith("\r") else raw_line
         if "=" in line:
             key, value = line.split("=", 1)
-            values[key.strip()] = value.strip()
+            key = key.strip()
+            values[key] = value if key == "ED_SIGNATURE" else value.strip()
     for key in ("VERSION", "BUILD", "SHA256", "LENGTH"):
         if not values.get(key):
             raise SystemExit(f"{path} has no {key}")
-    if not re.fullmatch(r"\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?", values["VERSION"]):
-        raise SystemExit(f"{values['VERSION']} is not a version like 1.2.3")
-    if not re.fullmatch(r"[0-9a-f]{64}", values["SHA256"]):
-        raise SystemExit("SHA256 is not a SHA-256 checksum")
+    _validate_version(values["VERSION"])
+    if not UINT_RE.fullmatch(values["BUILD"]):
+        raise SystemExit("BUILD is not an integer")
+    _validate_sha256(values["SHA256"])
+    if not UINT_RE.fullmatch(values["LENGTH"]):
+        raise SystemExit("LENGTH is not an integer")
+    for flag in ("SIGNED", "NOTARIZED"):
+        if flag in values and not YES_NO_RE.fullmatch(values[flag]):
+            raise SystemExit(f"{flag} must be 'yes' or 'no'")
+    if "ED_SIGNATURE" in values:
+        _validate_ed_signature(values["ED_SIGNATURE"])
     return values
 
 
@@ -65,6 +105,12 @@ def update_appcast(path, release, published):
     if not release.get("ED_SIGNATURE"):
         print("No Sparkle signature: the update feed is left as it is.", file=sys.stderr)
         return False
+    _validate_version(release["VERSION"])
+    if not UINT_RE.fullmatch(release["BUILD"]):
+        raise SystemExit("BUILD is not an integer")
+    if not UINT_RE.fullmatch(release["LENGTH"]):
+        raise SystemExit("LENGTH is not an integer")
+    _validate_ed_signature(release["ED_SIGNATURE"])
     text = path.read_text()
     marker = f"<sparkle:shortVersionString>{escape(release['VERSION'])}</sparkle:shortVersionString>"
     if marker in text:
@@ -78,9 +124,20 @@ def update_appcast(path, release, published):
 
 
 def update_cask(path, release):
+    _validate_version(release.get("VERSION", ""))
+    sha256 = release.get("SHA256", "")
+    _validate_sha256(sha256)
     text = path.read_text()
-    updated = re.sub(r'^  version ".*"$', f'  version "{release["VERSION"]}"', text, count=1, flags=re.M)
-    updated = re.sub(r"^  sha256 .*$", f'  sha256 "{release["SHA256"]}"', updated, count=1, flags=re.M)
+    updated, version_count = re.subn(
+        r'^  version ".*"$', f'  version "{release["VERSION"]}"', text, count=1, flags=re.M
+    )
+    if version_count != 1:
+        raise SystemExit(f"{path} does not have a single version stanza")
+    updated, sha_count = re.subn(
+        r"^  sha256 .*$", f'  sha256 "{sha256}"', updated, count=1, flags=re.M
+    )
+    if sha_count != 1 or re.search(r"^\s*sha256\s+:no_check\b", updated, flags=re.M):
+        raise SystemExit(f"{path} does not have a valid sha256 stanza")
     if updated != text:
         path.write_text(updated)
     return updated != text

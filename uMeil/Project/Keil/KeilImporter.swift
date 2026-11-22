@@ -51,7 +51,7 @@ enum KeilImporter {
         at keilFile: URL,
         linkerScript: URL = defaultLinkerScript
     ) throws -> KeilImport {
-        let keil = try KeilProject.parse(Data(contentsOf: keilFile))
+        let keil = try KeilProject.load(from: keilFile)
         guard let chip = Chip(rawValue: keil.device) else {
             throw KeilImportError.unsupportedDevice(keil.device)
         }
@@ -113,41 +113,70 @@ enum KeilImporter {
             let name = URL(filePath: file.path).lastPathComponent
             switch file.kind {
             case .cSource:
-                if KeilProject.isWindowsAbsolute(file.path) {
-                    notes.append("\(name) was left out: its path (\(file.path)) only exists on the PC it came from.")
-                } else {
+                if validateKeilPath(file.path, label: name, in: folder, notes: &notes) != nil {
                     sources.append(file.path)
                 }
             case .assembly:
                 notes.append("\(name) was left out: it is written for Keil's assembler, which the GNU toolchain "
                     + "cannot read.")
             case .library:
-                let symbols = KeilCourseLibrary.symbols(ofLibraryAt: folder.appending(path: file.path))
-                    ?? KeilCourseLibrary.symbols(forLibraryNamed: name)
-                guard let symbols, KeilCourseLibrary.coversAny(of: symbols) else {
-                    notes.append("\(name) was left out: it is a library built by Arm Compiler, which the GNU linker "
-                        + "cannot read. The functions it provides will be reported as undefined when you build.")
-                    continue
-                }
-                librarySymbols = (librarySymbols ?? []).union(symbols)
-                notes.append("\(name) was replaced with \(supportDirectoryName)/\(KeilCourseLibrary.fileName), "
-                    + "because the original library was built for Arm Compiler.")
-                let missing = KeilCourseLibrary.missing(from: symbols)
-                if !missing.isEmpty {
-                    notes.append("uMeil's stand-in for \(name) does not provide "
-                        + missing.joined(separator: ", ") + ". Calls to them will be reported as undefined.")
-                }
+                addLibrarySymbols(for: file.path, named: name, in: folder, into: &librarySymbols, notes: &notes)
             case .header, .other:
                 break
             }
         }
         for path in keil.packFiles where path.lowercased().hasSuffix(".c") && !sources.contains(path) {
-            sources.append(path)
+            let name = URL(filePath: path).lastPathComponent
+            if validateKeilPath(path, label: name, in: folder, notes: &notes) != nil {
+                sources.append(path)
+            }
         }
         for source in sources where !exists(source, in: folder) {
             notes.append("\(source) is listed in the Keil project but is not in the folder.")
         }
         return sources
+    }
+
+    private static func validateKeilPath(
+        _ path: String,
+        label: String,
+        in folder: URL,
+        notes: inout [String]
+    ) -> URL? {
+        if KeilProject.isWindowsAbsolute(path) {
+            notes.append("\(label) was left out: its path (\(path)) only exists on the PC it came from.")
+            return nil
+        }
+        guard let url = ProjectSecurity.safeRelativeURL(for: path, in: folder) else {
+            notes.append("\(label) was left out: its path (\(path)) points outside the project folder.")
+            return nil
+        }
+        return url
+    }
+
+    private static func addLibrarySymbols(
+        for path: String,
+        named name: String,
+        in folder: URL,
+        into librarySymbols: inout Set<String>?,
+        notes: inout [String]
+    ) {
+        guard let libraryURL = validateKeilPath(path, label: name, in: folder, notes: &notes) else { return }
+        let symbols = KeilCourseLibrary.symbols(ofLibraryAt: libraryURL)
+            ?? KeilCourseLibrary.symbols(forLibraryNamed: name)
+        guard let symbols, KeilCourseLibrary.coversAny(of: symbols) else {
+            notes.append("\(name) was left out: it is a library built by Arm Compiler, which the GNU linker "
+                + "cannot read. The functions it provides will be reported as undefined when you build.")
+            return
+        }
+        librarySymbols = (librarySymbols ?? []).union(symbols)
+        notes.append("\(name) was replaced with \(supportDirectoryName)/\(KeilCourseLibrary.fileName), "
+            + "because the original library was built for Arm Compiler.")
+        let missing = KeilCourseLibrary.missing(from: symbols)
+        if !missing.isEmpty {
+            notes.append("uMeil's stand-in for \(name) does not provide "
+                + missing.joined(separator: ", ") + ". Calls to them will be reported as undefined.")
+        }
     }
 
     /// The startup file to write, based on the Keil startup file's vector
@@ -161,14 +190,22 @@ enum KeilImporter {
         let keilStartup = keil.packFiles.first { $0.lowercased().hasSuffix(".s") }
             ?? keil.files.first { $0.kind == .assembly && $0.path.lowercased().contains("startup") }?.path
 
-        if let keilStartup,
-           let text = try? String(contentsOf: folder.appending(path: keilStartup), encoding: .utf8),
-           let vectors = KeilStartup.vectorNames(inKeilStartup: text) {
-            return KeilStartup.gnuSource(
-                vectors: vectors,
-                interruptCount: chip.interruptCount,
-                basedOn: URL(filePath: keilStartup).lastPathComponent
-            )
+        if let keilStartup {
+            let name = URL(filePath: keilStartup).lastPathComponent
+            if KeilProject.isWindowsAbsolute(keilStartup) {
+                notes.append("\(name) was left out: its path (\(keilStartup)) only exists on the PC it came from.")
+            } else if let startupURL = ProjectSecurity.safeRelativeURL(for: keilStartup, in: folder) {
+                if let text = try? String(contentsOf: startupURL, encoding: .utf8),
+                   let vectors = KeilStartup.vectorNames(inKeilStartup: text) {
+                    return KeilStartup.gnuSource(
+                        vectors: vectors,
+                        interruptCount: chip.interruptCount,
+                        basedOn: startupURL.lastPathComponent
+                    )
+                }
+            } else {
+                notes.append("\(name) was left out: its path (\(keilStartup)) points outside the project folder.")
+            }
         }
         notes.append("Keil's startup file was not found, so interrupt handlers have no names. Only the "
             + "Cortex-M4 ones, such as SysTick_Handler, will be called.")
@@ -189,18 +226,32 @@ enum KeilImporter {
         for path in keil.includePaths {
             if KeilProject.isWindowsAbsolute(path) {
                 notes.append("The include folder \(path) was left out: it only exists on the PC it came from.")
+            } else if ProjectSecurity.safeRelativeURL(for: path, in: folder) == nil {
+                notes.append("The include folder \(path) was left out: its path points outside the project folder.")
             } else {
                 paths.append(path)
             }
         }
-        paths += keil.files.filter { $0.kind == .header }.map { directory(of: $0.path) }
-        paths += keil.packFiles.map(directory(of:))
+        let headerAndPackFiles = keil.files.filter { $0.kind == .header }.map(\.path) + keil.packFiles
+        for filePath in headerAndPackFiles {
+            let dir = directory(of: filePath)
+            if ProjectSecurity.safeRelativeURL(for: filePath, in: folder) != nil,
+               ProjectSecurity.safeRelativeURL(for: dir, in: folder) != nil {
+                paths.append(dir)
+            } else if !KeilProject.isWindowsAbsolute(filePath) {
+                notes.append("The include folder \(dir) was left out: its path points outside the project folder.")
+            }
+        }
 
         // Keil generates RTE_Components.h here, with spaces in the target's
         // name turned into underscores.
-        let generated = "RTE/_" + keil.targetName.replacing(" ", with: "_")
-        if exists(generated, in: folder) {
-            paths.append(generated)
+        if let generated = safeRTEDirectory(for: keil.targetName, in: folder) {
+            if exists(generated, in: folder) {
+                paths.append(generated)
+            }
+        } else {
+            notes.append("The generated RTE include folder for target “\(keil.targetName)” was left out: "
+                + "its path points outside the project folder.")
         }
         paths.append(supportDirectoryName)
 
@@ -216,9 +267,9 @@ enum KeilImporter {
         in folder: URL,
         notes: inout [String]
     ) {
-        let components = folder.appending(path: "RTE/_" + keil.targetName.replacing(" ", with: "_"))
-            .appending(path: "RTE_Components.h")
-        guard let text = try? String(contentsOf: components, encoding: .utf8),
+        guard let generated = safeRTEDirectory(for: keil.targetName, in: folder),
+              let components = ProjectSecurity.safeRelativeURL(for: "\(generated)/RTE_Components.h", in: folder),
+              let text = try? String(contentsOf: components, encoding: .utf8),
               let match = text.firstMatch(of: #/#define\s+CMSIS_device_header\s+"([^"]+)"/#)
         else { return }
 
@@ -254,15 +305,24 @@ enum KeilImporter {
         default: "gnu11"
         }
     }
+}
 
-    // MARK: - Paths
-
-    private static func directory(of path: String) -> String {
+private extension KeilImporter {
+    static func directory(of path: String) -> String {
         let parts = path.split(separator: "/").dropLast()
         return parts.isEmpty ? "." : parts.joined(separator: "/")
     }
 
-    private static func exists(_ path: String, in folder: URL) -> Bool {
-        FileManager.default.fileExists(atPath: folder.appending(path: path).path(percentEncoded: false))
+    static func safeRTEDirectory(for targetName: String, in folder: URL) -> String? {
+        let sanitized = targetName.replacing(" ", with: "_")
+        guard !sanitized.contains("/"), !sanitized.contains("\\") else { return nil }
+        let generated = "RTE/_\(sanitized)"
+        guard ProjectSecurity.safeRelativeURL(for: generated, in: folder) != nil else { return nil }
+        return generated
+    }
+
+    static func exists(_ path: String, in folder: URL) -> Bool {
+        guard let url = ProjectSecurity.safeRelativeURL(for: path, in: folder) else { return false }
+        return FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
     }
 }

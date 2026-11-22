@@ -48,4 +48,70 @@ struct LSPFramingTests {
             try buffer.append(bad)
         }
     }
+
+    @Test func rejectsDuplicateContentLengthHeaders() {
+        var buffer = LSPFraming.MessageBuffer()
+        let duplicate = Data("Content-Length: 2\r\nContent-Length: 99\r\n\r\n{}".utf8)
+
+        #expect(throws: LSPFramingError.invalidHeader) {
+            try buffer.append(duplicate)
+        }
+    }
+
+    @Test func rejectsContentLengthExceedingMaximumMessageLength() {
+        var buffer = LSPFraming.MessageBuffer()
+        let oversized = Data("Content-Length: \(LSPFraming.maximumMessageLength + 1)\r\n\r\n{}".utf8)
+
+        #expect(throws: LSPFramingError.messageTooLarge) {
+            try buffer.append(oversized)
+        }
+    }
+
+    @Test func rejectsOverflowingContentLength() {
+        var maxIntBuffer = LSPFraming.MessageBuffer()
+        let maxIntHeader = Data("Content-Length: \(Int.max)\r\n\r\n{}".utf8)
+        #expect(throws: LSPFramingError.messageTooLarge) {
+            try maxIntBuffer.append(maxIntHeader)
+        }
+
+        var beyondIntBuffer = LSPFraming.MessageBuffer()
+        let beyondIntHeader = Data("Content-Length: 99999999999999999999999999999\r\n\r\n{}".utf8)
+        #expect(throws: LSPFramingError.invalidHeader) {
+            try beyondIntBuffer.append(beyondIntHeader)
+        }
+    }
+
+    @Test func rejectsOversizedHeadersWhileWaitingForTerminatorAndWithTerminator() throws {
+        var singleChunkBuffer = LSPFraming.MessageBuffer()
+        let unterminated = Data(repeating: 0x41, count: LSPFraming.maximumHeaderLength + 1)
+        #expect(throws: LSPFramingError.headerTooLarge) {
+            try singleChunkBuffer.append(unterminated)
+        }
+
+        var incrementalBuffer = LSPFraming.MessageBuffer()
+        let half = Data(repeating: 0x41, count: LSPFraming.maximumHeaderLength / 2)
+        #expect(try incrementalBuffer.append(half).isEmpty)
+        #expect(try incrementalBuffer.append(half).isEmpty)
+        #expect(throws: LSPFramingError.headerTooLarge) {
+            try incrementalBuffer.append(Data([0x41]))
+        }
+
+        var terminatedBuffer = LSPFraming.MessageBuffer()
+        var oversizedTerminated = Data(repeating: 0x41, count: LSPFraming.maximumHeaderLength + 1)
+        oversizedTerminated.append(Data("\r\nContent-Length: 2\r\n\r\n{}".utf8))
+        #expect(throws: LSPFramingError.headerTooLarge) {
+            try terminatedBuffer.append(oversizedTerminated)
+        }
+    }
+
+    @Test func decodesMultiChunkBodyLargerThanMaximumHeaderLength() throws {
+        let payload = Data(repeating: 0x78, count: LSPFraming.maximumHeaderLength + 2048)
+        let packet = LSPFraming.encode(payload)
+        let splitIndex = packet.count / 2
+
+        var buffer = LSPFraming.MessageBuffer()
+        #expect(try buffer.append(Data(packet[..<splitIndex])).isEmpty)
+        let decoded = try buffer.append(Data(packet[splitIndex...]))
+        #expect(decoded == [payload])
+    }
 }

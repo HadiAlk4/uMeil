@@ -14,13 +14,14 @@ struct TerminalLaunchConfig: Equatable, Sendable {
         folder: URL?,
         processEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
-        isExecutable: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) },
+        isExecutable: (String) -> Bool = Self.isRegularExecutableFile(atPath:),
         isDirectory: (String) -> Bool = Self.directoryExists(atPath:),
         passwdShell: () -> String? = Self.currentUserShell
     ) -> TerminalLaunchConfig {
         let executable = resolveShell(
             processEnvironment: processEnvironment,
             isExecutable: isExecutable,
+            isDirectory: isDirectory,
             passwdShell: passwdShell
         )
         let shellName = URL(fileURLWithPath: executable).lastPathComponent
@@ -45,10 +46,16 @@ struct TerminalLaunchConfig: Equatable, Sendable {
     private static func resolveShell(
         processEnvironment: [String: String],
         isExecutable: (String) -> Bool,
+        isDirectory: (String) -> Bool,
         passwdShell: () -> String?
     ) -> String {
         for candidate in [processEnvironment["SHELL"], passwdShell()] {
-            if let path = candidate, !path.isEmpty, isExecutable(path) {
+            if let path = candidate,
+               !path.isEmpty,
+               path.hasPrefix("/"),
+               !path.unicodeScalars.contains("\0"),
+               !isDirectory(path),
+               isExecutable(path) {
                 return path
             }
         }
@@ -81,6 +88,14 @@ struct TerminalLaunchConfig: Equatable, Sendable {
             env["LANG"] = "en_US.UTF-8"
         }
         return env.keys.sorted().map { "\($0)=\(env[$0] ?? "")" }
+    }
+
+    private static func isRegularExecutableFile(atPath path: String) -> Bool {
+        var statInfo = stat()
+        guard stat(path, &statInfo) == 0,
+              (statInfo.st_mode & S_IFMT) == S_IFREG
+        else { return false }
+        return FileManager.default.isExecutableFile(atPath: path)
     }
 
     private static func directoryExists(atPath path: String) -> Bool {

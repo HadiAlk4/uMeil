@@ -41,6 +41,37 @@ DIST="$ROOT/dist"
 log() { printf '\n==> %s\n' "$*"; }
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
+run_xcodebuild() {
+    local label=$1
+    local log_file=$2
+    shift 2
+    if ! xcodebuild "$@" >"$log_file" 2>&1; then
+        grep -E '^(\*\*|error:)|: error:' "$log_file" >&2 || true
+        tail -n 40 "$log_file" >&2
+        fail "$label failed (see $log_file)"
+    fi
+    grep -E '^(\*\*|error:)' "$log_file" || true
+}
+
+find_sign_update() {
+    local search_roots=()
+    local dir candidate
+    [[ -d $ROOT/build ]] && search_roots+=("$ROOT/build")
+    [[ -d $ROOT/DerivedData ]] && search_roots+=("$ROOT/DerivedData")
+    for dir in "$HOME/Library/Developer/Xcode/DerivedData"/uMeil-*; do
+        [[ -d $dir ]] && search_roots+=("$dir")
+    done
+    for dir in "${search_roots[@]+"${search_roots[@]}"}"; do
+        while IFS= read -r candidate; do
+            if [[ -x $candidate ]]; then
+                printf '%s\n' "$candidate"
+                return 0
+            fi
+        done < <(find "$dir" -path '*/artifacts/sparkle/Sparkle/bin/sign_update' -type f 2>/dev/null || true)
+    done
+    return 1
+}
+
 settings=$(xcodebuild -project uMeil.xcodeproj -scheme uMeil -configuration Release -showBuildSettings 2>/dev/null)
 setting() { awk -v key="$1" '$1 == key && $2 == "=" { sub(/^[^=]*= /, ""); print; exit }' <<<"$settings"; }
 
@@ -52,6 +83,7 @@ SIGNED=no
 NOTARIZED=no
 if [[ -n ${DEVELOPER_ID_APPLICATION:-} ]]; then
     [[ -n ${DEVELOPMENT_TEAM:-} ]] || fail "DEVELOPMENT_TEAM must be set with DEVELOPER_ID_APPLICATION"
+    [[ $DEVELOPMENT_TEAM =~ ^[A-Z0-9]{10}$ ]] || fail "DEVELOPMENT_TEAM '$DEVELOPMENT_TEAM' must be 10 uppercase alphanumeric characters"
     SIGNED=yes
 fi
 
@@ -70,6 +102,7 @@ if [[ $SIGNED == yes ]]; then
         CODE_SIGN_STYLE=Manual
         CODE_SIGN_IDENTITY="$DEVELOPER_ID_APPLICATION"
         DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM"
+        ENABLE_HARDENED_RUNTIME=YES
         OTHER_CODE_SIGN_FLAGS=--timestamp
     )
 else
@@ -78,14 +111,15 @@ else
     # app. It is only needed for notarization, so it stays off here.
     archive_settings+=(CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual ENABLE_HARDENED_RUNTIME=NO)
 fi
-xcodebuild archive \
+run_xcodebuild "xcodebuild archive" "$BUILD_DIR/archive.log" \
+    archive \
     -project uMeil.xcodeproj \
     -scheme uMeil \
     -configuration Release \
     -destination 'generic/platform=macOS' \
+    -onlyUsePackageVersionsFromResolvedFile \
     -archivePath "$BUILD_DIR/uMeil.xcarchive" \
-    "${archive_settings[@]}" \
-    2>&1 | grep -E "^(\*\*|error:)" || true
+    "${archive_settings[@]}"
 [[ -d $BUILD_DIR/uMeil.xcarchive/Products/Applications/uMeil.app ]] || fail "the archive has no uMeil.app"
 
 APP="$BUILD_DIR/export/uMeil.app"
@@ -105,10 +139,11 @@ if [[ $SIGNED == yes ]]; then
 </dict>
 </plist>
 EOF
-    xcodebuild -exportArchive \
+    run_xcodebuild "xcodebuild -exportArchive" "$BUILD_DIR/export.log" \
+        -exportArchive \
         -archivePath "$BUILD_DIR/uMeil.xcarchive" \
         -exportOptionsPlist "$BUILD_DIR/ExportOptions.plist" \
-        -exportPath "$BUILD_DIR/export" 2>&1 | grep -E '^(\*\*|error:)' || true
+        -exportPath "$BUILD_DIR/export"
 else
     mkdir -p "$BUILD_DIR/export"
     ditto "$BUILD_DIR/uMeil.xcarchive/Products/Applications/uMeil.app" "$APP"
@@ -175,8 +210,8 @@ fi
 ED_SIGNATURE=""
 if [[ -n ${SPARKLE_PRIVATE_KEY:-} ]]; then
     log "Signing the DMG for Sparkle"
-    sign_update=$(find "$ROOT/build" ~/Library/Developer/Xcode/DerivedData -path '*artifacts/sparkle/Sparkle/bin/sign_update' -type f 2>/dev/null | head -1)
-    [[ -x $sign_update ]] || fail "Sparkle's sign_update was not found; build the project once to download it"
+    sign_update=$(find_sign_update || true)
+    [[ -n $sign_update && -x $sign_update ]] || fail "Sparkle's sign_update was not found; build the project once to download it"
     key_file=$(mktemp)
     chmod 600 "$key_file"
     trap 'rm -f "$key_file"' EXIT

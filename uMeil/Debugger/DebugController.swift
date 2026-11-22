@@ -50,6 +50,9 @@ final class DebugController {
         try GDBProcess(plan.gdb, arguments: plan.gdbArguments)
     }
 
+    /// Maximum number of characters kept in `log`. Older lines are dropped first.
+    static let maximumLogLength = 500_000
+
     private(set) var breakpoints: Set<SourceLine> = []
     /// The breakpoints GDB has, for the session that is running.
     private var inserted: [SourceLine: Breakpoint] = [:]
@@ -60,6 +63,7 @@ final class DebugController {
     private(set) var chip: Chip?
     /// Everything GDB and OpenOCD printed in this session.
     private(set) var log = ""
+    private var logCharacterCount = 0
 
     var isActive: Bool { state != .idle }
 
@@ -75,6 +79,7 @@ final class DebugController {
         guard state == .idle else { return }
         state = .starting
         log = ""
+        logCharacterCount = 0
         chip = plan.chip
 
         let session: GDBSession
@@ -139,7 +144,7 @@ final class DebugController {
             if stop.reason == .other("") { return }
             state = .stopped(stop.frame)
         case .output(let text):
-            log += text
+            appendLog(text)
             onOutput?(text)
         case .ended:
             session = nil
@@ -147,6 +152,35 @@ final class DebugController {
             executableLines = [:]
             state = .idle
         }
+    }
+
+    private func appendLog(_ text: String) {
+        guard !text.isEmpty else { return }
+        log.append(text)
+        logCharacterCount += text.count
+        let excess = logCharacterCount - Self.maximumLogLength
+        guard excess > 0 else { return }
+
+        // Recount accurately only when approaching/exceeding the cap, in case
+        // combining scalars merged across chunk boundaries.
+        let actualCount = log.count
+        let actualExcess = actualCount - Self.maximumLogLength
+        guard actualExcess > 0 else {
+            logCharacterCount = actualCount
+            return
+        }
+
+        let targetIndex = log.index(log.startIndex, offsetBy: actualExcess - 1)
+        let cutIndex: String.Index
+        if let newline = log[targetIndex...].firstIndex(where: \.isNewline) {
+            let lineEnd = log.index(after: newline)
+            cutIndex = lineEnd < log.endIndex ? lineEnd : log.index(after: targetIndex)
+        } else {
+            cutIndex = log.index(after: targetIndex)
+        }
+        let removedCount = log[..<cutIndex].count
+        log.removeSubrange(..<cutIndex)
+        logCharacterCount = actualCount - removedCount
     }
 
     // MARK: - Running

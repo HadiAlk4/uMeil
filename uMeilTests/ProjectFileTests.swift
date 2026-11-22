@@ -167,4 +167,18 @@ struct ProjectFileTests {
             #expect(ProjectFile.migrations[version] != nil, "No migration from format version \(version)")
         }
     }
+
+    @Test func rejectsOversizedProjectFiles() throws {
+        let oversized = Data(count: ProjectFile.maximumFileSize + 1)
+        #expect(throws: ProjectFileError.invalid("the file is too large")) {
+            try ProjectFile.decode(oversized)
+        }
+
+        let folder = try TemporaryFolder()
+        let url = folder.url.appending(path: "Huge.umeil")
+        try oversized.write(to: url)
+        #expect(throws: ProjectFileError.invalid("the file is too large")) {
+            try ProjectFile.load(from: url)
+        }
+    }
 }

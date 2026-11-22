@@ -46,6 +46,49 @@ struct KeilProjectTests {
         #expect(KeilProject.isWindowsAbsolute("C:/Keil_v5/ARM/Packs"))
         #expect(!KeilProject.isWindowsAbsolute("../common"))
     }
+
+    @Test func ignoresExternalEntitiesWhenParsingXML() throws {
+        let folder = try TemporaryFolder()
+        let secretFile = folder.url.appending(path: "secret.txt")
+        try Data("TOP_SECRET_XXE_PAYLOAD".utf8).write(to: secretFile)
+
+        let xxeProject = """
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <!DOCTYPE Project [
+          <!ENTITY secret SYSTEM "\(secretFile.absoluteString)">
+        ]>
+        <Project>
+          <Targets>
+            <Target>
+              <TargetName>Target 1</TargetName>
+              <TargetOption>
+                <TargetCommonOption>
+                  <Device>TM4C1294NCPDT</Device>
+                  <OutputName>&secret;</OutputName>
+                </TargetCommonOption>
+              </TargetOption>
+            </Target>
+          </Targets>
+        </Project>
+        """
+
+        let keil = try KeilProject.parse(Data(xxeProject.utf8))
+        #expect(!keil.outputName.contains("TOP_SECRET_XXE_PAYLOAD"))
+    }
+
+    @Test func rejectsKeilProjectsLargerThan16MiB() throws {
+        let oversized = Data(count: KeilProject.maximumFileSize + 1)
+        #expect(throws: KeilImportError.fileTooLarge) {
+            try KeilProject.parse(oversized)
+        }
+
+        let folder = try TemporaryFolder()
+        let file = folder.url.appending(path: "Huge.uvprojx")
+        try oversized.write(to: file)
+        #expect(throws: KeilImportError.fileTooLarge) {
+            try KeilProject.load(from: file)
+        }
+    }
 }
 
 struct KeilStartupTests {
@@ -92,5 +135,28 @@ struct KeilStartupTests {
         #expect(entries[first + 20] == "    Default_Handler, // Interrupt 4")
         #expect(entries[first + 129] == "    Default_Handler, // Interrupt 113")
         #expect(entries[first + 130] == "};")
+    }
+
+    @Test func replacesUnsafeVectorNamesAndSanitizesOriginComment() throws {
+        let maliciousStartup = KeilFixture.keilStartup
+            .replacing("GPIOA_Handler", with: "evil();system(\"sh\")")
+            .replacing("GPIOB_Handler", with: "123bad")
+        let names = try #require(KeilStartup.vectorNames(inKeilStartup: maliciousStartup))
+        #expect(names[16] == "Default_Handler")
+        #expect(names[17] == "Default_Handler")
+        #expect(names[19] == "UART0_Handler")
+
+        let source = KeilStartup.gnuSource(
+            vectors: KeilStartup.coreVectors + ["bad\n#error injected", "Valid_IRQHandler", "bad-name"],
+            interruptCount: 4,
+            basedOn: "/tmp/evil/startup_TM4C129.s\n#error pwn\r*/"
+        )
+        #expect(!source.contains("#error injected"))
+        #expect(!source.contains("\n#error pwn"))
+        #expect(!source.contains("\r"))
+        #expect(!source.contains("*/"))
+        #expect(source.contains("written by uMeil from the vector table in startup_TM4C129.s#error pwn*."))
+        #expect(source.contains(#"void Valid_IRQHandler(void) __attribute__((weak, alias("Default_Handler")));"#))
+        #expect(!source.contains("bad-name"))
     }
 }

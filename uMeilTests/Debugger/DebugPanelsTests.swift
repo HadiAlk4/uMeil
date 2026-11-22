@@ -157,6 +157,20 @@ struct DebugPanelsTests {
         #expect(command.textView.string.contains("(gdb) info registers"))
     }
 
+    @Test func commandConsoleCapsTextAtMaximumLength() {
+        let command = CommandViewController()
+        let chunk = String(repeating: "x", count: 1000) + "\n"
+        command.appendOutput("oldest-line\n")
+        for _ in 0..<550 {
+            command.appendOutput(chunk)
+        }
+        command.appendOutput("newest-line\n")
+
+        #expect((command.textView.string as NSString).length <= CommandViewController.maximumLength)
+        #expect(!command.textView.string.contains("oldest-line"))
+        #expect(command.textView.string.hasSuffix("newest-line\n"))
+    }
+
     @Test func hoveringAnIdentifierInTheEditorShowsItsValueInTheTooltip() async {
         let editor = EditorViewController()
         editor.loadViewIfNeeded()

@@ -36,7 +36,7 @@ final class NavigatorSection {
     static func projectFiles(of project: Project, in folder: URL) -> [(kind: Kind, files: [URL])] {
         let fileManager = FileManager.default
         func existing(_ paths: [String]) -> [URL] {
-            paths.map { folder.appending(path: $0) }
+            paths.compactMap { ProjectSecurity.safeRelativeURL(for: $0, in: folder) }
                 .filter { fileManager.fileExists(atPath: $0.path(percentEncoded: false)) }
         }
 

@@ -169,4 +169,115 @@ struct BuildPlanTests {
             "-c", "src/main.c", "-o", "build/obj/src/main.c.o"
         ])
     }
+
+    @Test func sanitizesProjectFileNameAgainstTraversalAndControlChars() {
+        #expect(BuildPlan.fileName(for: "Motor Control") == "Motor Control")
+        #expect(BuildPlan.fileName(for: "a/b:c\\d\ne\rf\0g\u{7F}") == "a_b_c_d_e_f_g_")
+        #expect(BuildPlan.fileName(for: "..--..Blinky") == "Blinky")
+        #expect(BuildPlan.fileName(for: "---...") == "firmware")
+        #expect(BuildPlan.fileName(for: "") == "firmware")
+    }
+
+    @Test func validatesSafeProjectSettings() throws {
+        let temp = try TemporaryFolder()
+        for standard in ["c89", "gnu89", "c90", "gnu90", "c99", "gnu99", "c11", "gnu11",
+                         "c17", "c18", "gnu17", "gnu18", "c2x", "gnu2x", "c23", "gnu23"] {
+            var candidate = project()
+            candidate.build.cStandard = standard
+            try BuildPlan.validate(candidate, in: temp.url)
+        }
+
+        let libsDir = temp.url.appending(path: "libs", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: libsDir, withIntermediateDirectories: true)
+        var withSafeFlags = project()
+        withSafeFlags.includePaths = [".", "src"]
+        withSafeFlags.build.compilerFlags = ["-Wall", "-Wextra", "-O2", "-Isrc"]
+        withSafeFlags.build.linkerFlags = ["-Llibs", "-L", "libs", "-lm", "-Wl,--gc-sections"]
+        try BuildPlan.validate(withSafeFlags, in: temp.url)
+    }
+
+    @Test func rejectsUnsafeCStandardsDefinesAndPaths() throws {
+        let temp = try TemporaryFolder()
+        let outside = try TemporaryFolder()
+        try FileManager.default.createSymbolicLink(
+            at: temp.url.appending(path: "escape"),
+            withDestinationURL: outside.url
+        )
+
+        for badStd in ["", "c98", "gnu11 -wrapper /bin/sh", "c11\n-o /tmp/pwn"] {
+            var candidate = project()
+            candidate.build.cStandard = badStd
+            #expect(throws: BuildError.self) { try BuildPlan.validate(candidate, in: temp.url) }
+        }
+
+        for badDefine in ["", "   ", "FOO\nBAR", "FOO\0BAR"] {
+            var candidate = project()
+            candidate.build.defines = [badDefine]
+            #expect(throws: BuildError.self) { try BuildPlan.validate(candidate, in: temp.url) }
+        }
+
+        for badPath in ["-o", "@resp.txt", "../outside.c", "/etc/passwd", "escape/a.c", "a\nb.c", "a\0b.c", "."] {
+            var badSource = project()
+            badSource.sources = [badPath]
+            #expect(throws: BuildError.self) { try BuildPlan.validate(badSource, in: temp.url) }
+
+            var badLinker = project()
+            badLinker.build.linkerScript = badPath
+            #expect(throws: BuildError.self) { try BuildPlan.validate(badLinker, in: temp.url) }
+        }
+
+        for badInc in ["-I/etc", "@resp.txt", "../outside", "/etc", "escape", "inc\n-o"] {
+            var badInclude = project()
+            badInclude.includePaths = [badInc]
+            #expect(throws: BuildError.self) { try BuildPlan.validate(badInclude, in: temp.url) }
+        }
+    }
+
+    @Test func rejectsDangerousCompilerAndLinkerFlags() throws {
+        let temp = try TemporaryFolder()
+        let outside = try TemporaryFolder()
+        try FileManager.default.createSymbolicLink(
+            at: temp.url.appending(path: "escape"),
+            withDestinationURL: outside.url
+        )
+
+        let dangerousCompilerFlags: [[String]] = [
+            ["@evil.rsp"], ["-Wall\n-o/tmp/pwn"], ["-Wall\0"], ["/etc/passwd"],
+            ["-wrapper"], ["-B."], ["-B/tmp"], ["-fplugin=evil.so"], ["--plugin=evil.so"],
+            ["-specs=evil.specs"], ["--specs=nano.specs"], ["-fuse-ld=lld"],
+            ["-o", "/tmp/pwn"], ["-o/tmp/pwn"], ["-MF", "/tmp/d"], ["-MF/tmp/d"],
+            ["-MTtarget"], ["-MQtarget"], ["-MD"], ["-MMD"],
+            ["-imacros", "/etc/passwd"], ["-include", "/etc/passwd"], ["-include/etc/passwd"],
+            ["-dumpbase", "x"], ["-auxbase", "x"], ["-fprofile-generate=/tmp"],
+            ["-save-temps=cwd"], ["-T", "x.ld"], ["-Xlinker", "-o"],
+            ["-Xpreprocessor", "-MF"], ["-Xassembler", "-o"],
+            ["--sysroot=/tmp"], ["-isysroot/tmp"], ["-I../outside"], ["-I", "../outside"],
+            ["-Iescape"], ["-Wp,-MD,/tmp/pwn"], ["-Wa,@evil.rsp"]
+        ]
+        for flags in dangerousCompilerFlags {
+            var candidate = project()
+            candidate.build.compilerFlags = flags
+            #expect(throws: BuildError.self, "Expected compilerFlags \(flags) to fail") {
+                try BuildPlan.validate(candidate, in: temp.url)
+            }
+        }
+
+        let dangerousLinkerFlags: [[String]] = [
+            ["@evil.rsp"], ["-lm\n-o/tmp/pwn"], ["-lm\0"], ["/tmp/evil.o"],
+            ["-Wl,-Map=evil.map"], ["-Wl,-Map,evil.map"], ["-Wl,--plugin=evil.so"],
+            ["-Wl,--plugin,evil.so"], ["-Wl,--dependency-file=evil.d"], ["-Wl,-o,evil.elf"],
+            ["-Wl,-o=evil.elf"], ["-Wl,@evil.rsp"], ["-Wl,-T,evil.ld"],
+            ["-Wl,-L/tmp"], ["-Wl,-L,../outside"], ["-Wl,--library-path=/tmp"],
+            ["-L/tmp"], ["-L", "../outside"], ["-Lescape"], ["-L", "escape"],
+            ["-T", "evil.ld"], ["-o/tmp/pwn"], ["-Xlinker", "-Map=evil.map"],
+            ["-l:/tmp/evil.a"]
+        ]
+        for flags in dangerousLinkerFlags {
+            var candidate = project()
+            candidate.build.linkerFlags = flags
+            #expect(throws: BuildError.self, "Expected linkerFlags \(flags) to fail") {
+                try BuildPlan.validate(candidate, in: temp.url)
+            }
+        }
+    }
 }

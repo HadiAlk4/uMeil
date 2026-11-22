@@ -59,8 +59,9 @@ extension MainWindowController {
         let result = try KeilImporter.openProject(at: url)
         let folder = result.projectFile.deletingLastPathComponent()
         openFolder(folder)
-        if let main = result.project.sources.first {
-            openFile(folder.appending(path: main))
+        if let main = result.project.sources.first,
+           let mainURL = ProjectSecurity.safeRelativeURL(for: main, in: folder) {
+            openFile(mainURL)
         }
         return result
     }

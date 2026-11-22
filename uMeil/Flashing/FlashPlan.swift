@@ -20,6 +20,10 @@ struct FlashPlan: Equatable, Sendable {
 
         let file = Self.tclQuoted(image.path(percentEncoded: false))
         let commands = [
+            "bindto localhost",
+            "gdb_port disabled",
+            "telnet_port disabled",
+            "tcl_port disabled",
             // Connect to the debug probe and the chip.
             "init",
             Self.announce(.connected),
