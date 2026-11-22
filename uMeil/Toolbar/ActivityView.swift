@@ -7,7 +7,7 @@ final class ActivityView: NSView {
 
     private let icon = NSImageView()
     private let spinner = NSProgressIndicator()
-    private let label = NSTextField(labelWithString: "")
+    private let label: NSTextField = ToolbarLabel(labelWithString: "")
     private let progressBar = NSProgressIndicator()
 
     static let width: CGFloat = 320
@@ -57,11 +57,14 @@ final class ActivityView: NSView {
         case .info: symbol = ("ladybug.fill", .controlAccentColor)
         case .idle, .working: return nil
         }
-        // The color is part of the image, since a toolbar tints template images gray.
-        let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [symbol.color]))
-        return NSImage(systemSymbolName: symbol.name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(config)
+        // Draw with an explicit non-template tint, since a toolbar tints template images gray.
+        return ToolbarIcon.makeImage(
+            symbol: symbol.name,
+            tintColor: symbol.color,
+            pointSize: 12,
+            weight: .regular,
+            canvasSize: NSSize(width: 14, height: 14)
+        )
     }
 
     private func build() {
