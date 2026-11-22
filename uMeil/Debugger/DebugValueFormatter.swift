@@ -92,6 +92,51 @@ enum DebugValueFormatter {
         return String(format: "0x%08llX", value)
     }
 
+    /// Ranges (in UTF-16 code units, ready for `NSAttributedString`) covering
+    /// the `0x`/`0X` prefix and any leading `0` digits of each hex literal in
+    /// `text`, always leaving at least the final hex digit undimmed so
+    /// `0x00000000` still keeps its last `0` prominent.
+    static func dimmedHexRanges(in text: String) -> [NSRange] {
+        let units = Array(text.utf16)
+        guard units.count >= 3 else { return [] }
+        var ranges: [NSRange] = []
+        var index = 0
+        while index + 2 < units.count {
+            let isPrefix = units[index] == 0x30 && (units[index + 1] == 0x78 || units[index + 1] == 0x58)
+            if isPrefix, index == 0 || !isASCIIIdentifierUnit(units[index - 1]) {
+                let digitsStart = index + 2
+                var end = digitsStart
+                while end < units.count, isASCIIHexDigitUnit(units[end]) {
+                    end += 1
+                }
+                if end > digitsStart, end == units.count || !isASCIIIdentifierUnit(units[end]) {
+                    var dimEnd = digitsStart
+                    while dimEnd < end - 1, units[dimEnd] == 0x30 {
+                        dimEnd += 1
+                    }
+                    ranges.append(NSRange(location: index, length: dimEnd - index))
+                    index = end
+                    continue
+                }
+            }
+            index += 1
+        }
+        return ranges
+    }
+
+    private static func isASCIIIdentifierUnit(_ unit: UInt16) -> Bool {
+        (0x30...0x39).contains(unit)
+            || (0x41...0x5A).contains(unit)
+            || (0x61...0x7A).contains(unit)
+            || unit == 0x5F
+    }
+
+    private static func isASCIIHexDigitUnit(_ unit: UInt16) -> Bool {
+        (0x30...0x39).contains(unit)
+            || (0x41...0x46).contains(unit)
+            || (0x61...0x66).contains(unit)
+    }
+
     /// The storage class and C type shown in `Call Stack + Locals`, such as
     /// `"param int"` or `"auto int *"`.
     static func displayType(for variable: DebugVariable) -> String {

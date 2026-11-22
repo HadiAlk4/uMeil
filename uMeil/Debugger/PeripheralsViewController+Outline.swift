@@ -26,8 +26,10 @@ extension PeripheralsViewController: NSOutlineViewDataSource, NSOutlineViewDeleg
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let node = item as? Node, let identifier = tableColumn?.identifier else { return nil }
-        if identifier.rawValue == "value", let bit = bitValue(of: node) {
-            return checkboxCell(in: outlineView, isOn: bit, for: node)
+        if identifier.rawValue == "value", let bitState = singleBitState(of: node) {
+            return bitState.isWritable
+                ? checkboxCell(in: outlineView, isOn: bitState.isOn, for: node)
+                : bitDotCell(in: outlineView, isOn: bitState.isOn, for: node)
         }
         let (cell, label) = dequeueCell(in: outlineView, identifier: identifier)
 
@@ -51,25 +53,31 @@ extension PeripheralsViewController: NSOutlineViewDataSource, NSOutlineViewDeleg
         case "value":
             configureValueLabel(label, for: node)
         default:
-            label.stringValue = locationText(for: node)
-            label.textColor = .secondaryLabelColor
+            DebugTableStyle.applyValue(locationText(for: node), to: label, baseColor: .secondaryLabelColor)
         }
         return cell
     }
 
     private func configureValueLabel(_ label: NSTextField, for node: Node) {
-        label.stringValue = valueText(for: node)
+        let text = valueText(for: node)
         if case .unreadable(let reason) = readings[node.register.name] {
+            label.stringValue = text
             label.toolTip = reason
             label.textColor = .secondaryLabelColor
         } else if readings[node.register.name] == .notRead {
+            label.stringValue = text
             label.textColor = .secondaryLabelColor
             label.toolTip = node.register.readHasSideEffects
                 ? "Reading this register changes the chip. Choose Read Now from the menu to read it."
                 : nil
-        }
-        if isChanged(node) {
-            DebugTableStyle.markChanged(label, flash: DebugTableStyle.shouldFlash(since: updatedAt))
+        } else {
+            DebugTableStyle.applyValue(
+                text,
+                to: label,
+                baseColor: .labelColor,
+                isChanged: isChanged(node),
+                flash: DebugTableStyle.shouldFlash(since: updatedAt)
+            )
         }
         if isEditable, isWritable(node) {
             label.isEditable = true
@@ -100,18 +108,36 @@ extension PeripheralsViewController: NSOutlineViewDataSource, NSOutlineViewDeleg
         return (cell, label)
     }
 
-    // MARK: - Clicking a bit
+    // MARK: - Single-bit indicators
 
-    /// Whether the single-bit field `node` is set, for a field that can be
-    /// written and has been read. Other rows show their value as text.
-    func bitValue(of node: Node) -> Bool? {
-        guard let field = node.field, field.bitWidth == 1, isWritable(node),
+    /// Read state of a single-bit field: writable bits show as checkboxes,
+    /// read-only bits show as on/off status dots.
+    struct SingleBitState: Equatable {
+        let isOn: Bool
+        let isWritable: Bool
+    }
+
+    /// State for any single-bit field whose register has been read.
+    func singleBitState(of node: Node) -> SingleBitState? {
+        guard let field = node.field, field.bitWidth == 1,
               case .value(let registerValue) = readings[node.register.name]
         else { return nil }
-        return field.value(in: registerValue) != 0
+        return SingleBitState(
+            isOn: field.value(in: registerValue) != 0,
+            isWritable: isWritable(node)
+        )
+    }
+
+    /// Whether the single-bit field `node` is set, for a field that can be
+    /// written and has been read. Read-only single bits show as status dots.
+    func bitValue(of node: Node) -> Bool? {
+        guard let state = singleBitState(of: node), state.isWritable else { return nil }
+        return state.isOn
     }
 
     private static let checkboxIdentifier = NSUserInterfaceItemIdentifier("bitCheckbox")
+    private static let bitDotIdentifier = NSUserInterfaceItemIdentifier("bitDot")
+    private static let dotSymbolConfig = NSImage.SymbolConfiguration(pointSize: 9, weight: .medium)
 
     /// A checkbox for one writable bit, such as a GPIO pin's data bit: one
     /// click switches an LED on or off, without typing a hex value.
@@ -134,15 +160,67 @@ extension PeripheralsViewController: NSOutlineViewDataSource, NSOutlineViewDeleg
                 checkbox.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
             ])
         }
+        cell.layer?.removeAnimation(forKey: "changedFlash")
+        cell.layer?.backgroundColor = NSColor.clear.cgColor
+        let changed = isChanged(node)
         checkbox.state = isOn ? .on : .off
         checkbox.isEnabled = isEditable
-        checkbox.title = isOn ? "1" : "0"
+        checkbox.title = node.field?.enumeratedName(for: isOn ? 1 : 0) ?? ""
         checkbox.font = DebugTableStyle.font
-        checkbox.contentTintColor = isChanged(node) ? DebugTableStyle.changedColor : nil
+        checkbox.contentTintColor = changed ? DebugTableStyle.changedColor : nil
         checkbox.toolTip = isEditable
-            ? "Click to \(isOn ? "clear" : "set") \(node.name)"
-            : "Stop the program to change \(node.name)"
+            ? "\(node.name) = \(isOn ? "1" : "0") — click to \(isOn ? "clear" : "set")"
+            : "\(node.name) = \(isOn ? "1" : "0") — stop the program to change"
         checkbox.setAccessibilityLabel(node.name)
+        if changed && DebugTableStyle.shouldFlash(since: updatedAt) {
+            DebugTableStyle.flash(cell)
+        }
+        return cell
+    }
+
+    /// A small on/off dot for one read-only bit, such as a status or lock flag.
+    private func bitDotCell(in outlineView: NSOutlineView, isOn: Bool, for node: Node) -> NSView {
+        let cell: NSTableCellView
+        let dot: NSImageView
+        if let reused = outlineView.makeView(withIdentifier: Self.bitDotIdentifier, owner: self) as? NSTableCellView,
+           let existing = reused.imageView {
+            cell = reused
+            dot = existing
+        } else {
+            dot = NSImageView()
+            dot.imageScaling = .scaleNone
+            dot.translatesAutoresizingMaskIntoConstraints = false
+            cell = NSTableCellView()
+            cell.identifier = Self.bitDotIdentifier
+            cell.imageView = dot
+            cell.addSubview(dot)
+            NSLayoutConstraint.activate([
+                dot.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+                dot.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                dot.widthAnchor.constraint(equalToConstant: 12),
+                dot.heightAnchor.constraint(equalToConstant: 12)
+            ])
+        }
+        cell.layer?.removeAnimation(forKey: "changedFlash")
+        cell.layer?.backgroundColor = NSColor.clear.cgColor
+        let changed = isChanged(node)
+        let symbolName = isOn ? "circle.fill" : "circle"
+        let description = isOn ? "On (1)" : "Off (0)"
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: description)?
+            .withSymbolConfiguration(Self.dotSymbolConfig)
+        image?.isTemplate = true
+        dot.image = image
+        if changed {
+            dot.contentTintColor = DebugTableStyle.changedColor
+        } else {
+            dot.contentTintColor = isOn ? .controlAccentColor : .tertiaryLabelColor
+        }
+        dot.toolTip = "\(node.name) = \(isOn ? "1 (on)" : "0 (off)") (read-only)"
+        dot.setAccessibilityLabel(node.name)
+        dot.setAccessibilityValue(isOn ? "1" : "0")
+        if changed && DebugTableStyle.shouldFlash(since: updatedAt) {
+            DebugTableStyle.flash(cell)
+        }
         return cell
     }
 
@@ -168,7 +246,7 @@ extension PeripheralsViewController: NSOutlineViewDataSource, NSOutlineViewDeleg
         let current = valueText(for: node)
         // Leaving the value blank, unchanged, or ending edits when not editable is not a write.
         guard isEditable, !text.isEmpty, text != current else {
-            field.stringValue = current
+            DebugTableStyle.applyValue(current, to: field, baseColor: .labelColor, isChanged: isChanged(node))
             return
         }
         onWrite?(peripheral, node.register, node.field, text)

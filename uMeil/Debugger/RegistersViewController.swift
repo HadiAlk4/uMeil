@@ -267,17 +267,22 @@ final class RegistersViewController: NSViewController, NSOutlineViewDataSource, 
             label = createdLabel
         }
 
-        label.stringValue = text
-        label.font = DebugTableStyle.font
-        label.lineBreakMode = .byTruncatingTail
         label.layer?.removeAnimation(forKey: "changedFlash")
         label.layer?.backgroundColor = NSColor.clear.cgColor
         label.drawsBackground = false
         label.backgroundColor = .clear
-        if !isName && node.isChanged {
-            DebugTableStyle.markChanged(label, flash: DebugTableStyle.shouldFlash(since: updatedAt))
-        } else {
+        if isName {
+            label.font = DebugTableStyle.font
+            label.lineBreakMode = .byTruncatingTail
             label.textColor = .labelColor
+            label.stringValue = text
+        } else {
+            DebugTableStyle.applyValue(
+                text,
+                to: label,
+                isChanged: node.isChanged,
+                flash: DebugTableStyle.shouldFlash(since: updatedAt)
+            )
         }
         return cell
     }

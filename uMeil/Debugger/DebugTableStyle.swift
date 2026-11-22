@@ -28,6 +28,21 @@ enum DebugTableStyle {
     /// Values that changed since the last stop are red, as Keil shows them.
     static let changedColor = NSColor.systemRed
 
+    /// Dimmer color for `0x` prefixes, leading zeros in hex values, and zero
+    /// bytes (`00`) in memory dumps. Semantic so it adapts to Light/Dark mode,
+    /// Increase Contrast, and selected table rows.
+    static let dimmedHexColor = NSColor.tertiaryLabelColor
+
+    /// Dimmer red for `0x` prefixes and leading zeros of a changed hex value,
+    /// so the whole value still reads as changed while meaningful digits pop.
+    static let dimmedChangedColor = changedColor.withAlphaComponent(0.45)
+
+    private static let truncatingParagraphStyle: NSParagraphStyle = {
+        let style = NSMutableParagraphStyle()
+        style.lineBreakMode = .byTruncatingTail
+        return style
+    }()
+
     /// How long a changed value's background glows after a stop.
     static let flashDuration: CFTimeInterval = 1.2
 
@@ -40,6 +55,55 @@ enum DebugTableStyle {
     static func markChanged(_ label: NSTextField, flash shouldFlash: Bool) {
         label.textColor = changedColor
         if shouldFlash {
+            flash(label)
+        }
+    }
+
+    /// Formats `text` in the table font with `baseColor`, dimming the `0x`
+    /// prefix and leading zeros of any hex literal inside it (keeping at least
+    /// the final digit bright for values like `0x00000000`).
+    static func styledHex(
+        _ text: String,
+        baseColor: NSColor = .labelColor,
+        dimmedColor: NSColor? = nil
+    ) -> NSAttributedString {
+        let dim = dimmedColor ?? (baseColor == changedColor ? dimmedChangedColor : dimmedHexColor)
+        let result = NSMutableAttributedString(
+            string: text,
+            attributes: [
+                .font: font,
+                .foregroundColor: baseColor,
+                .paragraphStyle: truncatingParagraphStyle
+            ]
+        )
+        for range in DebugValueFormatter.dimmedHexRanges(in: text) {
+            result.addAttribute(.foregroundColor, value: dim, range: range)
+        }
+        return result
+    }
+
+    /// Sets `text` on `label` in the table font, optionally dimming the `0x`
+    /// prefix and leading zeros of any hex literals. When `isChanged` is true,
+    /// draws the value in `changedColor` (with dimmed-red leading zeros) and
+    /// flashes when `shouldFlash` is true.
+    static func applyValue(
+        _ text: String,
+        to label: NSTextField,
+        baseColor: NSColor = .labelColor,
+        isChanged: Bool = false,
+        flash shouldFlash: Bool = false,
+        styleHex: Bool = true
+    ) {
+        let color = isChanged ? changedColor : baseColor
+        label.font = font
+        label.lineBreakMode = .byTruncatingTail
+        label.textColor = color
+        if styleHex, !DebugValueFormatter.dimmedHexRanges(in: text).isEmpty {
+            label.attributedStringValue = styledHex(text, baseColor: color)
+        } else {
+            label.stringValue = text
+        }
+        if isChanged && shouldFlash {
             flash(label)
         }
     }
@@ -65,18 +129,29 @@ enum DebugTableStyle {
         return now.timeIntervalSince(updatedAt) < flashWindow
     }
 
-    /// `text` with the bytes at `changedOffsets` in red. `text` is a row of
-    /// two-digit hex bytes separated by single spaces, as `Memory 1` shows them.
+    /// `text` with unchanged `00` bytes dimmed and the bytes at `changedOffsets`
+    /// in red. `text` is a row of two-digit hex bytes separated by single
+    /// spaces, as `Memory 1` shows them.
     static func hexBytes(_ text: String, changedOffsets: Set<Int>) -> NSAttributedString {
         let result = NSMutableAttributedString(
             string: text,
-            attributes: [.font: font, .foregroundColor: NSColor.labelColor]
+            attributes: [
+                .font: font,
+                .foregroundColor: NSColor.labelColor,
+                .paragraphStyle: truncatingParagraphStyle
+            ]
         )
-        let length = (text as NSString).length
-        for offset in changedOffsets {
+        let nsText = text as NSString
+        let length = nsText.length
+        var offset = 0
+        while offset * 3 + 2 <= length {
             let range = NSRange(location: offset * 3, length: 2)
-            guard range.location + range.length <= length else { continue }
-            result.addAttribute(.foregroundColor, value: changedColor, range: range)
+            if changedOffsets.contains(offset) {
+                result.addAttribute(.foregroundColor, value: changedColor, range: range)
+            } else if nsText.substring(with: range) == "00" {
+                result.addAttribute(.foregroundColor, value: dimmedHexColor, range: range)
+            }
+            offset += 1
         }
         return result
     }

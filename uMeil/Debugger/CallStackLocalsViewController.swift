@@ -383,18 +383,18 @@ extension CallStackLocalsViewController: NSOutlineViewDataSource, NSOutlineViewD
                 label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
             ])
         }
-        label.stringValue = text
-        label.font = DebugTableStyle.font
-        label.lineBreakMode = .byTruncatingTail
         label.layer?.removeAnimation(forKey: "changedFlash")
         label.layer?.backgroundColor = NSColor.clear.cgColor
         label.drawsBackground = false
         label.backgroundColor = .clear
-        if isChanged {
-            DebugTableStyle.markChanged(label, flash: DebugTableStyle.shouldFlash(since: updatedAt))
-        } else {
-            label.textColor = .labelColor
-        }
+        let isValue = identifier.rawValue == "value"
+        DebugTableStyle.applyValue(
+            text,
+            to: label,
+            isChanged: isValue && isChanged,
+            flash: isValue && DebugTableStyle.shouldFlash(since: updatedAt),
+            styleHex: isValue
+        )
         return cell
     }
 }

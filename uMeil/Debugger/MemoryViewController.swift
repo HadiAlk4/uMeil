@@ -230,55 +230,53 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard rows.indices.contains(row), let identifier = tableColumn?.identifier else { return nil }
         let item = rows[row]
-        let text = switch identifier.rawValue {
-        case "address": item.addressText
-        case "hex": item.hexText
-        default: item.asciiText
-        }
-
-        let cell: NSTableCellView
-        let label: NSTextField
-        if let reused = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView,
-           let existingLabel = reused.textField {
-            cell = reused
-            label = existingLabel
-        } else {
-            let createdLabel = NSTextField(labelWithString: "")
-            createdLabel.lineBreakMode = .byTruncatingTail
-            createdLabel.translatesAutoresizingMaskIntoConstraints = false
-            let createdCell = NSTableCellView()
-            createdCell.identifier = identifier
-            createdCell.textField = createdLabel
-            createdCell.addSubview(createdLabel)
-            NSLayoutConstraint.activate([
-                createdLabel.leadingAnchor.constraint(equalTo: createdCell.leadingAnchor, constant: 2),
-                createdLabel.trailingAnchor.constraint(equalTo: createdCell.trailingAnchor, constant: -2),
-                createdLabel.centerYAnchor.constraint(equalTo: createdCell.centerYAnchor)
-            ])
-            cell = createdCell
-            label = createdLabel
-        }
+        let (cell, label) = dequeueCell(in: tableView, identifier: identifier)
 
         label.layer?.removeAnimation(forKey: "changedFlash")
         label.layer?.backgroundColor = NSColor.clear.cgColor
-        label.textColor = .labelColor
         label.font = DebugTableStyle.font
         label.lineBreakMode = .byTruncatingTail
-        label.stringValue = text
-        if identifier.rawValue == "hex" {
+        switch identifier.rawValue {
+        case "address":
+            DebugTableStyle.applyValue(item.addressText, to: label)
+        case "hex":
             let changed = changedOffsets(inRow: row)
-            if !changed.isEmpty {
-                // Only the changed bytes are red, not the whole row.
-                label.attributedStringValue = DebugTableStyle.hexBytes(text, changedOffsets: changed)
-                if DebugTableStyle.shouldFlash(since: updatedAt) {
-                    DebugTableStyle.flash(label)
-                }
+            label.textColor = .labelColor
+            label.attributedStringValue = DebugTableStyle.hexBytes(item.hexText, changedOffsets: changed)
+            if !changed.isEmpty, DebugTableStyle.shouldFlash(since: updatedAt) {
+                DebugTableStyle.flash(label)
             }
+        default:
+            label.textColor = .labelColor
+            label.stringValue = item.asciiText
         }
         let editable = identifier.rawValue == "hex" && isEditable
         label.isEditable = editable
         label.delegate = editable ? self : nil
         return cell
+    }
+
+    private func dequeueCell(
+        in tableView: NSTableView,
+        identifier: NSUserInterfaceItemIdentifier
+    ) -> (NSTableCellView, NSTextField) {
+        if let reused = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView,
+           let existingLabel = reused.textField {
+            return (reused, existingLabel)
+        }
+        let label = NSTextField(labelWithString: "")
+        label.lineBreakMode = .byTruncatingTail
+        label.translatesAutoresizingMaskIntoConstraints = false
+        let cell = NSTableCellView()
+        cell.identifier = identifier
+        cell.textField = label
+        cell.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
+            label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -2),
+            label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+        ])
+        return (cell, label)
     }
 
     // MARK: - Typing bytes
@@ -289,7 +287,10 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
         if !commitEdit(field.stringValue, inRow: row) {
             NSSound.beep()
             if rows.indices.contains(row) {
-                field.stringValue = rows[row].hexText
+                field.attributedStringValue = DebugTableStyle.hexBytes(
+                    rows[row].hexText,
+                    changedOffsets: changedOffsets(inRow: row)
+                )
             }
         }
     }

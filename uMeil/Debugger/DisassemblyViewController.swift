@@ -123,43 +123,57 @@ final class DisassemblyViewController: NSViewController, NSTableViewDataSource, 
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard rows.indices.contains(row), let identifier = tableColumn?.identifier else { return nil }
-        let item = rows[row]
-        var text = ""
-        var textColor: NSColor = .labelColor
-        var isPC = false
+        let content = cellContent(for: rows[row], column: identifier.rawValue)
+        let (cell, label) = dequeueCell(in: tableView, identifier: identifier)
+        if content.styleHex {
+            DebugTableStyle.applyValue(content.text, to: label, baseColor: content.color)
+        } else {
+            label.font = DebugTableStyle.font
+            label.textColor = content.color
+            label.lineBreakMode = .byTruncatingTail
+            label.stringValue = content.text
+        }
+        cell.wantsLayer = true
+        cell.layer?.backgroundColor = content.isPC ? EditorTheme.executionLineColor.cgColor : nil
+        return cell
+    }
 
+    private struct CellContent {
+        let text: String
+        let color: NSColor
+        let isPC: Bool
+        let styleHex: Bool
+    }
+
+    private func cellContent(for item: Row, column: String) -> CellContent {
         switch item {
         case .source(let line, let code):
-            textColor = .secondaryLabelColor
-            if identifier.rawValue == "address" {
-                text = "Line \(line)"
-            } else if identifier.rawValue == "instruction" {
-                text = code.trimmingCharacters(in: .whitespaces)
-            }
+            let text = column == "address"
+                ? "Line \(line)"
+                : (column == "instruction" ? code.trimmingCharacters(in: .whitespaces) : "")
+            return CellContent(text: text, color: .secondaryLabelColor, isPC: false, styleHex: false)
         case .instruction(let inst, let matchesPC):
-            isPC = matchesPC
-            switch identifier.rawValue {
+            switch column {
             case "pc":
-                text = matchesPC ? "▶" : ""
-                textColor = .systemYellow
+                return CellContent(text: matchesPC ? "▶" : "", color: .systemYellow, isPC: matchesPC, styleHex: false)
             case "address":
-                text = DebugValueFormatter.hex32(inst.address)
+                return CellContent(
+                    text: DebugValueFormatter.hex32(inst.address),
+                    color: .labelColor,
+                    isPC: matchesPC,
+                    styleHex: true
+                )
             case "opcodes":
-                text = inst.opcodes.uppercased()
-                textColor = .secondaryLabelColor
+                return CellContent(
+                    text: inst.opcodes.uppercased(),
+                    color: .secondaryLabelColor,
+                    isPC: matchesPC,
+                    styleHex: false
+                )
             default:
-                text = inst.instruction
+                return CellContent(text: inst.instruction, color: .labelColor, isPC: matchesPC, styleHex: true)
             }
         }
-
-        let (cell, label) = dequeueCell(in: tableView, identifier: identifier)
-        label.stringValue = text
-        label.font = DebugTableStyle.font
-        label.textColor = textColor
-        label.lineBreakMode = .byTruncatingTail
-        cell.wantsLayer = true
-        cell.layer?.backgroundColor = isPC ? EditorTheme.executionLineColor.cgColor : nil
-        return cell
     }
 
     private func dequeueCell(
