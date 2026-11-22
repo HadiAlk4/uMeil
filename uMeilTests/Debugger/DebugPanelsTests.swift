@@ -160,9 +160,11 @@ struct DebugPanelsTests {
 
     @Test func commandConsoleCapsTextAtMaximumLength() {
         let command = CommandViewController()
-        let chunk = String(repeating: "x", count: 1000) + "\n"
+        // 550,000 characters, past the cap, in few appends: each one is a
+        // trip through the text view's layout.
+        let chunk = String(repeating: String(repeating: "x", count: 1000) + "\n", count: 10)
         command.appendOutput("oldest-line\n")
-        for _ in 0..<550 {
+        for _ in 0..<55 {
             command.appendOutput(chunk)
         }
         command.appendOutput("newest-line\n")

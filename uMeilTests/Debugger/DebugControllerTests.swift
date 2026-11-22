@@ -62,7 +62,10 @@ func waitUntil(
     sourceLocation: Testing.SourceLocation = #_sourceLocation,
     _ condition: () -> Bool
 ) async {
-    for _ in 0..<2000 where !condition() {
+    // Stops as soon as the condition holds. (A `where` clause here would
+    // only skip the sleep, still checking the condition 2000 times.)
+    for _ in 0..<2000 {
+        if condition() { return }
         try? await Task.sleep(for: .milliseconds(1))
     }
     #expect(condition(), "Timed out waiting until \(what)", sourceLocation: sourceLocation)
@@ -301,6 +304,8 @@ struct DebugControllerTests {
 
         await waitUntil("the final log line arrives") { controller.log.hasSuffix("-\(1499)\n") }
         #expect(controller.log.count <= DebugController.maximumLogLength)
-        #expect(!controller.log.contains("\(prefix)-0\n"))
+        // The first line's ending alone: searching for the whole line would
+        // compare it at every position of a half-megabyte log, for seconds.
+        #expect(!controller.log.contains("a-0\n"))
     }
 }
