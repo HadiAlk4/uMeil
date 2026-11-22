@@ -2,12 +2,15 @@ import AppKit
 
 /// Compact strip at the bottom of the editor showing the live diagnostic on
 /// the current cursor line (or the first diagnostic in the file). Hidden when clean.
-final class EditorDiagnosticBar: NSView {
+final class EditorDiagnosticBar: NSView, NSGestureRecognizerDelegate {
     var onClick: ((LSPDiagnostic) -> Void)?
+    var onQuickFix: ((LSPCodeAction) -> Void)?
 
-    private var currentDiagnostic: LSPDiagnostic?
+    private(set) var currentDiagnostic: LSPDiagnostic?
+    private(set) var currentQuickFix: LSPCodeAction?
     private let iconView = NSImageView()
     private let messageLabel = NSTextField(labelWithString: "")
+    let fixButton = NSButton(title: "Fix", target: nil, action: nil)
     private let countLabel = NSTextField(labelWithString: "")
 
     override init(frame frameRect: NSRect) {
@@ -33,13 +36,16 @@ final class EditorDiagnosticBar: NSView {
         messageLabel.lineBreakMode = .byTruncatingTail
         messageLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
+        configureFixButton()
+
         countLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
         countLabel.textColor = .secondaryLabelColor
         countLabel.setContentHuggingPriority(.required, for: .horizontal)
 
-        let stack = NSStackView(views: [iconView, messageLabel, NSView(), countLabel])
+        let stack = NSStackView(views: [iconView, messageLabel, NSView(), fixButton, countLabel])
         stack.orientation = .horizontal
         stack.spacing = 6
+        stack.detachesHiddenViews = true
         stack.edgeInsets = NSEdgeInsets(top: 3, left: 10, bottom: 3, right: 10)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
@@ -59,21 +65,45 @@ final class EditorDiagnosticBar: NSView {
         ])
 
         let click = NSClickGestureRecognizer(target: self, action: #selector(barClicked(_:)))
+        click.delegate = self
         addGestureRecognizer(click)
     }
 
-    func update(diagnostics: [LSPDiagnostic], cursorLineZeroBased: Int) {
-        let actionable = diagnostics.filter { $0.diagnosticSeverity != .note }
-        guard !actionable.isEmpty else {
-            currentDiagnostic = nil
-            isHidden = true
-            return
-        }
+    private func configureFixButton() {
+        fixButton.bezelStyle = .accessoryBarAction
+        fixButton.controlSize = .small
+        fixButton.font = .systemFont(ofSize: 11, weight: .semibold)
+        fixButton.contentTintColor = .controlAccentColor
+        fixButton.image = NSImage(
+            systemSymbolName: "wrench.and.screwdriver.fill",
+            accessibilityDescription: "Quick Fix"
+        )?.withSymbolConfiguration(.init(pointSize: 9.5, weight: .semibold))
+        fixButton.imagePosition = .imageLeading
+        fixButton.setContentHuggingPriority(.required, for: .horizontal)
+        fixButton.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        fixButton.target = self
+        fixButton.action = #selector(fixClicked(_:))
+        fixButton.isHidden = true
+    }
 
+    /// Picks the diagnostic shown in the bar for `cursorLineZeroBased`, or `nil` when clean.
+    static func selectedDiagnostic(from diagnostics: [LSPDiagnostic], cursorLineZeroBased: Int) -> LSPDiagnostic? {
+        let actionable = diagnostics.filter { $0.diagnosticSeverity != .note }
+        guard !actionable.isEmpty else { return nil }
         let onLine = actionable
             .filter { $0.range.start.line <= cursorLineZeroBased && cursorLineZeroBased <= $0.range.end.line }
             .min { ($0.severity ?? .error) < ($1.severity ?? .error) }
-        let selected = onLine ?? actionable.min { ($0.severity ?? .error) < ($1.severity ?? .error) }!
+        return onLine ?? actionable.min { ($0.severity ?? .error) < ($1.severity ?? .error) }
+    }
+
+    func update(diagnostics: [LSPDiagnostic], cursorLineZeroBased: Int, quickFix: LSPCodeAction? = nil) {
+        let actionable = diagnostics.filter { $0.diagnosticSeverity != .note }
+        guard let selected = Self.selectedDiagnostic(from: actionable, cursorLineZeroBased: cursorLineZeroBased) else {
+            currentDiagnostic = nil
+            updateQuickFix(nil)
+            isHidden = true
+            return
+        }
         currentDiagnostic = selected
 
         let severity = selected.diagnosticSeverity
@@ -88,12 +118,46 @@ final class EditorDiagnosticBar: NSView {
         let errors = actionable.filter { $0.diagnosticSeverity == .error }.count
         let warnings = actionable.filter { $0.diagnosticSeverity == .warning }.count
         countLabel.stringValue = Self.summaryText(errors: errors, warnings: warnings)
+        updateQuickFix(quickFix)
         isHidden = false
     }
 
-    @objc private func barClicked(_ sender: Any?) {
+    func updateQuickFix(_ action: LSPCodeAction?) {
+        currentQuickFix = action
+        guard let action else {
+            fixButton.isHidden = true
+            fixButton.toolTip = nil
+            fixButton.setAccessibilityLabel(nil)
+            return
+        }
+        let tip = DiagnosticQuickFix.tooltip(for: action)
+        fixButton.title = DiagnosticQuickFix.buttonTitle(for: action)
+        fixButton.toolTip = tip
+        fixButton.setAccessibilityLabel(tip)
+        fixButton.isHidden = false
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: NSGestureRecognizer,
+        shouldAttemptToRecognizeWith event: NSEvent
+    ) -> Bool {
+        guard !fixButton.isHidden else { return true }
+        let pointInButton = fixButton.convert(event.locationInWindow, from: nil)
+        return !fixButton.bounds.contains(pointInButton)
+    }
+
+    @objc private func barClicked(_ sender: NSClickGestureRecognizer) {
+        if !fixButton.isHidden, fixButton.bounds.contains(sender.location(in: fixButton)) {
+            return
+        }
         if let currentDiagnostic {
             onClick?(currentDiagnostic)
+        }
+    }
+
+    @objc private func fixClicked(_ sender: Any?) {
+        if let currentQuickFix {
+            onQuickFix?(currentQuickFix)
         }
     }
 

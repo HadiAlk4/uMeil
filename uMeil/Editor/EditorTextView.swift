@@ -15,6 +15,8 @@ final class EditorTextView: NSTextView {
     var onRequestRename: (() -> Void)?
     /// Called first on `keyDown` so an open completion popup can intercept arrows, Return, Tab, and Esc.
     var completionKeyHandler: ((NSEvent) -> Bool)?
+    /// Called when the user clicks an inline diagnostic quick-fix badge.
+    var onQuickFixClick: ((LSPCodeAction) -> Void)?
 
     private var hoverTrackingArea: NSTrackingArea?
 
@@ -22,6 +24,13 @@ final class EditorTextView: NSTextView {
     var inlineMessages: [InlineMessage] = [] {
         didSet {
             if inlineMessages != oldValue { needsDisplay = true }
+        }
+    }
+
+    /// Live diagnostics with one-click fixes, drawn as interactive capsules.
+    var inlineQuickFixes: [InlineQuickFix] = [] {
+        didSet {
+            if inlineQuickFixes != oldValue { needsDisplay = true }
         }
     }
 
@@ -55,6 +64,7 @@ final class EditorTextView: NSTextView {
         drawEditorHighlights(in: rect)
         drawPlaceholders(in: rect)
         drawInlineMessages(in: rect)
+        drawInlineQuickFixes(in: rect)
         drawInlineAnnotations(in: rect)
     }
 
@@ -65,6 +75,9 @@ final class EditorTextView: NSTextView {
 
     override func mouseDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if modifiers.isEmpty, handleQuickFixClick(with: event) {
+            return
+        }
         if modifiers == .command, let offset = characterOffset(for: event) {
             onCommandClick?(offset)
             return
@@ -214,11 +227,13 @@ final class EditorTextView: NSTextView {
 
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
+        updateQuickFixHover(with: event)
         onHoverCharacter?(characterOffset(for: event))
     }
 
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
+        clearQuickFixHover()
         onHoverCharacter?(nil)
     }
 

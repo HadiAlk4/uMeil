@@ -31,6 +31,8 @@ final class EditorCodeIntelligenceState {
     /// The last build's message for each line, written beside the code.
     var buildMessages: [Int: BuildSummary.LineMessage] = [:]
     var liveDiagnostics: [LSPDiagnostic] = []
+    var quickFixesByDiagnostic: [LSPDiagnostic: LSPCodeAction] = [:]
+    var quickFixTask: Task<Void, Never>?
     var diagnosticRanges: [NSRange] = []
     var completionAnchorOffset: Int?
     var completionRequestVersion = 0
@@ -89,6 +91,12 @@ extension EditorViewController {
                 column: diagnostic.range.start.character + 1
             )
         }
+        diagnosticBar.onQuickFix = { [weak self] action in
+            self?.applyQuickFix(action)
+        }
+        editorTextView?.onQuickFixClick = { [weak self] action in
+            self?.applyQuickFix(action)
+        }
     }
 
     /// Turns live diagnostics, autocomplete, and go-to-definition on or off.
@@ -140,10 +148,12 @@ extension EditorViewController {
             }
         }
         updateDiagnosticBar()
+        refreshQuickFixes(for: diagnostics)
     }
 
     func clearLiveDiagnostics() {
         clearInlineDiagnosticAttributes()
+        clearQuickFixes()
         if !intelligence.liveDiagnostics.isEmpty {
             intelligence.liveDiagnostics = []
             refreshRulerMarkers()
@@ -153,7 +163,16 @@ extension EditorViewController {
 
     func updateDiagnosticBar() {
         let cursorLine = lineIndex.lineNumber(atOffset: textView.selectedRange().location) - 1
-        diagnosticBar.update(diagnostics: intelligence.liveDiagnostics, cursorLineZeroBased: cursorLine)
+        let selected = EditorDiagnosticBar.selectedDiagnostic(
+            from: intelligence.liveDiagnostics,
+            cursorLineZeroBased: cursorLine
+        )
+        let quickFix = selected.flatMap { intelligence.quickFixesByDiagnostic[$0] }
+        diagnosticBar.update(
+            diagnostics: intelligence.liveDiagnostics,
+            cursorLineZeroBased: cursorLine,
+            quickFix: quickFix
+        )
     }
 
     private func clearInlineDiagnosticAttributes() {

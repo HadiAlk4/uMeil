@@ -44,6 +44,8 @@ extension EditorTextView {
         let origin = textContainerOrigin
 
         for item in inlineMessages where item.lineStart <= storage.length {
+            // Avoid overlapping when a live quick-fix capsule is already drawn on this line.
+            if inlineQuickFixes.contains(where: { $0.lineStart == item.lineStart }) { continue }
             let characterIndex = min(item.lineStart, storage.length - 1)
             let glyphIndex = layoutManager.glyphIndexForCharacter(at: characterIndex)
             var lineGlyphs = NSRange()

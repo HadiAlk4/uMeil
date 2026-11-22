@@ -207,6 +207,41 @@ struct CodeIntelligenceInEditorTests {
         controller.editor.completionPanel.dismiss()
         controller.codeIntelligence?.stop()
     }
+
+    @Test(.timeLimit(TestTiming.minutes(1)))
+    func oneClickQuickFixAddsMissingIncludeClearsDiagnosticAndUndoesInOneStep() async throws {
+        let temp = try TemporaryDirectory()
+        let controller = try makeBlinkyWindow(in: temp)
+        let textView = controller.editor.textView
+        let original = textView.string
+
+        try await Task.sleep(for: .milliseconds(250))
+        let broken = original.replacingOccurrences(
+            of: "GPIOPinWrite(GPIO_PORTN_BASE, GPIO_PIN_1, 0);",
+            with: "printf(\"blink\\n\");"
+        )
+        textView.insertText(broken, replacementRange: NSRange(location: 0, length: (original as NSString).length))
+
+        let hasQuickFix = await waitUntil {
+            !controller.editor.diagnosticBar.fixButton.isHidden
+                && controller.editor.diagnosticBar.currentQuickFix?.title.contains("<stdio.h>") == true
+        }
+        #expect(hasQuickFix)
+        #expect((textView as? EditorTextView)?.inlineQuickFixes.isEmpty == false)
+
+        controller.editor.diagnosticBar.fixButton.performClick(nil)
+        #expect(textView.string.contains("#include <stdio.h>"))
+
+        let cleared = await waitUntil {
+            controller.editor.liveDiagnostics.isEmpty && controller.editor.diagnosticBar.isHidden
+        }
+        #expect(cleared)
+
+        textView.undoManager?.undo()
+        #expect(!textView.string.contains("#include <stdio.h>"))
+        #expect(textView.string == broken)
+        controller.codeIntelligence?.stop()
+    }
 }
 
 /// The Edit > Code Intelligence switch in the main window.
