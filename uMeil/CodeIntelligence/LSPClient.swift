@@ -27,7 +27,7 @@ actor LSPClient {
     /// request never overtakes the `didChange` that came before it.
     private var lastWrite: Task<Void, Never>?
 
-    private let decoder = JSONDecoder()
+    let decoder = JSONDecoder()
 
     init(
         transport: any LSPTransporting,
@@ -55,9 +55,22 @@ actor LSPClient {
                     ],
                     "completion": [
                         "completionItem": [
-                            "snippetSupport": false,
+                            "snippetSupport": true,
                             "documentationFormat": ["plaintext"]
                         ]
+                    ],
+                    "signatureHelp": [
+                        "signatureInformation": [
+                            "documentationFormat": ["plaintext"],
+                            "parameterInformation": ["labelOffsetSupport": true],
+                            "activeParameterSupport": true
+                        ]
+                    ],
+                    "hover": [
+                        "contentFormat": ["plaintext"]
+                    ],
+                    "rename": [
+                        "prepareSupport": true
                     ],
                     "definition": [
                         "linkSupport": true
@@ -133,48 +146,9 @@ actor LSPClient {
         ])
     }
 
-    // MARK: - Requests
-
-    func completion(url: URL, position: LSPPosition) async throws -> [LSPCompletionItem] {
-        let data = try await sendRequest(method: "textDocument/completion", params: [
-            "textDocument": ["uri": url.standardizedFileURL.absoluteString],
-            "position": ["line": position.line, "character": position.character]
-        ])
-        if isJSONNull(data) { return [] }
-        if let list = try? decoder.decode(CompletionListResponse.self, from: data) {
-            return list.items
-        }
-        if let array = try? decoder.decode([LSPCompletionItem].self, from: data) {
-            return array
-        }
-        throw LSPError.invalidResponse
-    }
-
-    func definition(url: URL, position: LSPPosition) async throws -> [LSPLocation] {
-        let data = try await sendRequest(method: "textDocument/definition", params: [
-            "textDocument": ["uri": url.standardizedFileURL.absoluteString],
-            "position": ["line": position.line, "character": position.character]
-        ])
-        if isJSONNull(data) { return [] }
-        if let single = try? decoder.decode(LSPLocation.self, from: data) {
-            return [single]
-        }
-        if let array = try? decoder.decode([LSPLocation].self, from: data) {
-            return array
-        }
-        if let links = try? decoder.decode([LSPLocationLink].self, from: data) {
-            return links.map(\.location)
-        }
-        throw LSPError.invalidResponse
-    }
-
     // MARK: - JSON-RPC plumbing
 
-    private struct CompletionListResponse: Decodable {
-        var items: [LSPCompletionItem]
-    }
-
-    private func sendRequest(method: String, params: Any?) async throws -> Data {
+    func sendRequest(method: String, params: Any?) async throws -> Data {
         guard !isShutDown || method == "shutdown" else {
             throw LSPError.disconnected
         }
@@ -298,7 +272,7 @@ actor LSPClient {
         }
     }
 
-    private func isJSONNull(_ data: Data) -> Bool {
+    func isJSONNull(_ data: Data) -> Bool {
         data == Data("null".utf8)
     }
 }

@@ -10,9 +10,21 @@ final class EditorCodeIntelligenceState {
     var onDocumentClosed: ((URL) -> Void)?
     var onCompletionRequested: ((URL, String, LSPPosition) async -> [LSPCompletionItem])?
     var onDefinitionRequested: ((URL, String, LSPPosition) async -> Void)?
+    var onSignatureHelpRequested: ((URL, String, LSPPosition) async -> LSPSignatureHelp?)?
+    var onHoverRequested: ((URL, String, LSPPosition) async -> LSPHover?)?
+    var onPrepareRename: ((URL, String, LSPPosition) async throws -> LSPRange?)?
+    var onRename: ((URL, String, LSPPosition, String) async throws -> [URL: [LSPTextEdit]])?
+    /// Replace the new-name and problem alerts, for tests.
+    var renamePrompt: ((String) async -> String?)?
+    var renameProblemHandler: ((String) -> Void)?
+    /// Formats the given 1-based lines of a file's text with clang-format.
+    var onFormatRequested: ((URL, String, ClosedRange<Int>) async throws -> String)?
+    var formatProblemHandler: ((String) -> Void)?
 
     let diagnosticBar = EditorDiagnosticBar()
     let completionPanel = CompletionPanelController()
+    let signaturePanel = CodeInfoPanel()
+    let hoverPanel = CodeInfoPanel()
 
     var buildMarkers: [Int: Diagnostic.Severity] = [:]
     /// The last build's message for each line, written beside the code.
@@ -23,6 +35,13 @@ final class EditorCodeIntelligenceState {
     var completionRequestVersion = 0
     var completionTask: Task<Void, Never>?
     var lastEditWasSingleTypedCharacter = false
+    /// The arguments left to fill in after accepting a snippet completion.
+    var placeholders: SnippetPlaceholders?
+    /// The parameter hint showing, and the request refreshing it.
+    var signatureHelp: LSPSignatureHelp?
+    var signatureTask: Task<Void, Never>?
+    /// The name under the mouse whose hover is showing or on its way.
+    var hoverRange: NSRange?
     /// When false the editor shows no live diagnostics, never asks for
     /// completions, and ignores go-to-definition requests.
     var isEnabled = true
@@ -47,8 +66,18 @@ extension EditorViewController {
         editorTextView?.onRequestCompletion = { [weak self] in
             self?.triggerCompletion(nil)
         }
+        editorTextView?.onRequestRename = { [weak self] in
+            self?.renameSymbol(nil)
+        }
         editorTextView?.completionKeyHandler = { [weak self] event in
-            self?.completionPanel.handleKeyDown(event) ?? false
+            guard let self else { return false }
+            if completionPanel.handleKeyDown(event) { return true }
+            if event.keyCode == 53, signaturePanel.isVisible {
+                dismissSignatureHelp()
+                endPlaceholders()
+                return true
+            }
+            return handlePlaceholderKey(event)
         }
         completionPanel.onAccept = { [weak self] item in
             self?.acceptCompletion(item)
@@ -66,11 +95,20 @@ extension EditorViewController {
     func setCodeIntelligenceEnabled(_ enabled: Bool) {
         intelligence.isEnabled = enabled
         guard !enabled else { return }
+        dismissCodeIntelligencePopups()
+        clearLiveDiagnostics()
+    }
+
+    /// Closes the completion list, parameter hint, and hover, and forgets
+    /// any placeholders, as when another file opens.
+    func dismissCodeIntelligencePopups() {
         intelligence.completionTask?.cancel()
         intelligence.completionTask = nil
         intelligence.completionAnchorOffset = nil
         completionPanel.dismiss()
-        clearLiveDiagnostics()
+        endPlaceholders()
+        dismissSignatureHelp()
+        dismissCodeHover()
     }
 
     // MARK: - Inline diagnostics
@@ -184,6 +222,7 @@ extension EditorViewController {
 
     func handleSelectionChangeForCodeIntelligence() {
         updateDiagnosticBar()
+        handleSelectionChangeForSignatureHelp()
         guard completionPanel.isVisible else { return }
         let cursor = textView.selectedRange().location
         guard let anchor = intelligence.completionAnchorOffset,
@@ -210,7 +249,12 @@ extension EditorViewController {
         intelligence.completionRequestVersion = requestVersion
         let position = lineIndex.lspPosition(atUTF16Offset: cursor)
 
+        // Ask which argument the cursor is in at the same time, so macros
+        // that fit it (GPIO_PIN_* for ui8Pins) can be listed first.
+        let onSignatureHelpRequested = intelligence.onSignatureHelpRequested
+        let signature = Task { await onSignatureHelpRequested?(url, text, position) }
         let items = await onCompletionRequested(url, text, position)
+        let hint = await signature.value.flatMap(ArgumentHint.init(signatureHelp:))
         guard !Task.isCancelled,
               intelligence.isEnabled,
               requestVersion == intelligence.completionRequestVersion,
@@ -228,6 +272,7 @@ extension EditorViewController {
         completionPanel.show(
             items: items,
             filter: liveFilter,
+            hint: hint,
             anchoredAt: screenRect,
             parentWindow: view.window
         )
@@ -241,7 +286,12 @@ extension EditorViewController {
         guard cursor >= anchor, cursor <= (textView.textStorage?.length ?? 0) else { return }
 
         let replaceRange = NSRange(location: anchor, length: cursor - anchor)
-        textView.insertText(item.insertionText, replacementRange: replaceRange)
+        let snippet = item.snippet
+        insertSnippet(snippet, replacing: replaceRange)
+        if !snippet.placeholders.isEmpty {
+            // The first argument is selected: show what goes there.
+            requestSignatureHelp(delay: .zero)
+        }
     }
 
     func shouldAutoTriggerCompletion(in text: String, atUTF16Offset offset: Int) -> Bool {
@@ -301,7 +351,10 @@ extension EditorViewController {
     // MARK: - Delegate and menu hooks
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        if menuItem.action == #selector(triggerCompletion(_:)) {
+        if menuItem.action == #selector(formatSelection(_:)) {
+            return document.map { SourceLanguage(url: $0.url) == .c } ?? false
+        }
+        if menuItem.action == #selector(triggerCompletion(_:)) || menuItem.action == #selector(renameSymbol(_:)) {
             return intelligence.isEnabled && (document.map { SourceLanguage(url: $0.url) == .c } ?? false)
         }
         return true
@@ -317,12 +370,14 @@ extension EditorViewController {
             return true
         }
         intelligence.lastEditWasSingleTypedCharacter = replacementString?.count == 1 && affectedCharRange.length <= 1
+        placeholdersWillChangeText(in: affectedCharRange, replacement: replacementString)
         return true
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {
         guard !isLoading else { return }
         updateCursorPosition()
+        placeholdersSelectionDidChange()
         handleSelectionChangeForCodeIntelligence()
     }
 }

@@ -30,6 +30,8 @@ struct ClangdSecurityTests {
         let args = ClangdSession.launchArguments(compileCommandsDirectory: nil, queryDriver: nil)
 
         #expect(args.contains("--enable-config=false"))
+        #expect(args.contains("--completion-style=detailed"))
+        #expect(args.contains("--header-insertion=never"))
         #expect(!args.contains { $0.hasPrefix("--query-driver") })
         #expect(!args.contains { $0.hasPrefix("--compile-commands-dir") })
         #expect(!args.contains("--query-driver=**/\(Tool.compiler.executableName)"))

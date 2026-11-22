@@ -11,6 +11,8 @@ final class EditorTextView: NSTextView {
     var onHoverCharacter: ((Int?) -> Void)?
     /// Called when the user invokes autocomplete (`Ctrl+Space` or `Esc`/`F5` `complete(_:)`).
     var onRequestCompletion: (() -> Void)?
+    /// Called when the user presses F2 to rename the symbol at the cursor.
+    var onRequestRename: (() -> Void)?
     /// Called first on `keyDown` so an open completion popup can intercept arrows, Return, Tab, and Esc.
     var completionKeyHandler: ((NSEvent) -> Bool)?
 
@@ -37,9 +39,17 @@ final class EditorTextView: NSTextView {
         }
     }
 
+    /// Snippet placeholders still to be filled in, shaded behind the text.
+    var placeholderRanges: [NSRange] = [] {
+        didSet {
+            if placeholderRanges != oldValue { needsDisplay = true }
+        }
+    }
+
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
         drawExecutionLine(in: rect)
+        drawPlaceholders(in: rect)
         drawInlineMessages(in: rect)
         drawInlineAnnotations(in: rect)
     }
@@ -60,6 +70,10 @@ final class EditorTextView: NSTextView {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if modifiers == .control, event.charactersIgnoringModifiers == " " {
             onRequestCompletion?()
+            return
+        }
+        if event.specialKey == .f2, modifiers.subtracting([.function, .numericPad]).isEmpty {
+            onRequestRename?()
             return
         }
         super.keyDown(with: event)
@@ -252,6 +266,24 @@ final class EditorTextView: NSTextView {
 
         EditorTheme.executionLineColor.setFill()
         band.fill(using: .sourceOver)
+    }
+
+    private func drawPlaceholders(in rect: NSRect) {
+        guard !placeholderRanges.isEmpty, let layoutManager, let textContainer, let storage = textStorage else {
+            return
+        }
+        EditorTheme.placeholderBackgroundColor.setFill()
+        for range in placeholderRanges {
+            let clamped = NSIntersectionRange(range, NSRange(location: 0, length: storage.length))
+            guard clamped.length > 0 || range.length == 0 else { continue }
+            let glyphs = layoutManager.glyphRange(forCharacterRange: clamped, actualCharacterRange: nil)
+            var box = layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
+            box.origin.x += textContainerOrigin.x
+            box.origin.y += textContainerOrigin.y
+            if clamped.length == 0 { box.size.width = 2 }
+            guard box.intersects(rect) else { continue }
+            NSBezierPath(roundedRect: box.insetBy(dx: -1, dy: 0), xRadius: 3, yRadius: 3).fill()
+        }
     }
 
     private func characterOffset(for event: NSEvent) -> Int? {
