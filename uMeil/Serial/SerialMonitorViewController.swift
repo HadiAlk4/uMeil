@@ -3,18 +3,22 @@ import AppKit
 /// A console for a board's serial port: shows what the board prints and
 /// sends what the user types.
 final class SerialMonitorViewController: NSViewController {
-    /// Where the chosen port, speed and line ending are remembered between launches.
+    /// Where the chosen port, speed, framing and line ending are remembered between launches.
     enum DefaultsKey {
         static let port = "SerialMonitorPort"
         static let baudRate = "SerialMonitorBaudRate"
+        static let dataBits = "SerialMonitorDataBits"
+        static let parity = "SerialMonitorParity"
+        static let stopBits = "SerialMonitorStopBits"
         static let lineEnding = "SerialMonitorLineEnding"
+        static let sendsEachKey = "SerialMonitorSendsEachKey"
     }
 
     /// The most text the console keeps. Older text is dropped a line at a time.
     static let maximumLength = 500_000
 
     private let listPorts: () -> [SerialPortInfo]
-    private let defaults: UserDefaults
+    let defaults: UserDefaults
 
     private(set) var ports: [SerialPortInfo] = []
     private(set) var port: SerialPort?
@@ -25,13 +29,22 @@ final class SerialMonitorViewController: NSViewController {
 
     let portPopUp = NSPopUpButton()
     let baudPopUp = NSPopUpButton()
+    let dataBitsPopUp = NSPopUpButton()
+    let parityPopUp = NSPopUpButton()
+    let stopBitsPopUp = NSPopUpButton()
     let lineEndingPopUp = NSPopUpButton()
     let statusLabel = NSTextField(labelWithString: "Not connected")
     let inputField = NSTextField()
-    let textView = NSTextView()
+    let textView = SerialConsoleTextView()
+    let keyModeHint = NSTextField(labelWithString: "")
     private let scrollView = NSScrollView()
     private(set) lazy var connectButton = NSButton(title: "Connect", target: self, action: #selector(toggle(_:)))
     private(set) lazy var sendButton = NSButton(title: "Send", target: self, action: #selector(sendInput(_:)))
+    private(set) lazy var sendEachKeyCheckbox = NSButton(
+        checkboxWithTitle: "Send Each Key",
+        target: self,
+        action: #selector(sendEachKeyToggled(_:))
+    )
     private lazy var clearButton = NSButton(title: "Clear", target: self, action: #selector(clear(_:)))
 
     var isConnected: Bool { port != nil }
@@ -80,8 +93,11 @@ final class SerialMonitorViewController: NSViewController {
         inputField.action = #selector(sendInput(_:)) // Return sends.
         inputField.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        let topBar = NSStackView(views: [portPopUp, baudPopUp, connectButton, statusLabel, NSView(), clearButton])
-        let bottomBar = NSStackView(views: [inputField, lineEndingPopUp, sendButton])
+        let topBar = NSStackView(views: [
+            portPopUp, baudPopUp, dataBitsPopUp, parityPopUp, stopBitsPopUp,
+            connectButton, statusLabel, NSView(), clearButton
+        ])
+        let bottomBar = NSStackView(views: [sendEachKeyCheckbox, inputField, keyModeHint, lineEndingPopUp, sendButton])
         for bar in [topBar, bottomBar] {
             bar.orientation = .horizontal
             bar.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
@@ -92,6 +108,7 @@ final class SerialMonitorViewController: NSViewController {
         stack.spacing = 0
         view = stack
 
+        setUpKeyMode()
         refreshPorts()
         updateControls()
     }
@@ -105,6 +122,7 @@ final class SerialMonitorViewController: NSViewController {
         let savedRate = defaults.integer(forKey: DefaultsKey.baudRate)
         baudPopUp.selectItem(withTag: SerialPort.baudRates.contains(savedRate) ? savedRate : SerialPort.defaultBaudRate)
         baudPopUp.toolTip = "Speed. It must match the speed the firmware sets."
+        setUpFramingMenus()
 
         for ending in SerialLineEnding.allCases {
             lineEndingPopUp.addItem(withTitle: ending.title)
@@ -184,6 +202,7 @@ final class SerialMonitorViewController: NSViewController {
     func connect() {
         guard !isConnected, let info = selectedPort else { return }
         let baudRate = baudPopUp.selectedTag()
+        let framing = self.framing
         connection += 1
         let connection = connection
 
@@ -193,6 +212,7 @@ final class SerialMonitorViewController: NSViewController {
             port = try SerialPort(
                 path: info.path,
                 baudRate: baudRate,
+                framing: framing,
                 onData: { [weak self] data in
                     DispatchQueue.main.async { [weak self] in self?.received(data, from: connection) }
                 },
@@ -208,9 +228,10 @@ final class SerialMonitorViewController: NSViewController {
         decoder = SerialTextDecoder()
         defaults.set(info.path, forKey: DefaultsKey.port)
         defaults.set(baudRate, forKey: DefaultsKey.baudRate)
-        show(status: "Connected at \(baudRate) baud")
+        remember(framing)
+        show(status: "Connected at \(baudRate) baud, \(framing.summary)")
         updateControls()
-        view.window?.makeFirstResponder(inputField)
+        focusInput()
     }
 
     /// Closes the port, if one is open.
@@ -237,11 +258,15 @@ final class SerialMonitorViewController: NSViewController {
         connectButton.isEnabled = isConnected || selectedPort != nil
         portPopUp.isEnabled = !isConnected && !ports.isEmpty
         baudPopUp.isEnabled = !isConnected
+        for popUp in [dataBitsPopUp, parityPopUp, stopBitsPopUp] {
+            popUp.isEnabled = !isConnected
+        }
         inputField.isEnabled = isConnected
         sendButton.isEnabled = isConnected
+        updateKeyMode()
     }
 
-    private func show(status: String, isError: Bool = false) {
+    func show(status: String, isError: Bool = false) {
         statusLabel.stringValue = status
         statusLabel.textColor = isError ? .systemRed : .secondaryLabelColor
     }
@@ -281,41 +306,5 @@ final class SerialMonitorViewController: NSViewController {
 
     @objc private func clear(_ sender: Any?) {
         textView.string = ""
-    }
-
-    // MARK: - Sending
-
-    var lineEnding: SerialLineEnding {
-        (lineEndingPopUp.selectedItem?.representedObject as? String).flatMap(SerialLineEnding.init(rawValue:))
-            ?? .standard
-    }
-
-    private func select(_ ending: SerialLineEnding) {
-        lineEndingPopUp.selectItem(at: SerialLineEnding.allCases.firstIndex(of: ending) ?? 0)
-    }
-
-    @objc private func lineEndingChosen(_ sender: Any?) {
-        defaults.set(lineEnding.rawValue, forKey: DefaultsKey.lineEnding)
-    }
-
-    @objc private func sendInput(_ sender: Any?) {
-        guard isConnected else { return }
-        if send(inputField.stringValue) {
-            inputField.stringValue = ""
-        }
-    }
-
-    /// Sends `line` to the board, followed by the chosen line ending.
-    /// Returns false, after showing why, if it could not be sent.
-    @discardableResult
-    func send(_ line: String) -> Bool {
-        guard let port else { return false }
-        do {
-            try port.write(Data((line + lineEnding.text).utf8))
-            return true
-        } catch {
-            show(status: error.localizedDescription, isError: true)
-            return false
-        }
     }
 }

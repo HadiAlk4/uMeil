@@ -31,7 +31,8 @@ enum SerialPortError: Error, Equatable, LocalizedError {
     }
 }
 
-/// An open serial port, set up for raw 8N1 bytes with no flow control.
+/// An open serial port, set up for raw bytes with no flow control, framed
+/// as 8N1 unless another `SerialFraming` is given.
 ///
 /// Uses the POSIX `termios` calls directly. Bytes that arrive are handed to
 /// `onData` on a background queue. The port closes when `close()` is called
@@ -43,6 +44,7 @@ final class SerialPort: @unchecked Sendable {
 
     let path: String
     let baudRate: Int
+    let framing: SerialFraming
 
     private let descriptor: Int32
     private let queue: DispatchQueue
@@ -67,6 +69,7 @@ final class SerialPort: @unchecked Sendable {
     init(
         path: String,
         baudRate: Int = SerialPort.defaultBaudRate,
+        framing: SerialFraming = .standard,
         onData: @escaping @Sendable (Data) -> Void,
         onDisconnect: @escaping @Sendable () -> Void = {}
     ) throws {
@@ -83,7 +86,7 @@ final class SerialPort: @unchecked Sendable {
             Darwin.close(descriptor)
             throw SerialPortError.cannotConfigure(path: path, code: code)
         }
-        Self.makeRaw(&attributes, baudRate: baudRate)
+        Self.makeRaw(&attributes, baudRate: baudRate, framing: framing)
         guard tcsetattr(descriptor, TCSANOW, &attributes) == 0 else {
             let code = errno
             Darwin.close(descriptor)
@@ -96,6 +99,7 @@ final class SerialPort: @unchecked Sendable {
 
         self.path = path
         self.baudRate = baudRate
+        self.framing = framing
         self.descriptor = descriptor
         let queue = DispatchQueue(label: "uMeil.SerialPort")
         let source = DispatchSource.makeReadSource(fileDescriptor: descriptor, queue: queue)
@@ -128,13 +132,15 @@ final class SerialPort: @unchecked Sendable {
         source.cancel()
     }
 
-    /// Changes `attributes` to raw mode: 8 data bits, no parity, 1 stop bit,
-    /// no flow control, and no processing of the bytes in either direction.
-    static func makeRaw(_ attributes: inout termios, baudRate: Int) {
+    /// Changes `attributes` to raw mode: the given framing (8N1 unless told
+    /// otherwise), no flow control, and no processing of the bytes in either
+    /// direction.
+    static func makeRaw(_ attributes: inout termios, baudRate: Int, framing: SerialFraming = .standard) {
         cfmakeraw(&attributes)
         // Ignore the modem control lines and enable the receiver.
         attributes.c_cflag |= tcflag_t(CLOCAL | CREAD)
-        attributes.c_cflag &= ~tcflag_t(PARENB | CSTOPB | CRTSCTS | HUPCL)
+        attributes.c_cflag &= ~tcflag_t(CRTSCTS | HUPCL)
+        framing.apply(to: &attributes)
         attributes.c_iflag &= ~tcflag_t(IXON | IXOFF | IXANY)
         cfsetspeed(&attributes, speed_t(baudRate))
         withUnsafeMutableBytes(of: &attributes.c_cc) { controlCharacters in
