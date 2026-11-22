@@ -104,7 +104,7 @@ struct StreamingProcessRunnerTests {
             try await StreamingProcessRunner().run(
                 shell,
                 // `exec` so the signal goes to `sleep` itself, not a shell waiting on it.
-                arguments: ["-c", "echo started; exec sleep 30"],
+                arguments: ["-c", "echo started; exec sleep 300"],
                 currentDirectory: nil
             ) { lines.add($0) }
         }
@@ -115,7 +115,8 @@ struct StreamingProcessRunnerTests {
         task.cancel()
         let output = try await task.value
 
-        #expect(Date().timeIntervalSince(started) < 10)
+        // Far less than the 300 seconds `sleep` would take on its own.
+        #expect(Date().timeIntervalSince(started) < TestTiming.seconds(10))
         #expect(output.exitCode != 0)
         #expect(output.standardOutput == "started\n")
     }
@@ -127,7 +128,7 @@ struct StreamingProcessRunnerTests {
             try? await Task.sleep(for: .seconds(60))
             return try await StreamingProcessRunner().run(
                 shell,
-                arguments: ["-c", "exec sleep 30"],
+                arguments: ["-c", "exec sleep 300"],
                 currentDirectory: nil
             ) { _ in }
         }
@@ -135,7 +136,8 @@ struct StreamingProcessRunnerTests {
 
         let output = try await task.value
 
-        #expect(Date().timeIntervalSince(started) < 10)
+        // Far less than the 300 seconds `sleep` would take on its own.
+        #expect(Date().timeIntervalSince(started) < TestTiming.seconds(10))
         #expect(output.exitCode != 0)
     }
 

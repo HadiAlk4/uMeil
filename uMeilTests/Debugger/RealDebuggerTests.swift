@@ -61,7 +61,7 @@ struct RealDebuggerTests {
 
     // MARK: - Without a board
 
-    @Test(.enabled(if: hasTools), .timeLimit(.minutes(1)))
+    @Test(.enabled(if: hasTools), .timeLimit(TestTiming.minutes(1)))
     func gdbReadsTheProgramAndAnswersWithoutABoard() async throws {
         let debugging = try await startGDB()
         let session = debugging.session
@@ -87,7 +87,7 @@ struct RealDebuggerTests {
 
     // MARK: - With a board
 
-    @Test(.enabled(if: hasBoard), .timeLimit(.minutes(2)))
+    @Test(.enabled(if: hasBoard), .timeLimit(TestTiming.minutes(2)))
     func onTheBoardBlinkyRunsToMainThenStepsBreaksPausesAndResets() async throws {
         let debugging = try await startGDB()
         let session = debugging.session
@@ -149,7 +149,7 @@ struct RealDebuggerTests {
     }
 
     @MainActor
-    @Test(.enabled(if: hasBoard), .timeLimit(.minutes(2)))
+    @Test(.enabled(if: hasBoard), .timeLimit(TestTiming.minutes(2)))
     func theEditorWindowStartsOnTheBoardStepsHitsABreakpointAndStops() async throws {
         let folder = try TemporaryFolder()
         let suite = "uMeilTests-\(UUID().uuidString)"
@@ -200,7 +200,7 @@ struct RealDebuggerTests {
     /// its `DATA` register turns LED D1 on and off (watch the board), and
     /// GDB reads back what was written. `Memory 1` writes RAM the same way.
     @MainActor
-    @Test(.enabled(if: hasBoard), .timeLimit(.minutes(2)))
+    @Test(.enabled(if: hasBoard), .timeLimit(TestTiming.minutes(2)))
     func onTheBoardThePeripheralsPanelDrivesLEDD1AndMemory1WritesRAM() async throws {
         UserDefaults.standard.removeObject(forKey: PeripheralsViewController.selectionKey)
         let folder = try TemporaryFolder()

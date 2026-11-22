@@ -198,7 +198,7 @@ struct ClangdSecurityTests {
         return try FakeTool.install(.clangd, in: bin, script: shellWrapper)
     }
 
-    @Test(.timeLimit(.minutes(1)))
+    @Test(.timeLimit(TestTiming.minutes(1)))
     func spawnedClangdReceivesPinnedQueryDriverAndEnableConfigFalse() async throws {
         let temp = try TemporaryDirectory()
         let bin = try temp.directory("bin")
@@ -229,7 +229,7 @@ struct ClangdSecurityTests {
         #expect(!recordedArgs.contains("--query-driver=**/\(Tool.compiler.executableName)"))
     }
 
-    @Test(.timeLimit(.minutes(1)))
+    @Test(.timeLimit(TestTiming.minutes(1)))
     func spawnedClangdOmitsQueryDriverAndCompileCommandsWhenNil() async throws {
         let temp = try TemporaryDirectory()
         let bin = try temp.directory("bin")

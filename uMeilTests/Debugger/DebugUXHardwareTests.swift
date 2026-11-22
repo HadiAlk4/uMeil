@@ -100,7 +100,7 @@ struct DebugUXHardwareTests {
 
     }
 
-    @Test(.enabled(if: hasBoard), .timeLimit(.minutes(3)))
+    @Test(.enabled(if: hasBoard), .timeLimit(TestTiming.minutes(3)))
     func onTheBoardTheBarStepsAndTheCodeShowsTheValues() async throws {
         let folder = try TemporaryFolder()
         let controller = try makeWindow(in: folder)
@@ -162,7 +162,7 @@ struct DebugUXHardwareTests {
         #expect(controller.editor.inlineValues.isEmpty)
     }
 
-    @Test(.enabled(if: hasBoard), .timeLimit(.minutes(1)))
+    @Test(.enabled(if: hasBoard), .timeLimit(TestTiming.minutes(1)))
     func onTheBoardTheSerialTabOpensTheLaunchPadsPort() async throws {
         let folder = try TemporaryFolder()
         let controller = try makeWindow(in: folder)

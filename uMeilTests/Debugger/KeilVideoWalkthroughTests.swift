@@ -58,7 +58,7 @@ struct KeilVideoWalkthroughTests {
 
     """
 
-    @Test(.enabled(if: hasBoard), .timeLimit(.minutes(4)))
+    @Test(.enabled(if: hasBoard), .timeLimit(TestTiming.minutes(4)))
     func theDebuggerDoesWhatTheKeilVideoShows() async throws {
         FileManager.default.createFile(atPath: Self.logFile.path(percentEncoded: false), contents: nil)
         let folder = try TemporaryFolder()

@@ -75,7 +75,7 @@ struct ClangdIntegrationTests {
         throw LSPError.disconnected
     }
 
-    @Test(.timeLimit(.minutes(1)))
+    @Test(.timeLimit(TestTiming.minutes(1)))
     func navigatesToDriverLibDefinitionFromBlinky() async throws {
         let harness = try await startBlinkySession()
 
@@ -90,7 +90,7 @@ struct ClangdIntegrationTests {
         await harness.close()
     }
 
-    @Test(.timeLimit(.minutes(1)))
+    @Test(.timeLimit(TestTiming.minutes(1)))
     func completesDriverLibFunctionsInBlinky() async throws {
         let harness = try await startBlinkySession()
 
@@ -109,7 +109,7 @@ struct ClangdIntegrationTests {
     }
 
     @MainActor
-    @Test(.timeLimit(.minutes(1)))
+    @Test(.timeLimit(TestTiming.minutes(1)))
     func disabledControllerAnswersNothingUntilTurnedBackOn() async throws {
         let temp = try TemporaryDirectory()
         let template = try #require(try ProjectTemplate.all().first { $0.identifier == "Blinky" })
@@ -144,7 +144,7 @@ struct ClangdIntegrationTests {
         controller.stop()
     }
 
-    @Test(.timeLimit(.minutes(1)))
+    @Test(.timeLimit(TestTiming.minutes(1)))
     func publishesAndClearsLiveDiagnosticsWhileTyping() async throws {
         let harness = try await startBlinkySession()
 
@@ -162,7 +162,7 @@ struct ClangdIntegrationTests {
         await harness.close()
     }
 
-    @Test(.timeLimit(.minutes(1)))
+    @Test(.timeLimit(TestTiming.minutes(1)))
     func editBeforeClangdFinishesBootingIsNotOverwrittenByInitialOpen() async throws {
         let clangd = try #require(ToolLocator.standard().locate(.clangd))
         let temp = try TemporaryDirectory()
@@ -210,7 +210,7 @@ struct ClangdIntegrationTests {
         continuation.finish()
     }
 
-    @Test(.timeLimit(.minutes(1)))
+    @Test(.timeLimit(TestTiming.minutes(1)))
     func ignoresWorkspaceClangdConfigFile() async throws {
         let clangd = try #require(ToolLocator.standard().locate(.clangd))
         let temp = try TemporaryDirectory()
