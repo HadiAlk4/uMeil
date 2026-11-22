@@ -86,7 +86,7 @@ struct CSyntaxHighlighterTests {
         #expect(broken.contains { $0.kind == .type })
     }
 
-    @Test(.timeLimit(.minutes(1)))
+    @Test(.timeLimit(TestTiming.minutes(1)))
     func highlightsATenThousandLineFile() async throws {
         let line = "    GPIOPinWrite(GPIO_PORTN_BASE, GPIO_PIN_0, 1); // on\n"
         let text = "void run(void) {\n" + String(repeating: line, count: 10_000) + "}\n"

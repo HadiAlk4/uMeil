@@ -30,7 +30,7 @@ struct WebsiteScreenshotTests {
         }
     }
 
-    @Test(.enabled(if: isEnabled), .timeLimit(.minutes(3)))
+    @Test(.enabled(if: isEnabled), .timeLimit(TestTiming.minutes(3)))
     func screenshotOfADebugSessionOnTheBoard() async throws {
         let output = try #require(Self.output)
         UserDefaults.standard.removeObject(forKey: PeripheralsViewController.selectionKey)

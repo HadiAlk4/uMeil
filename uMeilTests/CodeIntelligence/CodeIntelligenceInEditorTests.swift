@@ -129,7 +129,7 @@ struct CodeIntelligenceInEditorTests {
         timeout: Duration = .seconds(20),
         condition: @MainActor () -> Bool
     ) async -> Bool {
-        let deadline = ContinuousClock.now + timeout
+        let deadline = ContinuousClock.now + TestTiming.duration(timeout)
         while ContinuousClock.now < deadline {
             if condition() { return true }
             try? await Task.sleep(for: .milliseconds(40))
@@ -137,7 +137,7 @@ struct CodeIntelligenceInEditorTests {
         return condition()
     }
 
-    @Test(.timeLimit(.minutes(1)))
+    @Test(.timeLimit(TestTiming.minutes(1)))
     func openingBlinkyPreparesCompileCommandsAndNavigatesToDriverLibDefinition() async throws {
         let temp = try TemporaryDirectory()
         let controller = try makeBlinkyWindow(in: temp)
@@ -164,7 +164,7 @@ struct CodeIntelligenceInEditorTests {
         controller.codeIntelligence?.stop()
     }
 
-    @Test(.timeLimit(.minutes(1)))
+    @Test(.timeLimit(TestTiming.minutes(1)))
     func inlineErrorsAndAutocompleteWorkWhileEditingBlinky() async throws {
         let temp = try TemporaryDirectory()
         let controller = try makeBlinkyWindow(in: temp)
