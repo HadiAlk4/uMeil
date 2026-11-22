@@ -189,6 +189,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         updateCursorPosition()
 
         document = loaded
+        (textView as? EditorTextView)?.lineCommentPrefix = SourceLanguage(url: url)?.lineCommentPrefix
         tabs.select(url)
         tabs.stash(url, unsavedText: nil, selection: selection)
         isModified = restored?.isModified ?? false
@@ -235,6 +236,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         isLoading = false
 
         document = nil
+        (textView as? EditorTextView)?.lineCommentPrefix = nil
         updateCursorPosition()
         isModified = false
         lineIndex = LineIndex("")

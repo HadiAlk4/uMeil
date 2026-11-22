@@ -92,12 +92,28 @@ final class EditorTextView: NSTextView {
         shiftSelectedLines(.left)
     }
 
-    /// Editor > Shift Right (⌘]).
+    /// What starts a line comment in the file being edited, such as `//`,
+    /// or `nil` for files the editor does not know how to comment.
+    var lineCommentPrefix: String?
+
+    /// Edit > Comment Selection (⌘/).
+    @objc func toggleComment(_ sender: Any?) {
+        guard isEditable, let lineCommentPrefix,
+              let edit = CodeEditing.toggleLineComment(
+                in: currentText,
+                selection: selectedRange(),
+                prefix: lineCommentPrefix
+              )
+        else { return }
+        apply(edit)
+    }
+
+    /// Edit > Shift Right (⌘]).
     @objc func shiftRight(_ sender: Any?) {
         shiftSelectedLines(.right)
     }
 
-    /// Editor > Shift Left (⌘[).
+    /// Edit > Shift Left (⌘[).
     @objc func shiftLeft(_ sender: Any?) {
         shiftSelectedLines(.left)
     }
@@ -106,6 +122,8 @@ final class EditorTextView: NSTextView {
         switch item.action {
         case #selector(shiftRight(_:)), #selector(shiftLeft(_:)):
             return isEditable
+        case #selector(toggleComment(_:)):
+            return isEditable && lineCommentPrefix != nil
         default:
             return super.validateUserInterfaceItem(item)
         }

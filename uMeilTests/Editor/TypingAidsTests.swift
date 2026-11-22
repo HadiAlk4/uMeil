@@ -112,3 +112,28 @@ struct ShiftLinesTypingTests {
         #expect(fixture.shown == "a‸();\n")
     }
 }
+
+// MARK: - Commenting lines
+
+@MainActor
+struct LineCommentTypingTests {
+    @Test func commandSlashCommentsAndUncommentsInACFile() throws {
+        let fixture = try TypingFixture("«a();\nb();»\n")
+        fixture.textView.toggleComment(nil)
+        #expect(fixture.shown == "«// a();\n// b();»\n")
+        fixture.textView.toggleComment(nil)
+        #expect(fixture.shown == "«a();\nb();»\n")
+    }
+
+    @Test func filesWithoutLineCommentsCannotBeCommented() throws {
+        let fixture = try TypingFixture("‸SECTIONS {}\n", fileName: "tm4c1294ncpdt.ld")
+        let item = NSMenuItem(
+            title: "Comment Selection",
+            action: #selector(EditorTextView.toggleComment(_:)),
+            keyEquivalent: ""
+        )
+        #expect(!fixture.textView.validateUserInterfaceItem(item))
+        fixture.textView.toggleComment(nil)
+        #expect(fixture.textView.string == "SECTIONS {}\n")
+    }
+}

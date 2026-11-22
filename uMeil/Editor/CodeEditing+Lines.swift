@@ -41,3 +41,38 @@ extension CodeEditing {
         return count
     }
 }
+
+// MARK: - Commenting lines
+
+extension CodeEditing {
+    /// Comments out the selected lines with `prefix` (such as `//`), or
+    /// uncomments them if every one is already commented. Blank lines are
+    /// skipped, unless only blank lines are selected. `// ` goes in at the
+    /// smallest indentation of the lines, so they stay lined up.
+    static func toggleLineComment(in text: NSString, selection: NSRange, prefix: String) -> TextEdit? {
+        let lines = lines(in: text, coveredBy: selection)
+        let filled = lines.filter { !isBlank($0, in: text) }
+        let targets = filled.isEmpty ? lines : filled
+        let prefixLength = (prefix as NSString).length
+
+        let indents = targets.map { whitespaceLength(in: text, from: $0.location, limit: NSMaxRange($0)) }
+        let commented = zip(targets, indents).allSatisfy { line, indent in
+            indent + prefixLength <= line.length
+                && text.substring(with: NSRange(location: line.location + indent, length: prefixLength)) == prefix
+        }
+
+        let changes: [LineChange]
+        if commented && !filled.isEmpty {
+            changes = zip(targets, indents).map { line, indent in
+                let start = line.location + indent
+                let afterPrefix = start + prefixLength
+                let space = afterPrefix < NSMaxRange(line) && text.character(at: afterPrefix) == Self.space ? 1 : 0
+                return LineChange(location: start, deleteLength: prefixLength + space)
+            }
+        } else {
+            let column = indents.min() ?? 0
+            changes = targets.map { LineChange(location: $0.location + column, insertion: prefix + " ") }
+        }
+        return edit(applying: changes, to: lines, in: text, selection: selection)
+    }
+}

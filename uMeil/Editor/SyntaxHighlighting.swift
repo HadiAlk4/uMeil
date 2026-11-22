@@ -173,4 +173,11 @@ enum SourceLanguage: Equatable, Sendable {
         default: return nil
         }
     }
+
+    /// What starts a comment that runs to the end of the line.
+    var lineCommentPrefix: String {
+        switch self {
+        case .c: "//"
+        }
+    }
 }

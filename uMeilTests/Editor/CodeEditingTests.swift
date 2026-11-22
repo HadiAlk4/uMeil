@@ -226,3 +226,51 @@ struct ShiftLinesTests {
         #expect(shift("  ‸  a", .left) == "‸a")
     }
 }
+
+// MARK: - Commenting lines
+
+struct LineCommentTests {
+    private func toggle(_ marked: String) -> String? {
+        let start = MarkedText(marked)
+        return start.applying(
+            CodeEditing.toggleLineComment(in: start.text as NSString, selection: start.selection, prefix: "//")
+        )
+    }
+
+    @Test func commentsTheCursorsLine() {
+        #expect(toggle("x‸ = 1;") == "// x‸ = 1;")
+        #expect(toggle("    x‸ = 1;") == "    // x‸ = 1;")
+    }
+
+    @Test func uncommentsACommentedLine() {
+        #expect(toggle("// x‸ = 1;") == "x‸ = 1;")
+        #expect(toggle("    //x = 1;‸") == "    x = 1;‸")
+    }
+
+    @Test func commentsSelectedLinesAtTheirSmallestIndentation() {
+        #expect(toggle("«    if (x) {\n        y();\n    }»\n") == "«    // if (x) {\n    //     y();\n    // }»\n")
+    }
+
+    @Test func skipsBlankLines() {
+        #expect(toggle("«a();\n\nb();»") == "«// a();\n\n// b();»")
+        #expect(toggle("«// a();\n\n// b();»") == "«a();\n\nb();»")
+    }
+
+    @Test func aMixOfCommentedAndPlainLinesIsCommented() {
+        #expect(toggle("«// a();\nb();»") == "«// // a();\n// b();»")
+    }
+
+    @Test func anEmptyLineCanBeCommented() {
+        #expect(toggle("‸") == "// ‸")
+    }
+
+    @Test func togglingTwiceGivesBackTheText() {
+        let start = MarkedText("«    a();\n\tb();\n»c();")
+        let text = start.text as NSString
+        let once = CodeEditing.toggleLineComment(in: text, selection: start.selection, prefix: "//")
+        let commented = text.replacingCharacters(in: once!.range, with: once!.replacement) as NSString
+        let twice = CodeEditing.toggleLineComment(in: commented, selection: once!.selection, prefix: "//")
+        let restored = commented.replacingCharacters(in: twice!.range, with: twice!.replacement)
+        #expect(restored == start.text)
+    }
+}

@@ -66,4 +66,12 @@ struct AppSetupTests {
         #expect(right.action == #selector(EditorTextView.shiftRight(_:)))
         #expect(left.action == #selector(EditorTextView.shiftLeft(_:)))
     }
+
+    @Test func editMenuCommentsLinesWithCommandSlash() throws {
+        let menu = MainMenu.make(appName: "uMeil")
+        let edit = try #require(menu.items.first { $0.submenu?.title == "Edit" }?.submenu)
+        let comment = try #require(edit.items.first { $0.title == "Comment Selection" })
+        #expect(comment.keyEquivalent == "/" && comment.keyEquivalentModifierMask == .command)
+        #expect(comment.action == #selector(EditorTextView.toggleComment(_:)))
+    }
 }
