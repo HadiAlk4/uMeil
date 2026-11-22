@@ -5,76 +5,103 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>uMeil — an embedded IDE for the TM4C129 on macOS</title>
   <meta name="description" content="uMeil is a native macOS IDE for the Texas Instruments Tiva TM4C129: write, build, flash and debug on the EK-TM4C1294XL LaunchPad.">
+  <meta name="theme-color" content="#0b3986">
   <meta property="og:title" content="uMeil">
   <meta property="og:description" content="Write, build, flash and debug the TI Tiva TM4C129 on your Mac.">
   <meta property="og:image" content="https://hadialk4.github.io/uMeil/screenshot.png">
   <link rel="alternate" type="application/rss+xml" title="uMeil updates" href="appcast.xml">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="hero">
-    <p class="eyebrow">For the Texas Instruments Tiva TM4C129</p>
-    <h1>uMeil</h1>
-    <p class="lede">Write, build, flash and debug your LaunchPad from a native Mac app. Think Keil µVision, made for macOS.</p>
-    <div class="actions">
-      <a class="button" id="download" href="https://github.com/HadiAlk4/uMeil/releases/latest/download/uMeil.dmg">Download for Mac</a>
-      <a class="link" href="https://github.com/HadiAlk4/uMeil/releases/latest">Release notes</a>
-    </div>
-    <p class="small">Apple Silicon · macOS 14 Sonoma or later · Free and open source (MIT)</p>
-  </header>
-
-  <main>
-    <figure class="shot">
-      <img src="screenshot.png" width="1440" height="900"
-           alt="uMeil stopped at a breakpoint in Blinky on the LaunchPad, with source, disassembly, CPU registers and GPIO port N's registers decoded into pins.">
-      <figcaption>Blinky stopped at a breakpoint on an EK-TM4C1294XL, with GPIO port N's registers decoded pin by pin.</figcaption>
-    </figure>
-
-    <section class="features" aria-label="Features">
-      <div>
-        <h2>Build</h2>
-        <p>A C editor with highlighting, autocomplete, go to definition and inline errors from <code>clangd</code>, and a built-in build system around Arm's GNU toolchain.</p>
-      </div>
-      <div>
-        <h2>Flash</h2>
-        <p>One button builds and writes your program to the board through OpenOCD, with plain-language errors when the board is missing or the chip is locked.</p>
-      </div>
-      <div>
-        <h2>Debug</h2>
-        <p>Breakpoints, stepping, the call stack, locals, CPU registers, memory, and every peripheral register with its bit fields, read from the running chip.</p>
-      </div>
-      <div>
-        <h2>Bring your course work</h2>
-        <p>Import Keil µVision projects (<code>.uvprojx</code>) as they are, and talk to the board's UART in the serial monitor.</p>
-      </div>
-    </section>
-
-    <section class="details">
-      <h2>Install</h2>
-      <p>Open the DMG and drag uMeil to Applications. On first launch uMeil finds the compiler, debugger and OpenOCD you already have, or downloads Arm's official toolchain and xPack OpenOCD for you.</p>
-      <p>With Homebrew:</p>
-      <pre><code>brew tap hadialk4/umeil https://github.com/HadiAlk4/uMeil
-brew install --cask umeil</code></pre>
-      <p class="note" id="unsigned-note">Until uMeil is notarized by Apple, macOS will say it cannot check the app for malicious software the first time you open it. Open it once, then choose <strong>Open Anyway</strong> in System Settings › Privacy &amp; Security.</p>
-
-      <h2>Requirements</h2>
-      <ul>
-        <li>A Mac with Apple Silicon (M1 or later). Intel Macs are not supported.</li>
-        <li>macOS 14 Sonoma or later.</li>
-        <li>An EK-TM4C1294XL LaunchPad, connected over its debug USB port, to flash and debug.</li>
-        <li>About 1 GB of disk space for the toolchain, if uMeil downloads it.</li>
+  <main class="page">
+    <section class="brand">
+      <p class="logo">
+        <!-- The app icon redrawn as an engraving: a solid band between two hatched corners. -->
+        <svg class="mark" viewBox="0 0 100 100" width="44" height="44" aria-hidden="true">
+          <defs>
+            <clipPath id="mark-tile"><rect x="2" y="2" width="96" height="96" rx="21"/></clipPath>
+            <pattern id="mark-dense" width="3.2" height="3.2" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
+              <line x1="0.8" y1="0" x2="0.8" y2="3.2" stroke="currentColor" stroke-width="1.1"/>
+            </pattern>
+            <pattern id="mark-sparse" width="5.5" height="5.5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <line x1="1" y1="0" x2="1" y2="5.5" stroke="currentColor" stroke-width="0.9"/>
+            </pattern>
+            <filter id="mark-ink" x="-5%" y="-5%" width="110%" height="110%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" seed="4"/>
+              <feDisplacementMap in="SourceGraphic" scale="1.6"/>
+            </filter>
+          </defs>
+          <g clip-path="url(#mark-tile)" filter="url(#mark-ink)">
+            <polygon points="24,0 100,0 62,38" fill="url(#mark-dense)"/>
+            <polygon points="100,0 100,76 62,38" fill="url(#mark-sparse)"/>
+            <polygon points="0,24 38,62 0,100" fill="url(#mark-dense)"/>
+            <polygon points="0,100 38,62 76,100" fill="url(#mark-sparse)"/>
+            <polygon points="0,0 24,0 100,76 100,100 76,100 0,24" fill="currentColor"/>
+          </g>
+          <rect x="2" y="2" width="96" height="96" rx="21" fill="none" stroke="currentColor" stroke-width="2.5" filter="url(#mark-ink)"/>
+        </svg>
+        uMeil
+      </p>
+      <p class="tagline">An embedded IDE for the Texas Instruments Tiva TM4C129, made for the Mac.</p>
+      <ul class="facts">
+        <li>Apple Silicon · macOS 14 or later</li>
+        <li>EK-TM4C1294XL LaunchPad</li>
       </ul>
     </section>
+
+    <section>
+      <h2>The app</h2>
+      <ul>
+        <li>Write C with <code>clangd</code></li>
+        <li>Build with Arm GCC</li>
+        <li>Flash through OpenOCD</li>
+        <li>Debug on the board</li>
+        <li>Import Keil projects</li>
+        <li>Serial monitor</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>About</h2>
+      <ul>
+        <li>Made by <a href="https://github.com/HadiAlk4">Hadi</a></li>
+        <li><a href="https://github.com/HadiAlk4/uMeil">Source on GitHub</a></li>
+        <li><a href="https://github.com/HadiAlk4/uMeil/releases/latest">Release notes</a></li>
+        <li><a href="https://github.com/HadiAlk4/uMeil/issues">Report a bug</a></li>
+      </ul>
+    </section>
+
+    <section class="get">
+      <h2>Download</h2>
+      <p class="tagline">Open the DMG and drag uMeil to Applications. On first launch it finds or downloads the toolchain for you.</p>
+      <a class="download" id="download" href="https://github.com/HadiAlk4/uMeil/releases/latest/download/uMeil.dmg">
+        <span>Download for Mac</span><span class="arrow" aria-hidden="true">→</span>
+        <span class="seal" aria-hidden="true"><span class="seal-text">uM</span></span>
+      </a>
+      <p class="note" id="unsigned-note">Until uMeil is notarized, macOS will warn you the first time you open it. Open it once, then choose <strong>Open Anyway</strong> in System Settings › Privacy &amp; Security.</p>
+    </section>
+
+    <section class="brew">
+      <h2>Homebrew</h2>
+      <div class="copy">
+        <pre tabindex="0" role="button" aria-label="Copy the Homebrew commands" title="Click to copy"><code>brew tap hadialk4/umeil https://github.com/HadiAlk4/uMeil
+brew install --cask umeil</code></pre>
+        <span class="copied" role="status" aria-live="polite"></span>
+      </div>
+    </section>
+
+    <nav class="legal" aria-label="More">
+      <a href="https://github.com/HadiAlk4/uMeil/blob/main/LICENSE">MIT License</a>
+    </nav>
   </main>
 
-  <footer>
-    <a href="https://github.com/HadiAlk4/uMeil">Source on GitHub</a>
-    <span aria-hidden="true">·</span>
-    <a href="https://github.com/HadiAlk4/uMeil/issues">Report a bug</a>
-    <span aria-hidden="true">·</span>
-    <a href="appcast.xml">Update feed</a>
-  </footer>
+  <div class="landscape" role="presentation"><canvas class="dust" aria-hidden="true"></canvas></div>
+
+  <script src="script.js" defer></script>
 </body>
 </html>
