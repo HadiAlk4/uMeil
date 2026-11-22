@@ -47,6 +47,30 @@ struct CodeIntelligenceEditorUnitTests {
         #expect(editor.diagnosticBar.isHidden)
     }
 
+    @Test func underlinesThatMovedWithAnEditAboveThemAreAllCleared() throws {
+        let temp = try TemporaryDirectory()
+        let file = temp.url.appending(path: "main.c")
+        try Data("int main(void) {\n    printf(\"blink\\n\");\n}\n".utf8).write(to: file)
+
+        let editor = EditorViewController()
+        editor.loadViewIfNeeded()
+        try editor.open(file)
+
+        let range = LSPRange(start: LSPPosition(line: 1, character: 4), end: LSPPosition(line: 1, character: 10))
+        editor.applyLiveDiagnostics([LSPDiagnostic(range: range, severity: .error, message: "undeclared 'printf'")])
+
+        // A quick-fix adds a whole line above the error, which moves its underline down.
+        editor.textView.insertText("#include <stdio.h>\n", replacementRange: NSRange(location: 0, length: 0))
+        editor.applyLiveDiagnostics([])
+
+        let layoutManager = try #require(editor.textView.layoutManager)
+        let length = (editor.textView.string as NSString).length
+        let underlined = (0..<length).filter {
+            layoutManager.temporaryAttributes(atCharacterIndex: $0, effectiveRange: nil)[.underlineStyle] != nil
+        }
+        #expect(underlined.isEmpty)
+    }
+
     @Test func turningCodeIntelligenceOffClearsAndIgnoresDiagnostics() throws {
         let temp = try TemporaryDirectory()
         let file = temp.url.appending(path: "main.c")
