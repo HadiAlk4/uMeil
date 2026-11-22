@@ -228,8 +228,8 @@ enum MainMenu {
         menu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         menu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         menu.addItem(.separator())
-
         addCodeEditingItems(to: menu)
+        addLineEditingItems(to: menu)
         menu.addItem(.separator())
 
         let find = menu.addItem(withTitle: "Find", action: nil, keyEquivalent: "")
@@ -241,8 +241,10 @@ enum MainMenu {
         addCodeIntelligenceItems(to: menu)
         return menu
     }
+}
 
-    private static func windowMenu() -> NSMenu {
+extension MainMenu {
+    fileprivate static func windowMenu() -> NSMenu {
         let menu = NSMenu(title: "Window")
         menu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         menu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
@@ -261,9 +263,7 @@ enum MainMenu {
         close.keyEquivalentModifierMask = [.command, .shift]
         return menu
     }
-}
 
-extension MainMenu {
     /// Shift Right, Shift Left, and Comment Selection, for the editor.
     fileprivate static func addCodeEditingItems(to menu: NSMenu) {
         menu.addItem(withTitle: "Shift Right", action: #selector(EditorTextView.shiftRight(_:)), keyEquivalent: "]")
@@ -273,5 +273,32 @@ extension MainMenu {
             action: #selector(EditorTextView.toggleComment(_:)),
             keyEquivalent: "/"
         )
+    }
+
+    /// Move Line Up/Down and Duplicate Line, for the editor.
+    fileprivate static func addLineEditingItems(to menu: NSMenu) {
+        let upKey = UnicodeScalar(NSUpArrowFunctionKey).map { String(Character($0)) } ?? ""
+        let downKey = UnicodeScalar(NSDownArrowFunctionKey).map { String(Character($0)) } ?? ""
+
+        let moveUp = menu.addItem(
+            withTitle: "Move Line Up",
+            action: #selector(EditorTextView.moveLineUp(_:)),
+            keyEquivalent: upKey
+        )
+        moveUp.keyEquivalentModifierMask = [.option]
+
+        let moveDown = menu.addItem(
+            withTitle: "Move Line Down",
+            action: #selector(EditorTextView.moveLineDown(_:)),
+            keyEquivalent: downKey
+        )
+        moveDown.keyEquivalentModifierMask = [.option]
+
+        let duplicate = menu.addItem(
+            withTitle: "Duplicate Line",
+            action: #selector(EditorTextView.duplicateLineDown(_:)),
+            keyEquivalent: downKey
+        )
+        duplicate.keyEquivalentModifierMask = [.option, .shift]
     }
 }

@@ -89,6 +89,9 @@ final class EditorTextView: NSTextView {
         if completionKeyHandler?(event) == true {
             return
         }
+        if handleLineEditingKeyDown(event) {
+            return
+        }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if modifiers == .control, event.charactersIgnoringModifiers == " " {
             onRequestCompletion?()
@@ -190,6 +193,9 @@ final class EditorTextView: NSTextView {
     }
 
     override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if let valid = validateLineEditingUserInterfaceItem(item) {
+            return valid
+        }
         switch item.action {
         case #selector(shiftRight(_:)), #selector(shiftLeft(_:)):
             return isEditable
