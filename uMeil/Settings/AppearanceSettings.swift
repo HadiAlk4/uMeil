@@ -1,8 +1,9 @@
 import AppKit
 
-/// The font the editor, the terminal and the debugger's tables share, and
-/// whether the app is light, dark, or follows the system. Kept in user
-/// defaults, so they last between launches.
+/// The font the editor, the terminal and the debugger's tables share,
+/// whether the app is light, dark, or follows the system, and whether the
+/// editor indents with spaces or tabs. Kept in user defaults, so they last
+/// between launches.
 ///
 /// ⌘+ and ⌘− change the size, which helps when the screen is projected in
 /// class. Everything that shows code listens for `didChange`.
@@ -37,6 +38,7 @@ final class AppearanceSettings {
     static let fontNameKey = "EditorFontName"
     static let fontSizeKey = "EditorFontSize"
     static let themeKey = "AppearanceTheme"
+    static let indentUsingSpacesKey = "EditorIndentUsingSpaces"
 
     /// The settings the app uses. The unit tests get their own, so running
     /// them leaves the user's choices alone.
@@ -136,6 +138,24 @@ final class AppearanceSettings {
     /// Makes the whole app light or dark, or lets it follow the system.
     func applyTheme(to application: NSApplication? = nil) {
         (application ?? NSApp)?.appearance = theme.appearance
+    }
+
+    // MARK: - Indentation
+
+    /// Whether Tab and automatic indentation insert spaces (the default)
+    /// or tab characters.
+    var indentUsingSpaces: Bool {
+        get { defaults.object(forKey: Self.indentUsingSpacesKey) as? Bool ?? true }
+        set {
+            guard newValue != indentUsingSpaces else { return }
+            defaults.set(newValue, forKey: Self.indentUsingSpacesKey)
+            notify()
+        }
+    }
+
+    /// One level of indentation, as wide as a tab is drawn.
+    var indentStyle: IndentStyle {
+        IndentStyle(usesSpaces: indentUsingSpaces, width: EditorTheme.tabWidth)
     }
 
     private func notify() {

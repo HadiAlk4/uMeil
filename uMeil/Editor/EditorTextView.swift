@@ -57,6 +57,26 @@ final class EditorTextView: NSTextView {
         super.keyDown(with: event)
     }
 
+    // MARK: - Typing aids
+
+    /// What one level of indentation is. Settings decides, unless a test does.
+    var indentStyleOverride: IndentStyle?
+    var indentStyle: IndentStyle {
+        indentStyleOverride ?? AppearanceSettings.shared.indentStyle
+    }
+
+    override func insertTab(_ sender: Any?) {
+        if !handleTab() {
+            super.insertTab(sender)
+        }
+    }
+
+    override func deleteBackward(_ sender: Any?) {
+        if !handleDeleteBackward() {
+            super.deleteBackward(sender)
+        }
+    }
+
     override func complete(_ sender: Any?) {
         onRequestCompletion?()
     }

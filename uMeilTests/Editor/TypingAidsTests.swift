@@ -1,0 +1,70 @@
+import AppKit
+import Testing
+@testable import uMeil
+
+/// An editor showing some text in a file, inside a window so it has an
+/// undo manager. Keeps the window and the file alive while a test runs.
+@MainActor
+final class TypingFixture {
+    let editor: EditorViewController
+    let window: NSWindow
+    private let folder: TemporaryDirectory
+
+    /// Shows `marked` (see `MarkedText`), with its selection, in `fileName`.
+    init(_ marked: String, fileName: String = "main.c", style: IndentStyle = .fourSpaces) throws {
+        let start = MarkedText(marked)
+        folder = try TemporaryDirectory()
+        let url = folder.url.appending(path: fileName)
+        try Data(start.text.utf8).write(to: url)
+        editor = EditorViewController()
+        window = NSWindow(contentViewController: editor)
+        try editor.open(url)
+        textView.indentStyleOverride = style
+        textView.setSelectedRange(start.selection)
+    }
+
+    var textView: EditorTextView {
+        // swiftlint:disable:next force_cast
+        editor.textView as! EditorTextView
+    }
+
+    /// The text with the selection marked, as `MarkedText` writes it.
+    var shown: String {
+        MarkedText(text: textView.string, selection: textView.selectedRange()).description
+    }
+
+    /// Types `characters` one at a time, as the keyboard would.
+    func type(_ characters: String) {
+        for character in characters {
+            textView.insertText(String(character), replacementRange: NSRange(location: NSNotFound, length: 0))
+        }
+    }
+}
+
+/// The typing aids through the real editor: keys go to the text view the
+/// way AppKit sends them, and edits can be undone.
+@MainActor
+struct TypingAidsTests {
+    // MARK: - Tab and Backspace
+
+    @Test func tabInsertsSpacesAndBackspaceTakesThemBack() throws {
+        let fixture = try TypingFixture("int x;\n‸\n")
+        fixture.textView.insertTab(nil)
+        #expect(fixture.shown == "int x;\n    ‸\n")
+        fixture.textView.deleteBackward(nil)
+        #expect(fixture.shown == "int x;\n‸\n")
+    }
+
+    @Test func tabInsertsATabWhenTabsAreChosen() throws {
+        let fixture = try TypingFixture("‸x", style: .tabs)
+        fixture.textView.insertTab(nil)
+        #expect(fixture.shown == "\t‸x")
+    }
+
+    @Test func anIndentCanBeUndone() throws {
+        let fixture = try TypingFixture("‸x")
+        fixture.textView.insertTab(nil)
+        fixture.textView.undoManager?.undo()
+        #expect(fixture.textView.string == "x")
+    }
+}
