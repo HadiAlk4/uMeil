@@ -74,13 +74,13 @@ struct TypingAidsTests {
 @MainActor
 struct AutoIndentTypingTests {
     @Test func typingABlockIndentsItsBody() throws {
+        // The closing brace comes with the opening one, and Return between
+        // them puts it on its own line below the indented body.
         let fixture = try TypingFixture("int main(void) ‸\n")
         fixture.type("{")
         fixture.textView.insertNewline(nil)
         fixture.type("x = 1;")
-        fixture.textView.insertNewline(nil)
-        fixture.type("}")
-        #expect(fixture.shown == "int main(void) {\n    x = 1;\n}‸\n")
+        #expect(fixture.shown == "int main(void) {\n    x = 1;‸\n}\n")
     }
 
     @Test func textPutInByCodeIsNotTreatedAsTyping() throws {
