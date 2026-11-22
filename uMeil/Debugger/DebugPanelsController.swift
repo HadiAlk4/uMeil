@@ -14,7 +14,7 @@ final class DebugPanelsController {
     let peripherals: PeripheralsViewController
     let command = CommandViewController()
 
-    let auxiliaryTabs = NSTabViewController()
+    let auxiliaryTabs = PaneTabViewController()
     let inspectorSplit = NSSplitViewController()
     let inspectorItem: NSSplitViewItem
     let disassemblyItem: NSSplitViewItem
@@ -33,6 +33,7 @@ final class DebugPanelsController {
 
     init(defaults: UserDefaults = .standard) {
         peripherals = PeripheralsViewController(defaults: defaults)
+        auxiliaryTabs.tabBar.setAccessibilityLabel("Debug panels")
         for panel in [watch, memory, peripherals] as [NSViewController] {
             let tab = NSTabViewItem(viewController: panel)
             tab.label = panel.title ?? ""

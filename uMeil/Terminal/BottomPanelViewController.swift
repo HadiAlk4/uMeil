@@ -35,12 +35,7 @@ final class BottomPanelViewController: NSViewController {
     var onRestartTerminal: (() -> Void)?
     var onClose: (() -> Void)?
 
-    let tabControl = NSSegmentedControl(
-        labels: Tab.allCases.map(\.title),
-        trackingMode: .selectOne,
-        target: nil,
-        action: nil
-    )
+    let tabBar = PaneTabBar()
     private let terminalStatusLabel = NSTextField(labelWithString: "")
     private lazy var clearButton = makeActionButton(
         symbol: "trash",
@@ -76,8 +71,8 @@ final class BottomPanelViewController: NSViewController {
         self.serial = serial
         self.breakpoints = breakpoints
         super.init(nibName: nil, bundle: nil)
-        issues.onDiagnosticsChange = { [weak self] in self?.updateTabTitles() }
-        breakpoints.onCountChange = { [weak self] in self?.updateTabTitles() }
+        issues.onDiagnosticsChange = { [weak self] in self?.refreshTabBar() }
+        breakpoints.onCountChange = { [weak self] in self?.refreshTabBar() }
     }
 
     @available(*, unavailable)
@@ -86,47 +81,41 @@ final class BottomPanelViewController: NSViewController {
     }
 
     override func loadView() {
-        tabControl.segmentStyle = .rounded
-        tabControl.controlSize = .small
-        tabControl.selectedSegment = selectedTab.rawValue
-        tabControl.target = self
-        tabControl.action = #selector(tabChanged(_:))
-
         terminalStatusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         terminalStatusLabel.textColor = .secondaryLabelColor
         terminalStatusLabel.lineBreakMode = .byTruncatingMiddle
-        terminalStatusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        terminalStatusLabel.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(200), for: .horizontal)
 
-        let header = NSStackView(views: [
-            tabControl,
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(NSLayoutConstraint.Priority(1), for: .horizontal)
+        spacer.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(1), for: .horizontal)
+
+        tabBar.setAccessibilityLabel("Bottom panel")
+        tabBar.onSelectIndex = { [weak self] index in self?.tabSelected(at: index) }
+        tabBar.setTrailingViews([
             terminalStatusLabel,
-            NSView(),
+            spacer,
             clearButton,
             restartButton,
             closeButton
         ])
-        header.orientation = .horizontal
-        header.spacing = 6
-        header.edgeInsets = NSEdgeInsets(top: 4, left: 10, bottom: 4, right: 8)
-
-        let divider = NSBox()
-        divider.boxType = .separator
-
-        let stack = NSStackView(views: [header, divider, contentContainer])
-        stack.orientation = .vertical
-        stack.spacing = 0
 
         let background = NSVisualEffectView()
         background.material = .windowBackground
         background.blendingMode = .withinWindow
         background.state = .followsWindowActiveState
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        background.addSubview(stack)
+        tabBar.translatesAutoresizingMaskIntoConstraints = false
+        contentContainer.translatesAutoresizingMaskIntoConstraints = false
+        background.addSubview(tabBar)
+        background.addSubview(contentContainer)
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: background.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: background.bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: background.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: background.trailingAnchor)
+            tabBar.topAnchor.constraint(equalTo: background.topAnchor),
+            tabBar.leadingAnchor.constraint(equalTo: background.leadingAnchor),
+            tabBar.trailingAnchor.constraint(equalTo: background.trailingAnchor),
+            contentContainer.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
+            contentContainer.bottomAnchor.constraint(equalTo: background.bottomAnchor),
+            contentContainer.leadingAnchor.constraint(equalTo: background.leadingAnchor),
+            contentContainer.trailingAnchor.constraint(equalTo: background.trailingAnchor)
         ])
         view = background
 
@@ -136,7 +125,7 @@ final class BottomPanelViewController: NSViewController {
         addChild(serial)
         addChild(breakpoints)
         terminal.onStatusChange = { [weak self] in self?.updateTerminalHeader() }
-        updateTabTitles()
+        refreshTabBar()
         applyTab(selectedTab)
     }
 
@@ -155,20 +144,19 @@ final class BottomPanelViewController: NSViewController {
         }
     }
 
-    private func updateTabTitles() {
+    private func refreshTabBar() {
         guard isViewLoaded else { return }
-        for tab in Tab.allCases {
-            tabControl.setLabel(title(for: tab), forSegment: tab.rawValue)
-            // Zero lets the segment grow and shrink with its label.
-            tabControl.setWidth(0, forSegment: tab.rawValue)
+        let items = Tab.allCases.map { tab in
+            PaneTabBar.Item(title: title(for: tab), isSelected: tab == selectedTab)
         }
+        tabBar.show(items)
     }
 
     func select(_ tab: Tab) {
         loadViewIfNeeded()
         guard selectedTab != tab || contentContainer.subviews.isEmpty else { return }
         selectedTab = tab
-        tabControl.selectedSegment = tab.rawValue
+        refreshTabBar()
         applyTab(tab)
     }
 
@@ -208,8 +196,8 @@ final class BottomPanelViewController: NSViewController {
         }
     }
 
-    @objc private func tabChanged(_ sender: NSSegmentedControl) {
-        guard let tab = Tab(rawValue: sender.selectedSegment) else { return }
+    private func tabSelected(at index: Int) {
+        guard let tab = Tab(rawValue: index) else { return }
         select(tab)
         onSelectTab?(tab)
     }
@@ -239,6 +227,8 @@ final class BottomPanelViewController: NSViewController {
         button.controlSize = .small
         button.toolTip = tooltip
         button.setAccessibilityLabel(title)
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        button.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         return button
     }
 }

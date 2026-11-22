@@ -26,7 +26,12 @@ struct BottomPanelTests {
     }
 
     private func labels(of panel: BottomPanelViewController) -> [String] {
-        (0..<panel.tabControl.segmentCount).compactMap { panel.tabControl.label(forSegment: $0) }
+        panel.tabBar.items.map(\.title)
+    }
+
+    private func containsSubview<T: NSView>(ofType _: T.Type, in view: NSView) -> Bool {
+        if view is T { return true }
+        return view.subviews.contains { containsSubview(ofType: T.self, in: $0) }
     }
 
     @Test func hasIssuesTerminalDebugSerialAndBreakpointsTabs() {
@@ -88,5 +93,58 @@ struct BottomPanelTests {
         )
 
         #expect(controller.bottomPanel.debugConsole === controller.debugPanels.command)
+    }
+
+    @Test func tabBarMatchesEditorStyleAndPinsFlushToTopLeadingEdge() throws {
+        let panel = makePanel()
+        panel.view.frame = NSRect(x: 0, y: 0, width: 640, height: 240)
+        panel.view.layoutSubtreeIfNeeded()
+
+        #expect(!containsSubview(ofType: NSSegmentedControl.self, in: panel.view))
+        #expect(!containsSubview(ofType: NSTabView.self, in: panel.view))
+
+        let barFrame = panel.tabBar.convert(panel.tabBar.bounds, to: panel.view)
+        #expect(barFrame.height == EditorTabBar.height)
+        #expect(barFrame.minX == 0)
+        #expect(barFrame.width == 640)
+        #expect(barFrame.maxY == panel.view.bounds.maxY)
+
+        let firstTab = try #require(panel.tabBar.tabView(at: 0))
+        let firstTabFrame = firstTab.convert(firstTab.bounds, to: panel.tabBar)
+        #expect(firstTabFrame.minX == 0)
+        #expect(panel.tabBar.accessibilityRole() == .tabGroup)
+        #expect(firstTab.accessibilityRole() == .radioButton)
+        #expect(firstTab.accessibilityValue() as? Bool == true)
+    }
+
+    @Test func clickingATabSwitchesSelectionUpdatesAccessibilityAndFiresCallback() throws {
+        let panel = makePanel()
+        var chosen: [BottomPanelViewController.Tab] = []
+        panel.onSelectTab = { chosen.append($0) }
+
+        let terminalTab = try #require(panel.tabBar.tabView(at: BottomPanelViewController.Tab.terminal.rawValue))
+        #expect(terminalTab.accessibilityPerformPress())
+
+        #expect(panel.selectedTab == .terminal)
+        #expect(chosen == [.terminal])
+        #expect(panel.tabBar.items.map(\.isSelected) == [false, true, false, false, false])
+        #expect(panel.tabBar.tabView(at: 0)?.accessibilityValue() as? Bool == false)
+        #expect(terminalTab.accessibilityValue() as? Bool == true)
+    }
+
+    @Test func tabBarHandlesNarrowWidthsWithoutOverflowing() {
+        let panel = makePanel()
+        panel.view.frame = NSRect(x: 0, y: 0, width: 260, height: 200)
+        panel.select(.terminal)
+        panel.view.layoutSubtreeIfNeeded()
+
+        let barFrame = panel.tabBar.convert(panel.tabBar.bounds, to: panel.view)
+        #expect(barFrame.width == 260)
+        #expect(barFrame.maxY == panel.view.bounds.maxY)
+        for tab in panel.tabBar.tabViews {
+            let tabFrame = tab.convert(tab.bounds, to: panel.tabBar)
+            #expect(tabFrame.minX >= 0)
+            #expect(tabFrame.maxX <= panel.tabBar.bounds.maxX)
+        }
     }
 }

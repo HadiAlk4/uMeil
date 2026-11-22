@@ -710,4 +710,78 @@ extension DebugPanelsTests {
         await cancelledMemTask.value
         #expect(panels.memory.rows.first?.bytes == [0x01, 0x02, 0x03, 0x04])
     }
+
+    // MARK: - Unified pane tab bar
+
+    private func containsSubview<T: NSView>(ofType _: T.Type, in view: NSView) -> Bool {
+        if view is T { return true }
+        return view.subviews.contains { containsSubview(ofType: T.self, in: $0) }
+    }
+
+    @Test func auxiliaryTabsPinsUnifiedTabBarFlushToTopLeadingEdge() throws {
+        let panels = DebugPanelsController()
+        let tabs = panels.auxiliaryTabs
+        tabs.view.frame = NSRect(x: 0, y: 0, width: 380, height: 260)
+        tabs.view.layoutSubtreeIfNeeded()
+
+        #expect(!containsSubview(ofType: NSTabView.self, in: tabs.view))
+        #expect(!containsSubview(ofType: NSSegmentedControl.self, in: tabs.view))
+        #expect(tabs.tabBar.items.map(\.title) == ["Watch 1", "Memory 1", "Peripherals"])
+        #expect(tabs.tabBar.items.map(\.isSelected) == [true, false, false])
+
+        let barFrame = tabs.tabBar.convert(tabs.tabBar.bounds, to: tabs.view)
+        #expect(barFrame.height == EditorTabBar.height)
+        #expect(barFrame.minX == 0)
+        #expect(barFrame.width == 380)
+        #expect(barFrame.maxY == tabs.view.bounds.maxY)
+
+        // Tabs stay left-aligned at x = 0 instead of floating centered in the column.
+        let firstTab = try #require(tabs.tabBar.tabView(at: 0))
+        let firstTabFrame = firstTab.convert(firstTab.bounds, to: tabs.tabBar)
+        #expect(firstTabFrame.minX == 0)
+        #expect(tabs.tabBar.accessibilityRole() == .tabGroup)
+        #expect(firstTab.accessibilityRole() == .radioButton)
+        #expect(firstTab.accessibilityValue() as? Bool == true)
+    }
+
+    @Test func auxiliaryTabsSwitchesContentViaClickAndIndexAndFillsBelowTabBar() throws {
+        let panels = DebugPanelsController()
+        let tabs = panels.auxiliaryTabs
+        tabs.view.frame = NSRect(x: 0, y: 0, width: 380, height: 260)
+        tabs.view.layoutSubtreeIfNeeded()
+
+        let memoryTab = try #require(tabs.tabBar.tabView(at: 1))
+        #expect(memoryTab.accessibilityPerformPress())
+        tabs.view.layoutSubtreeIfNeeded()
+        #expect(tabs.selectedTabViewItemIndex == 1)
+        #expect(panels.memory.view.isDescendant(of: tabs.view))
+
+        tabs.selectedTabViewItemIndex = 2
+        tabs.view.layoutSubtreeIfNeeded()
+        #expect(tabs.selectedTabViewItemIndex == 2)
+        #expect(tabs.tabBar.items.map(\.isSelected) == [false, false, true])
+        #expect(panels.peripherals.view.isDescendant(of: tabs.view))
+
+        let barFrame = tabs.tabBar.convert(tabs.tabBar.bounds, to: tabs.view)
+        let contentFrame = panels.peripherals.view.convert(panels.peripherals.view.bounds, to: tabs.view)
+        #expect(contentFrame.minX == 0)
+        #expect(contentFrame.width == 380)
+        #expect(contentFrame.minY == 0)
+        #expect(contentFrame.maxY == barFrame.minY)
+
+        // Out-of-bounds indices are ignored safely.
+        tabs.selectedTabViewItemIndex = 99
+        #expect(tabs.selectedTabViewItemIndex == 2)
+    }
+
+    @Test func bottomAndAuxiliaryPanelsShareUnifiedTabBarHeightInMainWindow() throws {
+        let controller = MainWindowController(boardMonitor: FakeBoardMonitor())
+        let mainSplit = try #require(controller.window?.contentViewController as? NSSplitViewController)
+        controller.showIssuesPanel()
+        controller.debugPanels.setLayoutVisible(true, mainSplit: mainSplit, editorSplit: controller.editorSplit)
+        controller.window?.contentView?.layoutSubtreeIfNeeded()
+
+        #expect(controller.bottomPanel.tabBar.bounds.height == EditorTabBar.height)
+        #expect(controller.debugPanels.auxiliaryTabs.tabBar.bounds.height == EditorTabBar.height)
+    }
 }
