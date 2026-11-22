@@ -59,6 +59,33 @@ final class EditorTextView: NSTextView {
 
     // MARK: - Typing aids
 
+    /// Closing brackets and quotes the editor typed, which typing steps over.
+    var autoClosedPairs = AutoClosedPairs()
+
+    override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
+        guard super.shouldChangeText(in: affectedCharRange, replacementString: replacementString) else { return false }
+        if let replacementString {
+            let length = (replacementString as NSString).length
+            autoClosedPairs.textChanged(in: affectedCharRange, replacementLength: length)
+        }
+        return true
+    }
+
+    override func setSelectedRanges(
+        _ ranges: [NSValue],
+        affinity: NSSelectionAffinity,
+        stillSelecting: Bool
+    ) {
+        super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+        let selection = selectedRange()
+        if ranges.count == 1, selection.length == 0, selection.location <= currentText.length {
+            let lineEnd = CodeEditing.lineEnd(in: currentText, at: selection.location)
+            autoClosedPairs.cursorMoved(to: selection.location, lineEnd: lineEnd)
+        } else {
+            autoClosedPairs.removeAll()
+        }
+    }
+
     /// What one level of indentation is. Settings decides, unless a test does.
     var indentStyleOverride: IndentStyle?
     var indentStyle: IndentStyle {

@@ -36,8 +36,28 @@ extension EditorTextView {
 
     /// A single typed character. Returns whether it was handled here.
     func handleTyped(_ typed: String) -> Bool {
-        guard canUseTypingAids, typed == "}",
-              let edit = CodeEditing.closingBrace(in: currentText, selection: selectedRange(), style: indentStyle)
+        guard canUseTypingAids, typed.count == 1, let character = typed.first else { return false }
+        let selection = selectedRange()
+        let action = CodeEditing.pairAction(
+            for: character,
+            in: currentText,
+            selection: selection,
+            autoClosed: autoClosedPairs
+        )
+        switch action {
+        case .stepOver:
+            autoClosedPairs.remove(selection.location)
+            setSelectedRange(NSRange(location: selection.location + 1, length: 0))
+            return true
+        case let .insertPair(edit, closer):
+            apply(edit)
+            autoClosedPairs.insert(closer)
+            return true
+        case nil:
+            break
+        }
+        guard character == "}",
+              let edit = CodeEditing.closingBrace(in: currentText, selection: selection, style: indentStyle)
         else { return false }
         apply(edit)
         return true
@@ -68,10 +88,14 @@ extension EditorTextView {
         apply(edit)
     }
 
+    /// Backspace: an empty pair the editor made goes as one, and spaces in
+    /// the indentation go a tab stop at a time.
     func handleDeleteBackward() -> Bool {
-        guard canUseTypingAids,
-              let edit = CodeEditing.deleteIndentation(in: currentText, selection: selectedRange(), style: indentStyle)
-        else { return false }
+        guard canUseTypingAids else { return false }
+        let selection = selectedRange()
+        let edit = CodeEditing.deletePair(in: currentText, selection: selection, autoClosed: autoClosedPairs)
+            ?? CodeEditing.deleteIndentation(in: currentText, selection: selection, style: indentStyle)
+        guard let edit else { return false }
         apply(edit)
         return true
     }

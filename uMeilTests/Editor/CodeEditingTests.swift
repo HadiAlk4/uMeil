@@ -274,3 +274,86 @@ struct LineCommentTests {
         #expect(restored == start.text)
     }
 }
+
+// MARK: - Bracket and quote pairs
+
+struct PairTests {
+    /// What typing `typed` at `‸` gives, with no closers added before.
+    private func type(_ typed: Character, _ marked: String, autoClosed: AutoClosedPairs = .init()) -> String? {
+        let start = MarkedText(marked)
+        let action = CodeEditing.pairAction(
+            for: typed,
+            in: start.text as NSString,
+            selection: start.selection,
+            autoClosed: autoClosed
+        )
+        switch action {
+        case let .insertPair(edit, closer):
+            #expect(closer == edit.selection.location)
+            return start.applying(edit)
+        case .stepOver:
+            return "step over"
+        case nil:
+            return nil
+        }
+    }
+
+    @Test func openersGetTheirClosers() {
+        #expect(type("(", "f‸") == "f(‸)")
+        #expect(type("[", "a‸;") == "a[‸];")
+        #expect(type("{", "int main(void) ‸\n") == "int main(void) {‸}\n")
+        #expect(type("\"", "puts(‸)") == "puts(\"‸\")")
+        #expect(type("'", "c = ‸") == "c = '‸'")
+    }
+
+    @Test func noPairBeforeOtherText() {
+        #expect(type("(", "‸x") == nil)
+        #expect(type("\"", "‸hello") == nil)
+    }
+
+    @Test func noPairInsideStringsOrComments() {
+        #expect(type("(", "puts(\"‸\")") == nil)
+        #expect(type("'", "// don‸") == nil)
+        #expect(type("(", "/* see ‸ */") == nil)
+    }
+
+    @Test func noQuotePairAfterALetterOrBackslash() {
+        #expect(type("'", "x‸") == nil)
+        #expect(type("\"", "\\‸") == nil)
+    }
+
+    @Test func aSelectionIsReplacedAsUsual() {
+        #expect(type("(", "«x»") == nil)
+    }
+
+    @Test func typingAnAddedCloserStepsOverIt() {
+        var autoClosed = AutoClosedPairs()
+        autoClosed.insert(2)
+        #expect(type(")", "f(‸)", autoClosed: autoClosed) == "step over")
+        #expect(type("]", "f(‸)", autoClosed: autoClosed) == nil)
+        // A closer the student typed is typed again, not stepped over.
+        #expect(type(")", "f(‸)") == nil)
+    }
+
+    @Test func backspaceRemovesAnEmptyAddedPair() {
+        var autoClosed = AutoClosedPairs()
+        autoClosed.insert(2)
+        let start = MarkedText("f(‸)")
+        let text = start.text as NSString
+        let edit = CodeEditing.deletePair(in: text, selection: start.selection, autoClosed: autoClosed)
+        #expect(start.applying(edit) == "f‸")
+        #expect(CodeEditing.deletePair(in: text, selection: start.selection, autoClosed: .init()) == nil)
+    }
+
+    @Test func addedClosersFollowTheText() {
+        var autoClosed = AutoClosedPairs()
+        autoClosed.insert(5)
+        autoClosed.insert(9)
+        autoClosed.textChanged(in: NSRange(location: 3, length: 0), replacementLength: 2)
+        #expect(autoClosed.offsets == [7, 11])
+        autoClosed.textChanged(in: NSRange(location: 6, length: 3), replacementLength: 0)
+        #expect(autoClosed.offsets == [8])
+        autoClosed.cursorMoved(to: 4, lineEnd: 8)
+        #expect(autoClosed.offsets.isEmpty)
+    }
+}

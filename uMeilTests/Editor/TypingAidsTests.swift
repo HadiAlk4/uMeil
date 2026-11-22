@@ -137,3 +137,39 @@ struct LineCommentTypingTests {
         #expect(fixture.textView.string == "SECTIONS {}\n")
     }
 }
+
+// MARK: - Bracket and quote pairs
+
+@MainActor
+struct PairTypingTests {
+    @Test func typingACallStepsOverTheAddedClosers() throws {
+        let fixture = try TypingFixture("‸\n")
+        fixture.type("f(\"hi\");")
+        #expect(fixture.shown == "f(\"hi\");‸\n")
+    }
+
+    @Test func backspaceRemovesTheEmptyPair() throws {
+        let fixture = try TypingFixture("x = ‸\n")
+        fixture.type("(")
+        #expect(fixture.shown == "x = (‸)\n")
+        fixture.textView.deleteBackward(nil)
+        #expect(fixture.shown == "x = ‸\n")
+    }
+
+    @Test func aBraceThenReturnOpensAnIndentedBlock() throws {
+        let fixture = try TypingFixture("    if (x) ‸\n")
+        fixture.type("{")
+        fixture.textView.insertNewline(nil)
+        fixture.type("y();")
+        #expect(fixture.shown == "    if (x) {\n        y();‸\n    }\n")
+    }
+
+    @Test func movingAwayForgetsTheAddedCloser() throws {
+        let fixture = try TypingFixture("‸\nnext\n")
+        fixture.type("(")
+        fixture.textView.setSelectedRange(NSRange(location: 4, length: 0))
+        fixture.textView.setSelectedRange(NSRange(location: 1, length: 0))
+        fixture.type(")")
+        #expect(fixture.shown == "()‸)\nnext\n")
+    }
+}

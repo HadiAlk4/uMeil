@@ -172,6 +172,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         intelligence.completionAnchorOffset = nil
 
         isLoading = true
+        (textView as? EditorTextView)?.autoClosedPairs.removeAll()
         textView.string = text
         let length = (text as NSString).length
         textView.textStorage?.setAttributes(EditorTheme.textAttributes, range: NSRange(location: 0, length: length))
