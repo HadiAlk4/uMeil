@@ -20,7 +20,7 @@ body {
   display: flex;
   flex-direction: column;
   color: var(--cream);
-  font: 19px/1.55 "EB Garamond", Garamond, "Times New Roman", serif;
+  font: 17px/1.5 "EB Garamond", Garamond, "Times New Roman", serif;
   letter-spacing: 0.01em;
   -webkit-font-smoothing: antialiased;
   /* Paper grain over the blue. */
@@ -45,31 +45,31 @@ ul {
 }
 
 li {
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 code,
 pre {
-  font: 14px/1.6 ui-monospace, "SF Mono", Menlo, monospace;
+  font: 13px/1.55 ui-monospace, "SF Mono", Menlo, monospace;
 }
 
 .page {
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 96px 32px 24px;
+  padding: 56px 32px 16px;
   display: grid;
   grid-template-columns: 1.4fr 1fr 1fr 1.4fr;
-  gap: 48px 40px;
+  gap: 28px 40px;
   align-items: start;
 }
 
 h2 {
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 400;
   text-transform: uppercase;
   letter-spacing: 0.16em;
-  margin: 8px 0 22px;
+  margin: 6px 0 16px;
 }
 
 h2::after {
@@ -77,16 +77,16 @@ h2::after {
   display: block;
   width: 40px;
   border-bottom: 1px solid var(--rule);
-  margin-top: 14px;
+  margin-top: 10px;
 }
 
 .logo {
   display: flex;
   align-items: center;
   gap: 16px;
-  font-size: 46px;
+  font-size: 40px;
   line-height: 1;
-  margin: 0 0 24px;
+  margin: 0 0 18px;
 }
 
 .logo img {
@@ -96,7 +96,7 @@ h2::after {
 .tagline {
   font-style: italic;
   color: var(--cream-soft);
-  margin: 0 0 22px;
+  margin: 0 0 16px;
 }
 
 .facts li::before {
@@ -131,7 +131,7 @@ h2::after {
 }
 
 .note {
-  font-size: 15px;
+  font-size: 14px;
   font-style: italic;
   color: var(--cream-soft);
   margin: 16px 0 0;
@@ -147,7 +147,7 @@ h2::after {
 
 .brew pre {
   margin: 0;
-  padding: 14px 18px;
+  padding: 10px 16px;
   border: 1px solid var(--rule);
   overflow-x: auto;
 }
@@ -159,14 +159,14 @@ h2::after {
   display: flex;
   gap: 18px;
   font-style: italic;
-  font-size: 17px;
+  font-size: 16px;
 }
 
 .landscape {
   margin-top: auto;
   width: 100%;
-  aspect-ratio: 1671 / 411;
-  min-height: 220px;
+  /* Sized to the window's height so the rider shows without scrolling. */
+  height: clamp(200px, 38vh, 460px);
   background: url("landscape.jpg") center top / cover no-repeat;
   /* Fade the illustration's sky into the page. */
   -webkit-mask-image: linear-gradient(to bottom, transparent, #000 22%);
