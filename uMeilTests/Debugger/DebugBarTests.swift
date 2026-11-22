@@ -20,6 +20,7 @@ struct DebugBarTests {
         let bar = controller.debugBar
         #expect(bar.superview === controller.editor.view)
         #expect(bar.isHidden)
+        #expect(bar.buttons.allSatisfy { $0.target === controller }, "clicks go to this window")
 
         try await controller.debugger.start(FakeBlinky.plan)
         gdb.print(FakeBlinky.stop(atLine: 21, of: URL(filePath: "/tmp/main.c"), reason: "breakpoint-hit"))

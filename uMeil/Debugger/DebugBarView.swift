@@ -106,7 +106,7 @@ final class DebugBarView: NSVisualEffectView {
 
     private static func makeButton(_ command: DebugControlsItem.Command) -> NSButton {
         let image = NSImage(systemSymbolName: command.symbol, accessibilityDescription: command.title) ?? NSImage()
-        // No target: the action goes to the window controller through the responder chain.
+        // The window controller sets itself as the target when it installs the bar.
         let button = NSButton(image: image, target: nil, action: command.action)
         button.bezelStyle = .accessoryBarAction
         button.isBordered = false

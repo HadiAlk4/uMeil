@@ -11,6 +11,8 @@ extension MainWindowController {
         debugBar.translatesAutoresizingMaskIntoConstraints = false
         debugBar.isHidden = true
         debugBar.isActionEnabled = { [weak self] action in self?.isEnabled(action) ?? false }
+        // Sent straight here, so a click is not lost when another window is key.
+        debugBar.buttons.forEach { $0.target = self }
         container.addSubview(debugBar)
         NSLayoutConstraint.activate([
             debugBar.topAnchor.constraint(equalTo: container.topAnchor, constant: Self.debugBarInset),
