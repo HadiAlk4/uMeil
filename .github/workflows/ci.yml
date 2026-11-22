@@ -32,6 +32,10 @@ jobs:
           # xcodebuild passes TEST_RUNNER_* variables to the tests with the
           # prefix removed. This makes a missing tool fail instead of skip.
           TEST_RUNNER_UMEIL_REQUIRE_TOOLS: "1"
+          # The hosted runner has three cores and runs every test at once,
+          # so work that takes a second on a Mac can take several here.
+          # Timing checks allow three times as long (see TestTiming.swift).
+          TEST_RUNNER_UMEIL_TIMING_SCALE: "3"
         run: |
           set -o pipefail
           xcodebuild test \
