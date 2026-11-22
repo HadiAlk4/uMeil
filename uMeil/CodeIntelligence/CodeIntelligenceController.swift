@@ -152,6 +152,13 @@ final class CodeIntelligenceController {
         return try? await session.signatureHelp(at: position, in: url, currentText: text)
     }
 
+    func hover(in url: URL, text: String, position: LSPPosition) async -> LSPHover? {
+        let pendingOpen = openFileTaskBox.withLockUnchecked { $0 }
+        await pendingOpen?.value
+        guard let session else { return nil }
+        return try? await session.hover(at: position, in: url, currentText: text)
+    }
+
     func jumpToDefinition(in url: URL, text: String, position: LSPPosition) async {
         let pendingOpen = openFileTaskBox.withLockUnchecked { $0 }
         await pendingOpen?.value

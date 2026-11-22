@@ -35,6 +35,9 @@ extension MainWindowController {
         editor.intelligence.onSignatureHelpRequested = { [weak controller] url, text, position in
             await controller?.signatureHelp(in: url, text: text, position: position)
         }
+        editor.intelligence.onHoverRequested = { [weak controller] url, text, position in
+            await controller?.hover(in: url, text: text, position: position)
+        }
         editor.intelligence.onDefinitionRequested = { [weak controller] url, text, position in
             await controller?.jumpToDefinition(in: url, text: text, position: position)
         }

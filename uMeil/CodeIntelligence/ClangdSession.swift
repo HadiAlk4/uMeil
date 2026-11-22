@@ -168,6 +168,13 @@ actor ClangdSession {
         return try await client.signatureHelp(url: normalized, position: position)
     }
 
+    func hover(at position: LSPPosition, in url: URL, currentText: String? = nil) async throws -> LSPHover? {
+        let normalized = Self.normalize(url)
+        try await ensureSynced(url: normalized, currentText: currentText)
+        let client = try await ensureClient()
+        return try await client.hover(url: normalized, position: position)
+    }
+
     // MARK: - Helpers
 
     private func ensureClient() async throws -> LSPClient {

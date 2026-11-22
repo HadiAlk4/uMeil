@@ -51,4 +51,17 @@ extension LSPClient {
         }
         return help.signatures.isEmpty ? nil : help
     }
+
+    /// What the name at `position` is, or `nil` when there is nothing to say.
+    func hover(url: URL, position: LSPPosition) async throws -> LSPHover? {
+        let data = try await sendRequest(method: "textDocument/hover", params: [
+            "textDocument": ["uri": url.standardizedFileURL.absoluteString],
+            "position": ["line": position.line, "character": position.character]
+        ])
+        if isJSONNull(data) { return nil }
+        guard let hover = try? decoder.decode(LSPHover.self, from: data) else {
+            throw LSPError.invalidResponse
+        }
+        return hover.contents.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : hover
+    }
 }

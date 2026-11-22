@@ -105,3 +105,22 @@ struct LSPSignatureHelpTests {
         #expect(bold?.fontDescriptor.symbolicTraits.contains(.bold) == true)
     }
 }
+
+@MainActor
+struct LSPHoverTests {
+    @Test func decodesEveryShapeOfHoverContents() throws {
+        let markup = #"{"contents":{"kind":"plaintext","value":"macro GPIO_PIN_1"}}"#
+        let marked = #"{"contents":[{"language":"c","value":"int x"},"plain"]}"#
+        let plain = #"{"contents":"just text"}"#
+        let decoder = JSONDecoder()
+        #expect(try decoder.decode(LSPHover.self, from: Data(markup.utf8)).contents == "macro GPIO_PIN_1")
+        #expect(try decoder.decode(LSPHover.self, from: Data(marked.utf8)).contents == "int x\n\nplain")
+        #expect(try decoder.decode(LSPHover.self, from: Data(plain.utf8)).contents == "just text")
+    }
+
+    @Test func tidiesClangdHoverText() {
+        let raw = "macro GPIO_PIN_1\n\n\nprovided by \"driverlib/gpio.h\"\n\n---\n#define GPIO_PIN_1 0x00000002\n\n"
+        #expect(EditorViewController.hoverText(raw)
+            == "macro GPIO_PIN_1\n\nprovided by \"driverlib/gpio.h\"\n\n#define GPIO_PIN_1 0x00000002")
+    }
+}

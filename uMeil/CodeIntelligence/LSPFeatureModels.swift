@@ -130,3 +130,42 @@ struct LSPParameterInformation: Decodable, Equatable, Sendable {
         }
     }
 }
+
+/// The answer to `textDocument/hover`: what a name is, such as a function's
+/// declaration or a macro's value.
+struct LSPHover: Decodable, Equatable, Sendable {
+    var contents: String
+    var range: LSPRange?
+
+    init(contents: String, range: LSPRange? = nil) {
+        self.contents = contents
+        self.range = range
+    }
+
+    private enum CodingKeys: String, CodingKey { case contents, range }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let list = try? container.decode([LSPMarkedString].self, forKey: .contents) {
+            contents = list.map(\.value).joined(separator: "\n\n")
+        } else {
+            contents = try container.decode(LSPMarkedString.self, forKey: .contents).value
+        }
+        range = try container.decodeIfPresent(LSPRange.self, forKey: .range)
+    }
+}
+
+/// `MarkedString` in the LSP spec: plain text or `{language, value}`.
+private struct LSPMarkedString: Decodable {
+    private struct Tagged: Decodable { var value: String }
+
+    var value: String
+
+    init(from decoder: Decoder) throws {
+        if let plain = try? decoder.singleValueContainer().decode(String.self) {
+            value = plain
+        } else {
+            value = try Tagged(from: decoder).value
+        }
+    }
+}

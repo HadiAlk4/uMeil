@@ -66,6 +66,9 @@ actor LSPClient {
                             "activeParameterSupport": true
                         ]
                     ],
+                    "hover": [
+                        "contentFormat": ["plaintext"]
+                    ],
                     "definition": [
                         "linkSupport": true
                     ],

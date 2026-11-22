@@ -11,10 +11,12 @@ final class EditorCodeIntelligenceState {
     var onCompletionRequested: ((URL, String, LSPPosition) async -> [LSPCompletionItem])?
     var onDefinitionRequested: ((URL, String, LSPPosition) async -> Void)?
     var onSignatureHelpRequested: ((URL, String, LSPPosition) async -> LSPSignatureHelp?)?
+    var onHoverRequested: ((URL, String, LSPPosition) async -> LSPHover?)?
 
     let diagnosticBar = EditorDiagnosticBar()
     let completionPanel = CompletionPanelController()
     let signaturePanel = CodeInfoPanel()
+    let hoverPanel = CodeInfoPanel()
 
     var buildMarkers: [Int: Diagnostic.Severity] = [:]
     /// The last build's message for each line, written beside the code.
@@ -30,6 +32,8 @@ final class EditorCodeIntelligenceState {
     /// The parameter hint showing, and the request refreshing it.
     var signatureHelp: LSPSignatureHelp?
     var signatureTask: Task<Void, Never>?
+    /// The name under the mouse whose hover is showing or on its way.
+    var hoverRange: NSRange?
     /// When false the editor shows no live diagnostics, never asks for
     /// completions, and ignores go-to-definition requests.
     var isEnabled = true
@@ -80,13 +84,20 @@ extension EditorViewController {
     func setCodeIntelligenceEnabled(_ enabled: Bool) {
         intelligence.isEnabled = enabled
         guard !enabled else { return }
+        dismissCodeIntelligencePopups()
+        clearLiveDiagnostics()
+    }
+
+    /// Closes the completion list, parameter hint, and hover, and forgets
+    /// any placeholders, as when another file opens.
+    func dismissCodeIntelligencePopups() {
         intelligence.completionTask?.cancel()
         intelligence.completionTask = nil
         intelligence.completionAnchorOffset = nil
         completionPanel.dismiss()
         endPlaceholders()
         dismissSignatureHelp()
-        clearLiveDiagnostics()
+        dismissCodeHover()
     }
 
     // MARK: - Inline diagnostics

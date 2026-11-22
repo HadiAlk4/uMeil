@@ -153,6 +153,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
 
     @objc private func editorDidScroll(_ notification: Notification) {
         ruler?.needsDisplay = true
+        dismissCodeHover()
         applyVisibleHighlights()
     }
 
@@ -167,11 +168,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         let restored = tabs.tab(for: url)
         let text = restored?.unsavedText ?? loaded.text
 
-        completionPanel.dismiss()
-        intelligence.completionTask?.cancel()
-        intelligence.completionAnchorOffset = nil
-        endPlaceholders()
-        dismissSignatureHelp()
+        dismissCodeIntelligencePopups()
 
         isLoading = true
         textView.string = text
@@ -227,11 +224,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
             memoryUsageBar.show(nil)
         }
         let closedURL = document?.url
-        completionPanel.dismiss()
-        intelligence.completionTask?.cancel()
-        intelligence.completionAnchorOffset = nil
-        endPlaceholders()
-        dismissSignatureHelp()
+        dismissCodeIntelligencePopups()
 
         isLoading = true
         textView.string = ""
@@ -271,6 +264,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
             setMarkers([:])
         }
         clearLiveDiagnostics()
+        dismissCodeHover()
         refreshPlaceholderHighlights()
         updateCursorPosition()
         isModified = true

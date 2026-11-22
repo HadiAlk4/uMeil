@@ -84,6 +84,14 @@ extension EditorViewController {
 
     /// Extracts the C identifier at `characterIndex` in the editor's text.
     func identifier(atCharacterIndex characterIndex: Int) -> String? {
+        identifierRange(atCharacterIndex: characterIndex).map {
+            (textView.string as NSString).substring(with: $0)
+        }
+    }
+
+    /// Where the C identifier at `characterIndex` starts and ends, or `nil`
+    /// when there is none (a number is not an identifier).
+    func identifierRange(atCharacterIndex characterIndex: Int) -> NSRange? {
         let text = textView.string as NSString
         guard characterIndex >= 0, characterIndex < text.length,
               Self.isIdentifierCodeUnit(text.character(at: characterIndex))
@@ -96,28 +104,35 @@ extension EditorViewController {
         while end < text.length, Self.isIdentifierCodeUnit(text.character(at: end)) {
             end += 1
         }
-        return text.substring(with: NSRange(location: start, length: end - start))
+        return NSRange(location: start, length: end - start)
     }
 
-    /// Shows the value of whatever is under the mouse after it rests there
-    /// briefly. Values are only found while the debugger is stopped.
+    /// Shows what is under the mouse after it rests there briefly: its
+    /// value while the debugger is stopped, and otherwise what `clangd`
+    /// knows about it, such as a macro's value or a function's declaration.
     func hoverMoved(toCharacterIndex characterIndex: Int?) {
-        hoverTask?.cancel()
-        hoverTask = nil
         guard let characterIndex,
-              let name = identifier(atCharacterIndex: characterIndex),
-              onHoverIdentifier != nil
+              let name = identifier(atCharacterIndex: characterIndex)
         else {
+            hoverTask?.cancel()
+            hoverTask = nil
             clearHoverValue()
+            dismissCodeHover()
             return
         }
-        // Still over the same name: keep its value showing.
+        // Still over the same name: keep what is showing, or about to show.
+        if let range = intelligence.hoverRange, NSLocationInRange(characterIndex, range) { return }
         if textView.toolTip?.hasPrefix("\(name) = ") == true { return }
+        hoverTask?.cancel()
         clearHoverValue()
+        dismissCodeHover()
+        intelligence.hoverRange = identifierRange(atCharacterIndex: characterIndex)
         hoverTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            await self?.showHoverValue(atCharacterIndex: characterIndex)
+            guard !Task.isCancelled, let self else { return }
+            if await showHoverValue(atCharacterIndex: characterIndex) == nil, !Task.isCancelled {
+                await showCodeHover(atCharacterIndex: characterIndex)
+            }
         }
     }
 
@@ -147,7 +162,7 @@ extension EditorViewController {
         return tip
     }
 
-    private func clearHoverValue() {
+    func clearHoverValue() {
         if textView.toolTip != nil {
             textView.toolTip = nil
         }

@@ -86,4 +86,26 @@ struct ClangdFeaturesInEditorTests {
         #expect(!editor.signaturePanel.isVisible)
         controller.codeIntelligence?.stop()
     }
+
+    @Test(.timeLimit(TestTiming.minutes(1)))
+    func hoveringAMacroShowsItsValue() async throws {
+        let temp = try TemporaryDirectory()
+        let controller = try makeBlinkyWindow(in: temp)
+        let editor = controller.editor
+        let pin = (editor.textView.string as NSString).range(of: "GPIO_PIN_1);").location + 3
+
+        var shown: String?
+        let answered = await retry {
+            editor.intelligence.hoverRange = nil
+            shown = await editor.showCodeHover(atCharacterIndex: pin)
+            return shown?.contains("0x00000002") == true
+        }
+        #expect(answered, "hover said: \(shown ?? "nothing")")
+        #expect(editor.hoverPanel.isVisible)
+
+        // Typing hides it.
+        editor.textView.insertText(" ", replacementRange: NSRange(location: 0, length: 0))
+        #expect(!editor.hoverPanel.isVisible)
+        controller.codeIntelligence?.stop()
+    }
 }
