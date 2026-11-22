@@ -1,18 +1,20 @@
 import AppKit
 
-/// Hosts the collapsible bottom workspace tabs (`Issues`, `Terminal` and
-/// `Debug`) below the code editor.
+/// Hosts the collapsible bottom workspace tabs (`Issues`, `Terminal`,
+/// `Debug` and `Serial`) below the code editor.
 final class BottomPanelViewController: NSViewController {
     enum Tab: Int, CaseIterable {
         case issues
         case terminal
         case debug
+        case serial
 
         var title: String {
             switch self {
             case .issues: "Issues"
             case .terminal: "Terminal"
             case .debug: "Debug"
+            case .serial: "Serial"
             }
         }
     }
@@ -21,6 +23,8 @@ final class BottomPanelViewController: NSViewController {
     let terminal: TerminalViewController
     /// The debugger's console: GDB and OpenOCD output, and a field for commands.
     let debugConsole: CommandViewController
+    /// The board's serial port: what the firmware prints, and a field for sending lines.
+    let serial: SerialMonitorViewController
 
     private(set) var selectedTab: Tab = .issues
     var onSelectTab: ((Tab) -> Void)?
@@ -55,10 +59,16 @@ final class BottomPanelViewController: NSViewController {
     private let contentContainer = NSView()
     private var activeConstraints: [NSLayoutConstraint] = []
 
-    init(issues: IssuesViewController, terminal: TerminalViewController, debugConsole: CommandViewController) {
+    init(
+        issues: IssuesViewController,
+        terminal: TerminalViewController,
+        debugConsole: CommandViewController,
+        serial: SerialMonitorViewController = SerialMonitorViewController()
+    ) {
         self.issues = issues
         self.terminal = terminal
         self.debugConsole = debugConsole
+        self.serial = serial
         super.init(nibName: nil, bundle: nil)
         issues.onDiagnosticsChange = { [weak self] in self?.updateTabTitles() }
     }
@@ -116,6 +126,7 @@ final class BottomPanelViewController: NSViewController {
         addChild(issues)
         addChild(terminal)
         addChild(debugConsole)
+        addChild(serial)
         terminal.onStatusChange = { [weak self] in self?.updateTerminalHeader() }
         updateTabTitles()
         applyTab(selectedTab)
@@ -128,7 +139,7 @@ final class BottomPanelViewController: NSViewController {
         case .issues:
             let count = issues.diagnostics.count { $0.severity != .note }
             return count > 0 ? "\(tab.title) \(count)" : tab.title
-        case .terminal, .debug:
+        case .terminal, .debug, .serial:
             return tab.title
         }
     }
@@ -160,6 +171,7 @@ final class BottomPanelViewController: NSViewController {
         case .issues: issues
         case .terminal: terminal
         case .debug: debugConsole
+        case .serial: serial
         }
         let childView = child.view
         childView.translatesAutoresizingMaskIntoConstraints = false

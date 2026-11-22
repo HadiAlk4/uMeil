@@ -23,9 +23,17 @@ final class EditorTextView: NSTextView {
         }
     }
 
+    /// Values drawn after the ends of lines while debugging, such as `count = 4`.
+    var inlineAnnotations: [InlineAnnotation] = [] {
+        didSet {
+            if inlineAnnotations != oldValue { needsDisplay = true }
+        }
+    }
+
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
         drawInlineMessages(in: rect)
+        drawInlineAnnotations(in: rect)
     }
 
     override func mouseDown(with event: NSEvent) {

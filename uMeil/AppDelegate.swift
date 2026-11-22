@@ -4,7 +4,6 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var mainWindowController: MainWindowController?
     private lazy var toolchainWindowController = ToolchainWindowController()
-    private lazy var serialMonitorWindowController = SerialMonitorWindowController()
     private var softwareUpdater: SoftwareUpdater?
     /// What the app was launched to open, instead of the last folder.
     private var launchItem: URL?
@@ -81,6 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         mainWindowController?.terminal.terminate()
+        mainWindowController?.bottomPanel.serial.disconnect()
         if mainWindowController?.debugger.isActive == true {
             mainWindowController?.debugger.terminateImmediately()
         }
@@ -99,9 +99,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         toolchainWindowController.showWindow(sender)
     }
 
-    /// Window > Serial Monitor
-    @objc func showSerialMonitor(_ sender: Any?) {
-        serialMonitorWindowController.showWindow(sender)
+    /// The Install button on the issues panel's missing-tool banner: shows
+    /// the toolchain window and installs whatever its check finds missing.
+    @objc func installMissingTools(_ sender: Any?) {
+        showToolchainStatus(sender)
+        toolchainWindowController.status.installMissingToolsAfterChecking()
     }
 
     /// Reopens the folder from the previous session, if it still exists.

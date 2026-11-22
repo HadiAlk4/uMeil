@@ -20,49 +20,12 @@ struct DebugWindowTasks {
     }
 }
 
-/// Turns the debugger's state into the one-line status under the issues list.
-enum DebugSummary {
-    /// For example "Stopped at main.c:21 in main" or "Running".
-    static func statusText(for state: DebugController.State, reason: StopReason? = nil) -> String {
-        switch state {
-        case .idle:
-            return "Debug session ended"
-        case .starting:
-            return "Starting debug session…"
-        case .running:
-            return "Running"
-        case .stopped(let frame):
-            let prefix = stopPrefix(for: reason)
-            guard let frame else { return prefix }
-            let function = frame.function.map { " in \($0)" } ?? ""
-            if let file = frame.file, let line = frame.line {
-                return "\(prefix) at \(file.lastPathComponent):\(line)\(function)"
-            }
-            let address = frame.address.map { " at 0x" + String($0, radix: 16) } ?? ""
-            return "\(prefix)\(function)\(address), where there is no source code to show"
-        }
-    }
-
-    private static func stopPrefix(for reason: StopReason?) -> String {
-        switch reason {
-        case .signal(let name, let meaning):
-            // Pause (`-exec-interrupt`) always reports SIGINT, which is not a fault.
-            if name == "SIGINT" { return "Stopped" }
-            let label = !name.isEmpty ? name : (meaning ?? "signal")
-            return "Stopped (\(label))"
-        case .exited:
-            return "Stopped (exited)"
-        default:
-            return "Stopped"
-        }
-    }
-}
-
 extension MainWindowController {
     // MARK: - Setup
 
     /// Connects the debugger to the editor's gutter, status line, and debug panels.
     func setUpDebugging() {
+        installDebugBar()
         editor.onClickGutterLine = { [weak self] line in self?.toggleBreakpoint(atLine: line) }
         editor.onHoverIdentifier = { [weak self] name in await self?.debugger.evaluate(name) }
         debugger.onStateChange = { [weak self] state in self?.debugStateChanged(state) }
@@ -72,6 +35,7 @@ extension MainWindowController {
         debugPanels.callStackLocals.onDereferenceInFrame = { [weak self] expr, level in
             await self?.debugger.evaluate(expr, inFrame: level)
         }
+        debugPanels.onVariablesChange = { [weak self] in self?.showInlineValues() }
         debugPanels.watch.onExpressionsChanged = { [weak self] _ in self?.refreshWatchedExpressions() }
         debugPanels.memory.onRequestAddress = { [weak self] query in self?.inspectMemory(query) }
         debugPanels.memory.onLengthChange = { [weak self] in self?.refreshMemoryView() }
@@ -116,9 +80,7 @@ extension MainWindowController {
             let project = try ProjectFile.load(from: projectFile)
             let locator = makeToolLocator()
             guard let gdb = locator.locate(.debugger) else {
-                throw DebugError.refused(
-                    "The debugger (GDB) is not installed. Install it from Window > Toolchain Status."
-                )
+                throw ToolNotInstalled(tool: .debugger)
             }
             guard let openOCD = locator.locate(.openOCD) else {
                 throw FlashFailure.openOCDNotFound
@@ -131,7 +93,11 @@ extension MainWindowController {
             return true
         } catch {
             editor.isReadOnly = false
-            issues.show(debugFailure: error.localizedDescription, status: "Debug session failed to start")
+            if let tool = error.missingTool {
+                issues.show(missingTool: tool, status: "Debug session failed to start")
+            } else {
+                issues.show(debugFailure: error.localizedDescription, status: "Debug session failed to start")
+            }
             return false
         }
     }
@@ -166,15 +132,20 @@ extension MainWindowController {
         }
         debugPanels.setEditable(debugger.isStopped)
         toolbar.showDebugControls(state != .idle)
+        updateDebugBar(for: state)
         debugTasks.cancelAll()
         switch state {
         case .idle:
             editor.isReadOnly = false
             editor.showExecutionLine(nil)
             editor.executableLines = []
+            debugPanels.frameVariables = FrameVariables()
+            editor.showInlineValues([:])
         case .starting, .running:
             debugPanels.cancelRefresh()
+            debugPanels.frameVariables = FrameVariables()
             editor.showExecutionLine(nil)
+            editor.showInlineValues([:])
         case .stopped(let frame):
             showStop(at: frame)
             scheduleDebugRefresh(at: frame)
@@ -190,6 +161,7 @@ extension MainWindowController {
 
     private func selectFrame(_ frame: StackFrame) {
         editor.cancelHover()
+        debugPanels.frameVariables.selected = frame
         showStop(at: frame)
         guard debugger.isStopped else { return }
         replaceTask(\.selectFrameTask) {
@@ -207,6 +179,7 @@ extension MainWindowController {
     /// Brings the line the program stopped on into view, opening its file
     /// if another one is showing.
     private func showStop(at frame: StackFrame?) {
+        defer { showInlineValues() }
         guard let file = frame?.file, let line = frame?.line,
               FileManager.default.fileExists(atPath: file.path(percentEncoded: false))
         else {
@@ -231,7 +204,7 @@ extension MainWindowController {
         showExecutableLines()
     }
 
-    private func isShowing(_ file: URL) -> Bool {
+    func isShowing(_ file: URL) -> Bool {
         editor.document.map { SourceLine(file: $0.url, line: 0) } == SourceLine(file: file, line: 0)
     }
 
@@ -244,6 +217,7 @@ extension MainWindowController {
             editor.showExecutionLine(frame?.line)
         }
         showExecutableLines()
+        showInlineValues()
     }
 
     private func showBreakpoints() {

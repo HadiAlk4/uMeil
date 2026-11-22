@@ -40,6 +40,10 @@ final class ToolchainStatusViewController: NSViewController, NSTableViewDataSour
     private let installer: ToolchainInstaller
     private var statuses: [Tool: ToolStatus] = [:]
     private var rows: [ToolStatusRow] = ToolStatusRow.rows(for: [:])
+    /// True while checking or installing.
+    private var isBusy = false
+    /// Set when an install was asked for before the check finished.
+    private var installsAfterCheck = false
 
     private let tableView = NSTableView()
     private let spinner = NSProgressIndicator()
@@ -123,6 +127,16 @@ final class ToolchainStatusViewController: NSViewController, NSTableViewDataSour
         refresh()
     }
 
+    /// Checks the tools again and installs the ones that are missing, as the
+    /// issues panel's Install button asks. Waits for a check or install
+    /// already running to finish first.
+    func installMissingToolsAfterChecking() {
+        installsAfterCheck = true
+        if isViewLoaded, !isBusy {
+            refresh()
+        }
+    }
+
     /// Downloads and installs the packages for every tool that is not working.
     @objc private func installMissingTools(_ sender: Any?) {
         let needed = ToolchainCatalog.entriesNeeded(for: statuses)
@@ -157,6 +171,10 @@ final class ToolchainStatusViewController: NSViewController, NSTableViewDataSour
             installButton.isHidden = ToolchainCatalog.entriesNeeded(for: statuses).isEmpty
             tableView.reloadData()
             setBusy(false)
+            if installsAfterCheck {
+                installsAfterCheck = false
+                installMissingTools(nil)
+            }
         }
     }
 
@@ -176,6 +194,7 @@ final class ToolchainStatusViewController: NSViewController, NSTableViewDataSour
     }
 
     private func setBusy(_ busy: Bool) {
+        isBusy = busy
         checkButton.isEnabled = !busy
         installButton.isEnabled = !busy
         if busy {

@@ -152,7 +152,7 @@ struct BuildInEditorTests {
         ])
     }
 
-    @Test func aMissingCompilerSaysWhereToInstallIt() async throws {
+    @Test func aMissingCompilerOffersToInstallIt() async throws {
         let folder = try TemporaryFolder()
         let controller = try makeBlinkyWindow(in: folder)
         controller.makeToolLocator = { ToolLocator(searchDirectories: []) }
@@ -160,7 +160,17 @@ struct BuildInEditorTests {
         let result = await controller.build()
 
         #expect(result == nil)
-        #expect(controller.issues.diagnostics.first?.message.contains("Toolchain Status") == true)
+        let banner = controller.issues.toolchainBanner
+        #expect(!banner.isHidden)
+        #expect(banner.tools == [.compiler])
+        #expect(banner.installButton.title == "Install GCC")
+        #expect(controller.issues.diagnostics.isEmpty, "the banner takes the place of an error line")
+        #expect(controller.issues.statusLabel.stringValue == "Build failed")
+
+        // Once the compiler is back, the next build clears the banner.
+        controller.makeToolLocator = { .standard() }
+        _ = await controller.build()
+        #expect(banner.isHidden)
     }
 
     @Test func buildIsOnlyOfferedWhenAFolderIsOpen() throws {

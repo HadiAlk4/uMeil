@@ -29,8 +29,22 @@ struct BottomPanelTests {
         (0..<panel.tabControl.segmentCount).compactMap { panel.tabControl.label(forSegment: $0) }
     }
 
-    @Test func hasIssuesTerminalAndDebugTabs() {
-        #expect(labels(of: makePanel()) == ["Issues", "Terminal", "Debug"])
+    @Test func hasIssuesTerminalDebugAndSerialTabs() {
+        #expect(labels(of: makePanel()) == ["Issues", "Terminal", "Debug", "Serial"])
+    }
+
+    @Test func theSerialTabShowsTheSerialMonitorFillingThePanel() {
+        let panel = makePanel()
+        panel.view.frame = NSRect(x: 0, y: 0, width: 600, height: 300)
+
+        panel.select(.serial)
+        panel.view.layoutSubtreeIfNeeded()
+
+        let monitor = panel.serial.view
+        #expect(monitor.superview != nil)
+        let frame = monitor.convert(monitor.bounds, to: panel.view)
+        #expect(frame.width >= 590, "the monitor is \(frame.width) wide")
+        #expect(frame.height >= 220, "the monitor is \(frame.height) tall")
     }
 
     @Test func theIssuesTabCountsErrorsAndWarningsButNotNotes() {
