@@ -160,6 +160,22 @@ struct GoToLineTests {
         #expect(controller.editor.textView.selectedRange() == NSRange(location: expectedOffset, length: 0))
     }
 
+    @Test func aColumnPastTheEndOfTheLineStaysOnThatLine() throws {
+        let (controller, temp) = try makeWindowController(lines: 60)
+        _ = temp
+        defer { controller.goToLine.close(restoreFocus: false) }
+
+        controller.showGoToLine(nil)
+        controller.goToLine.inputField.stringValue = "42:999"
+        controller.goToLine.submit()
+
+        let index = controller.editor.lineIndex
+        let line = try #require(index.range(ofLine: 42))
+        let cursor = controller.editor.textView.selectedRange()
+        #expect(index.lineNumber(atOffset: cursor.location) == 42)
+        #expect(cursor == NSRange(location: NSMaxRange(line) - 1, length: 0))
+    }
+
     @Test func submittingOutOfRangeLineClampsCleanly() throws {
         let (controller, temp) = try makeWindowController(lines: 10)
         _ = temp

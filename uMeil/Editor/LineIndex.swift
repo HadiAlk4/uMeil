@@ -7,19 +7,27 @@ import Foundation
 struct LineIndex: Equatable {
     /// The offset at which each line starts. Never empty: line 1 starts at 0.
     private let lineStarts: [Int]
+    /// Where each line's text ends, before its `\n` or `\r\n`.
+    private let contentEnds: [Int]
     /// The length of the whole text.
     let length: Int
 
     init(_ text: String) {
         var starts = [0]
+        var ends: [Int] = []
         var offset = 0
+        var previous: UInt16 = 0
         for unit in text.utf16 {
-            offset += 1
             if unit == 0x0A {
-                starts.append(offset)
+                ends.append(previous == 0x0D ? offset - 1 : offset)
+                starts.append(offset + 1)
             }
+            offset += 1
+            previous = unit
         }
+        ends.append(offset)
         lineStarts = starts
+        contentEnds = ends
         length = offset
     }
 
@@ -59,7 +67,7 @@ struct LineIndex: Equatable {
     /// The offset of a 1-based line and column, as compilers report them.
     /// Columns past the end of the line are clamped to the line's end.
     func offset(line: Int, column: Int) -> Int? {
-        guard let range = range(ofLine: line) else { return nil }
-        return range.location + min(max(column - 1, 0), range.length)
+        guard let start = offset(ofLine: line) else { return nil }
+        return min(start + max(column - 1, 0), contentEnds[line - 1])
     }
 }

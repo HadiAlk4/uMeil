@@ -69,9 +69,20 @@ struct LineIndexTests {
 
         #expect(index.offset(line: 1, column: 1) == 0)
         #expect(index.offset(line: 2, column: 5) == 21) // the "r" of "return"
-        // A column past the end of the line stops at the line's end.
-        #expect(index.offset(line: 3, column: 99) == 33)
+        // A column past the end of the line stops at the line's end,
+        // before its newline, not at the start of the next line.
+        #expect(index.offset(line: 3, column: 99) == 32)
+        #expect(index.offset(line: 1, column: 18) == 16)
+        #expect(index.offset(line: 4, column: 5) == 33)
         #expect(index.offset(line: 9, column: 1) == nil)
+    }
+
+    @Test func aColumnPastTheEndStopsBeforeAWindowsLineEnding() {
+        let index = LineIndex("ab\r\ncd\r\n")
+
+        #expect(index.offset(line: 1, column: 3) == 2)
+        #expect(index.offset(line: 1, column: 50) == 2)
+        #expect(index.offset(line: 2, column: 50) == 6)
     }
 
     @Test func handlesATenThousandLineFile() {
