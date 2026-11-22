@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import Testing
 @testable import uMeil
 
@@ -79,5 +79,29 @@ struct LSPModelsTests {
         #expect(params.diagnostics[1].code == "101")
         // 0-based line 1 -> 1-based line 2; error outranks warning; info/hint ignored in gutter.
         #expect(params.lineMarkers == [2: .error])
+    }
+}
+
+@MainActor
+struct LSPSignatureHelpTests {
+    @Test func decodesOffsetLabelsAndFindsTheActiveArgument() throws {
+        let json = """
+        {"signatures":[{"label":"void GPIOPinWrite(uint32_t ui32Port, uint8_t ui8Pins, uint8_t ui8Val)",
+          "documentation":{"kind":"plaintext","value":"Writes a value to the specified pin(s).\\nMore."},
+          "parameters":[{"label":[18,35]},{"label":[37,52]},{"label":"uint8_t ui8Val"}]}],
+         "activeSignature":0,"activeParameter":1}
+        """
+        let help = try JSONDecoder().decode(LSPSignatureHelp.self, from: Data(json.utf8))
+
+        #expect(help.activeParameterName == "ui8Pins")
+        let signature = try #require(help.active)
+        #expect(signature.parameterName(at: 0) == "ui32Port")
+        #expect(signature.parameterName(at: 2) == "ui8Val")
+        #expect(signature.parameterRange(at: 3) == nil)
+
+        let text = EditorViewController.signatureText(signature, activeParameter: 1)
+        #expect(text.string == signature.label + "\nWrites a value to the specified pin(s).")
+        let bold = text.attribute(.font, at: 40, effectiveRange: nil) as? NSFont
+        #expect(bold?.fontDescriptor.symbolicTraits.contains(.bold) == true)
     }
 }

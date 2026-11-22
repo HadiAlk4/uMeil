@@ -10,9 +10,11 @@ final class EditorCodeIntelligenceState {
     var onDocumentClosed: ((URL) -> Void)?
     var onCompletionRequested: ((URL, String, LSPPosition) async -> [LSPCompletionItem])?
     var onDefinitionRequested: ((URL, String, LSPPosition) async -> Void)?
+    var onSignatureHelpRequested: ((URL, String, LSPPosition) async -> LSPSignatureHelp?)?
 
     let diagnosticBar = EditorDiagnosticBar()
     let completionPanel = CompletionPanelController()
+    let signaturePanel = CodeInfoPanel()
 
     var buildMarkers: [Int: Diagnostic.Severity] = [:]
     /// The last build's message for each line, written beside the code.
@@ -25,6 +27,9 @@ final class EditorCodeIntelligenceState {
     var lastEditWasSingleTypedCharacter = false
     /// The arguments left to fill in after accepting a snippet completion.
     var placeholders: SnippetPlaceholders?
+    /// The parameter hint showing, and the request refreshing it.
+    var signatureHelp: LSPSignatureHelp?
+    var signatureTask: Task<Void, Never>?
     /// When false the editor shows no live diagnostics, never asks for
     /// completions, and ignores go-to-definition requests.
     var isEnabled = true
@@ -51,7 +56,13 @@ extension EditorViewController {
         }
         editorTextView?.completionKeyHandler = { [weak self] event in
             guard let self else { return false }
-            return completionPanel.handleKeyDown(event) || handlePlaceholderKey(event)
+            if completionPanel.handleKeyDown(event) { return true }
+            if event.keyCode == 53, signaturePanel.isVisible {
+                dismissSignatureHelp()
+                endPlaceholders()
+                return true
+            }
+            return handlePlaceholderKey(event)
         }
         completionPanel.onAccept = { [weak self] item in
             self?.acceptCompletion(item)
@@ -74,6 +85,7 @@ extension EditorViewController {
         intelligence.completionAnchorOffset = nil
         completionPanel.dismiss()
         endPlaceholders()
+        dismissSignatureHelp()
         clearLiveDiagnostics()
     }
 
@@ -188,6 +200,7 @@ extension EditorViewController {
 
     func handleSelectionChangeForCodeIntelligence() {
         updateDiagnosticBar()
+        handleSelectionChangeForSignatureHelp()
         guard completionPanel.isVisible else { return }
         let cursor = textView.selectedRange().location
         guard let anchor = intelligence.completionAnchorOffset,
@@ -245,7 +258,12 @@ extension EditorViewController {
         guard cursor >= anchor, cursor <= (textView.textStorage?.length ?? 0) else { return }
 
         let replaceRange = NSRange(location: anchor, length: cursor - anchor)
-        insertSnippet(item.snippet, replacing: replaceRange)
+        let snippet = item.snippet
+        insertSnippet(snippet, replacing: replaceRange)
+        if !snippet.placeholders.isEmpty {
+            // The first argument is selected: show what goes there.
+            requestSignatureHelp(delay: .zero)
+        }
     }
 
     func shouldAutoTriggerCompletion(in text: String, atUTF16Offset offset: Int) -> Bool {

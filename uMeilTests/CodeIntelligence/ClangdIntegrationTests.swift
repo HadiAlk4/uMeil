@@ -103,8 +103,8 @@ struct ClangdIntegrationTests {
         let cursor = LineIndex(edited).lspPosition(atUTF16Offset: prefixRange.location + "        GPIOPin".utf16.count)
         let completions = try await harness.session.completion(at: cursor, in: harness.mainC, currentText: edited)
 
-        #expect(completions.contains { $0.insertionText == "GPIOPinWrite" })
-        #expect(completions.contains { $0.insertionText == "GPIOPinTypeGPIOOutput" })
+        #expect(completions.contains { $0.filterKey == "GPIOPinWrite" })
+        #expect(completions.contains { $0.filterKey == "GPIOPinTypeGPIOOutput" })
         await harness.close()
     }
 
@@ -139,7 +139,7 @@ struct ClangdIntegrationTests {
         controller.isEnabled = true
         controller.fileOpened(mainC, text: edited)
         let completions = await controller.completion(in: mainC, text: edited, position: cursor)
-        #expect(completions.contains { $0.insertionText == "GPIOPinWrite" })
+        #expect(completions.contains { $0.filterKey == "GPIOPinWrite" })
         #expect(editor.intelligence.isEnabled)
         controller.stop()
     }

@@ -32,6 +32,9 @@ extension MainWindowController {
         editor.intelligence.onCompletionRequested = { [weak controller] url, text, position in
             await controller?.completion(in: url, text: text, position: position) ?? []
         }
+        editor.intelligence.onSignatureHelpRequested = { [weak controller] url, text, position in
+            await controller?.signatureHelp(in: url, text: text, position: position)
+        }
         editor.intelligence.onDefinitionRequested = { [weak controller] url, text, position in
             await controller?.jumpToDefinition(in: url, text: text, position: position)
         }

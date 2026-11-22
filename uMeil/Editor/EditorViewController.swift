@@ -171,6 +171,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         intelligence.completionTask?.cancel()
         intelligence.completionAnchorOffset = nil
         endPlaceholders()
+        dismissSignatureHelp()
 
         isLoading = true
         textView.string = text
@@ -230,6 +231,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         intelligence.completionTask?.cancel()
         intelligence.completionAnchorOffset = nil
         endPlaceholders()
+        dismissSignatureHelp()
 
         isLoading = true
         textView.string = ""
@@ -278,6 +280,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
             intelligence.onDocumentChanged?(url, textView.string)
         }
         handleTypingCompletionTrigger()
+        handleTypingSignatureTrigger()
     }
 
     // MARK: - Build messages

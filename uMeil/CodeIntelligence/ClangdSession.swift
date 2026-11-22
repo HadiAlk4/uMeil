@@ -157,6 +157,17 @@ actor ClangdSession {
         return try await client.definition(url: normalized, position: position)
     }
 
+    func signatureHelp(
+        at position: LSPPosition,
+        in url: URL,
+        currentText: String? = nil
+    ) async throws -> LSPSignatureHelp? {
+        let normalized = Self.normalize(url)
+        try await ensureSynced(url: normalized, currentText: currentText)
+        let client = try await ensureClient()
+        return try await client.signatureHelp(url: normalized, position: position)
+    }
+
     // MARK: - Helpers
 
     private func ensureClient() async throws -> LSPClient {
