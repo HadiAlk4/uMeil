@@ -171,6 +171,24 @@ final class CodeIntelligenceController {
         onNavigateToLocation(first)
     }
 
+    func codeActions(
+        in url: URL,
+        text: String,
+        range: LSPRange,
+        diagnostics: [LSPDiagnostic]
+    ) async -> [LSPCodeAction] {
+        guard isEnabled, SourceLanguage(url: url) == .c else { return [] }
+        let pendingOpen = openFileTaskBox.withLockUnchecked { $0 }
+        await pendingOpen?.value
+        guard let session else { return [] }
+        return (try? await session.codeAction(
+            url: url,
+            range: range,
+            diagnostics: diagnostics,
+            currentText: text
+        )) ?? []
+    }
+
     func stop() {
         documentVersions.removeAll()
         openFileTaskBox.withLockUnchecked { task in

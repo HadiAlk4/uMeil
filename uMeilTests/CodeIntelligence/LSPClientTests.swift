@@ -188,4 +188,91 @@ struct LSPClientTests {
             try await client.completion(url: file, position: LSPPosition(line: 0, character: 0))
         }
     }
+
+    @Test func advertisesCodeActionCapabilitiesInInitialize() async throws {
+        let transport = MockLSPTransport()
+        let client = LSPClient(transport: transport)
+        let capturedInit = OSAllocatedUnfairLock(initialState: Data?.none)
+
+        transport.onSend = { payload, mock in
+            guard let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+                  let method = json["method"] as? String,
+                  let requestID = json["id"] as? Int
+            else { return }
+            if method == "initialize" {
+                capturedInit.withLock { $0 = payload }
+                mock.emit(["jsonrpc": "2.0", "id": requestID, "result": ["capabilities": [:]]])
+            } else if method == "shutdown" {
+                mock.emit(["jsonrpc": "2.0", "id": requestID, "result": NSNull()])
+            }
+        }
+
+        try await client.initialize(rootURL: URL(filePath: "/tmp/Blinky", directoryHint: .isDirectory))
+        let initData = try #require(capturedInit.withLock { $0 })
+        let initRequest = try #require(JSONSerialization.jsonObject(with: initData) as? [String: Any])
+        let initParams = try #require(initRequest["params"] as? [String: Any])
+        let capabilities = try #require(initParams["capabilities"] as? [String: Any])
+        let textDoc = try #require(capabilities["textDocument"] as? [String: Any])
+        let codeActionCap = try #require(textDoc["codeAction"] as? [String: Any])
+        let literalSupport = try #require(codeActionCap["codeActionLiteralSupport"] as? [String: Any])
+        let kindSupport = try #require(literalSupport["codeActionKind"] as? [String: Any])
+        let valueSet = try #require(kindSupport["valueSet"] as? [String])
+        #expect(valueSet.contains("quickfix"))
+        #expect(codeActionCap["isPreferredSupport"] as? Bool == true)
+
+        await client.shutdown()
+    }
+
+    @Test func requestsAndDecodesCodeActions() async throws {
+        let transport = MockLSPTransport()
+        let client = LSPClient(transport: transport)
+        let file = URL(filePath: "/tmp/Blinky/src/main.c")
+        let fileURI = file.standardizedFileURL.absoluteString
+        let diagRange = LSPRange(start: LSPPosition(line: 1, character: 4), end: LSPPosition(line: 1, character: 10))
+        let diagnostic = LSPDiagnostic(
+            range: diagRange, severity: .error, code: "-Wimplicit-function-declaration",
+            source: "clang", message: "Call to undeclared library function 'printf'"
+        )
+        let capturedRequest = OSAllocatedUnfairLock(initialState: Data?.none)
+
+        transport.onSend = { payload, mock in
+            guard let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+                  let method = json["method"] as? String, let requestID = json["id"] as? Int
+            else { return }
+            if method == "shutdown" {
+                mock.emit(["jsonrpc": "2.0", "id": requestID, "result": NSNull()])
+            } else if method == "textDocument/codeAction", let params = json["params"] as? [String: Any] {
+                let diagnostics = (params["context"] as? [String: Any])?["diagnostics"] as? [[String: Any]] ?? []
+                if !diagnostics.isEmpty { capturedRequest.withLock { $0 = payload } }
+                let quickFixResult: [[String: Any]] = [[
+                    "title": "Include <stdio.h> for symbol printf", "kind": "quickfix", "isPreferred": true,
+                    "edit": ["changes": [fileURI: [[
+                        "range": ["start": ["line": 0, "character": 0], "end": ["line": 0, "character": 0]],
+                        "newText": "#include <stdio.h>\n"
+                    ]]]]
+                ]]
+                let result: Any = diagnostics.isEmpty ? NSNull() : quickFixResult
+                mock.emit(["jsonrpc": "2.0", "id": requestID, "result": result])
+            }
+        }
+
+        let actions = try await client.codeAction(url: file, range: diagRange, diagnostics: [diagnostic])
+        let emptyActions = try await client.codeAction(url: file, range: diagRange, diagnostics: [])
+
+        #expect(actions.count == 1)
+        #expect(actions.first?.title == "Include <stdio.h> for symbol printf")
+        #expect(actions.first?.isPreferred == true)
+        #expect(actions.first?.quickFixEdits(targeting: file)?.first?.newText == "#include <stdio.h>\n")
+        #expect(emptyActions.isEmpty)
+
+        let reqData = try #require(capturedRequest.withLock { $0 })
+        let reqJSON = try #require(JSONSerialization.jsonObject(with: reqData) as? [String: Any])
+        let caParams = try #require(reqJSON["params"] as? [String: Any])
+        let caContext = try #require(caParams["context"] as? [String: Any])
+        #expect(caContext["only"] as? [String] == ["quickfix"])
+        let sentDiags = try #require(caContext["diagnostics"] as? [[String: Any]])
+        #expect(sentDiags.first?["message"] as? String == diagnostic.message)
+
+        await client.shutdown()
+    }
 }

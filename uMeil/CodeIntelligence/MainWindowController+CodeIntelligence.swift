@@ -46,15 +46,23 @@ extension MainWindowController {
             guard let controller else { throw RenameError.unavailable }
             return try await controller.rename(in: url, text: text, position: position, to: newName)
         }
+        editor.intelligence.onDefinitionRequested = { [weak controller] url, text, position in
+            await controller?.jumpToDefinition(in: url, text: text, position: position)
+        }
+        editor.intelligence.onCodeActionsRequested = { [weak controller] url, text, range, diagnostics in
+            await controller?.codeActions(in: url, text: text, range: range, diagnostics: diagnostics) ?? []
+        }
+        configureFormatting()
+    }
+
+    /// Format Selection runs clang-format from the toolchain `clangd` came from.
+    private func configureFormatting() {
         editor.intelligence.onFormatRequested = { [weak self] url, text, lines in
             let locator = self?.makeToolLocator() ?? .standard()
             guard let executable = ClangFormatter.locate(near: locator.locate(.clangd), locator: locator) else {
                 throw ClangFormatter.Failure.notFound
             }
             return try await ClangFormatter(executable: executable).format(text, of: url, lines: lines)
-        }
-        editor.intelligence.onDefinitionRequested = { [weak controller] url, text, position in
-            await controller?.jumpToDefinition(in: url, text: text, position: position)
         }
     }
 

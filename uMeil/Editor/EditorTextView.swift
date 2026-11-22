@@ -15,6 +15,8 @@ final class EditorTextView: NSTextView {
     var onRequestRename: (() -> Void)?
     /// Called first on `keyDown` so an open completion popup can intercept arrows, Return, Tab, and Esc.
     var completionKeyHandler: ((NSEvent) -> Bool)?
+    /// Called when the user clicks an inline diagnostic quick-fix badge.
+    var onQuickFixClick: ((LSPCodeAction) -> Void)?
 
     private var hoverTrackingArea: NSTrackingArea?
 
@@ -25,12 +27,22 @@ final class EditorTextView: NSTextView {
         }
     }
 
+    /// Live diagnostics with one-click fixes, drawn as interactive capsules.
+    var inlineQuickFixes: [InlineQuickFix] = [] {
+        didSet {
+            if inlineQuickFixes != oldValue { needsDisplay = true }
+        }
+    }
+
     /// Values drawn after the ends of lines while debugging, such as `count = 4`.
     var inlineAnnotations: [InlineAnnotation] = [] {
         didSet {
             if inlineAnnotations != oldValue { needsDisplay = true }
         }
     }
+
+    /// Editor visual highlight state (current line, etc.), drawn behind the text.
+    var highlightState = HighlightState()
 
     /// UTF-16 offset where the stopped execution line begins, or `nil` when not stopped here.
     var executionLineStart: Int? {
@@ -46,16 +58,32 @@ final class EditorTextView: NSTextView {
         }
     }
 
+    /// The `⌘D` occurrences being edited together, if any.
+    let multiOccurrence = MultiOccurrenceState()
+
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
         drawExecutionLine(in: rect)
+        drawEditorHighlights(in: rect)
         drawPlaceholders(in: rect)
+
+        drawMultiOccurrenceHighlights(in: rect)
         drawInlineMessages(in: rect)
+        drawInlineQuickFixes(in: rect)
         drawInlineAnnotations(in: rect)
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
     override func mouseDown(with event: NSEvent) {
+        endMultiOccurrenceSession()
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if modifiers.isEmpty, handleQuickFixClick(with: event) {
+            return
+        }
         if modifiers == .command, let offset = characterOffset(for: event) {
             onCommandClick?(offset)
             return
@@ -65,6 +93,9 @@ final class EditorTextView: NSTextView {
 
     override func keyDown(with event: NSEvent) {
         if completionKeyHandler?(event) == true {
+            return
+        }
+        if handleLineEditingKeyDown(event) {
             return
         }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -106,6 +137,7 @@ final class EditorTextView: NSTextView {
         } else {
             autoClosedPairs.removeAll()
         }
+        handleSelectionDidChangeForMultiOccurrence()
     }
 
     /// What one level of indentation is. Settings decides, unless a test does.
@@ -123,6 +155,9 @@ final class EditorTextView: NSTextView {
     /// Typed characters arrive here with no replacement range; text put in by
     /// code, such as an accepted completion, comes with one and is left alone.
     override func insertText(_ string: Any, replacementRange: NSRange) {
+        if handleMultiOccurrenceInsertText(string, replacementRange: replacementRange) {
+            return
+        }
         let typed = (string as? String) ?? (string as? NSAttributedString)?.string
         if replacementRange.location == NSNotFound, let typed, handleTyped(typed) {
             return
@@ -168,6 +203,9 @@ final class EditorTextView: NSTextView {
     }
 
     override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if let valid = validateLineEditingUserInterfaceItem(item) {
+            return valid
+        }
         switch item.action {
         case #selector(shiftRight(_:)), #selector(shiftLeft(_:)):
             return isEditable
@@ -179,7 +217,7 @@ final class EditorTextView: NSTextView {
     }
 
     override func deleteBackward(_ sender: Any?) {
-        if !handleDeleteBackward() {
+        if !handleMultiOccurrenceDeleteBackward(), !handleDeleteBackward() {
             super.deleteBackward(sender)
         }
     }
@@ -205,11 +243,13 @@ final class EditorTextView: NSTextView {
 
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
+        updateQuickFixHover(with: event)
         onHoverCharacter?(characterOffset(for: event))
     }
 
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
+        clearQuickFixHover()
         onHoverCharacter?(nil)
     }
 
@@ -243,6 +283,26 @@ final class EditorTextView: NSTextView {
         onCommandClick?(offset)
     }
 
+    private func characterOffset(for event: NSEvent) -> Int? {
+        guard let layoutManager, let textContainer, let storage = textStorage, storage.length > 0 else {
+            return nil
+        }
+        let viewPoint = convert(event.locationInWindow, from: nil)
+        let containerPoint = NSPoint(
+            x: viewPoint.x - textContainerOrigin.x,
+            y: viewPoint.y - textContainerOrigin.y
+        )
+        let glyphIndex = layoutManager.glyphIndex(for: containerPoint, in: textContainer)
+        let lineRect = layoutManager.lineFragmentUsedRect(forGlyphAt: glyphIndex, effectiveRange: nil)
+        guard lineRect.insetBy(dx: -4, dy: -2).contains(containerPoint) else { return nil }
+        let charIndex = layoutManager.characterIndexForGlyph(at: glyphIndex)
+        return charIndex < storage.length ? charIndex : nil
+    }
+}
+
+// MARK: - Execution line and snippet placeholders
+
+extension EditorTextView {
     private func drawExecutionLine(in dirtyRect: NSRect) {
         guard let lineStart = executionLineStart,
               let layoutManager,
@@ -284,21 +344,5 @@ final class EditorTextView: NSTextView {
             guard box.intersects(rect) else { continue }
             NSBezierPath(roundedRect: box.insetBy(dx: -1, dy: 0), xRadius: 3, yRadius: 3).fill()
         }
-    }
-
-    private func characterOffset(for event: NSEvent) -> Int? {
-        guard let layoutManager, let textContainer, let storage = textStorage, storage.length > 0 else {
-            return nil
-        }
-        let viewPoint = convert(event.locationInWindow, from: nil)
-        let containerPoint = NSPoint(
-            x: viewPoint.x - textContainerOrigin.x,
-            y: viewPoint.y - textContainerOrigin.y
-        )
-        let glyphIndex = layoutManager.glyphIndex(for: containerPoint, in: textContainer)
-        let lineRect = layoutManager.lineFragmentUsedRect(forGlyphAt: glyphIndex, effectiveRange: nil)
-        guard lineRect.insetBy(dx: -4, dy: -2).contains(containerPoint) else { return nil }
-        let charIndex = layoutManager.characterIndexForGlyph(at: glyphIndex)
-        return charIndex < storage.length ? charIndex : nil
     }
 }

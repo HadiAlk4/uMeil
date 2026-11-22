@@ -20,6 +20,7 @@ final class EditorCodeIntelligenceState {
     /// Formats the given 1-based lines of a file's text with clang-format.
     var onFormatRequested: ((URL, String, ClosedRange<Int>) async throws -> String)?
     var formatProblemHandler: ((String) -> Void)?
+    var onCodeActionsRequested: ((URL, String, LSPRange, [LSPDiagnostic]) async -> [LSPCodeAction])?
 
     let diagnosticBar = EditorDiagnosticBar()
     let completionPanel = CompletionPanelController()
@@ -30,6 +31,8 @@ final class EditorCodeIntelligenceState {
     /// The last build's message for each line, written beside the code.
     var buildMessages: [Int: BuildSummary.LineMessage] = [:]
     var liveDiagnostics: [LSPDiagnostic] = []
+    var quickFixesByDiagnostic: [LSPDiagnostic: LSPCodeAction] = [:]
+    var quickFixTask: Task<Void, Never>?
     var diagnosticRanges: [NSRange] = []
     var completionAnchorOffset: Int?
     var completionRequestVersion = 0
@@ -88,6 +91,12 @@ extension EditorViewController {
                 column: diagnostic.range.start.character + 1
             )
         }
+        diagnosticBar.onQuickFix = { [weak self] action in
+            self?.applyQuickFix(action)
+        }
+        editorTextView?.onQuickFixClick = { [weak self] action in
+            self?.applyQuickFix(action)
+        }
     }
 
     /// Turns live diagnostics, autocomplete, and go-to-definition on or off.
@@ -139,20 +148,17 @@ extension EditorViewController {
             }
         }
         updateDiagnosticBar()
+        refreshQuickFixes(for: diagnostics)
     }
 
     func clearLiveDiagnostics() {
         clearInlineDiagnosticAttributes()
+        clearQuickFixes()
         if !intelligence.liveDiagnostics.isEmpty {
             intelligence.liveDiagnostics = []
             refreshRulerMarkers()
         }
         diagnosticBar.update(diagnostics: [], cursorLineZeroBased: 0)
-    }
-
-    func updateDiagnosticBar() {
-        let cursorLine = lineIndex.lineNumber(atOffset: textView.selectedRange().location) - 1
-        diagnosticBar.update(diagnostics: intelligence.liveDiagnostics, cursorLineZeroBased: cursorLine)
     }
 
     private func clearInlineDiagnosticAttributes() {
@@ -367,10 +373,12 @@ extension EditorViewController {
     ) -> Bool {
         guard !isLoading else {
             intelligence.lastEditWasSingleTypedCharacter = false
+            editorHighlightsCancelPendingTypedBracket()
             return true
         }
         intelligence.lastEditWasSingleTypedCharacter = replacementString?.count == 1 && affectedCharRange.length <= 1
         placeholdersWillChangeText(in: affectedCharRange, replacement: replacementString)
+        editorHighlightsWillChangeText(in: affectedCharRange, replacementString: replacementString)
         return true
     }
 
@@ -378,6 +386,7 @@ extension EditorViewController {
         guard !isLoading else { return }
         updateCursorPosition()
         placeholdersSelectionDidChange()
+        editorHighlightsDidChangeSelection()
         handleSelectionChangeForCodeIntelligence()
     }
 }

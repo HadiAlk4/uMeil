@@ -255,4 +255,32 @@ struct ClangdIntegrationTests {
         await session.stop()
         continuation.finish()
     }
+
+    @Test(.timeLimit(TestTiming.minutes(1)))
+    func returnsMissingIncludeQuickFixFromRealClangd() async throws {
+        let harness = try await startBlinkySession()
+
+        let missingInclude = harness.originalText.replacingOccurrences(
+            of: "GPIOPinWrite(GPIO_PORTN_BASE, GPIO_PIN_1, 0);",
+            with: "printf(\"blink\\n\");"
+        )
+        await harness.session.updateDocument(url: harness.mainC, text: missingInclude)
+        let published = try await waitForDiagnostics(in: harness) { params in
+            params.diagnostics.contains { $0.message.contains("printf") }
+        }
+        let diag = try #require(published.diagnostics.first { $0.message.contains("printf") })
+
+        let actions = try await harness.session.codeAction(
+            url: harness.mainC,
+            range: diag.range,
+            diagnostics: [diag],
+            currentText: missingInclude
+        )
+        let preferred = try #require(LSPCodeAction.preferredQuickFix(from: actions, targeting: harness.mainC))
+        #expect(preferred.title.contains("<stdio.h>"))
+        let edits = try #require(preferred.quickFixEdits(targeting: harness.mainC))
+        #expect(edits.contains { $0.newText.contains("#include <stdio.h>") })
+
+        await harness.close()
+    }
 }
