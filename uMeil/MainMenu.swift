@@ -108,6 +108,12 @@ enum MainMenu {
             action: #selector(MainWindowController.toggleIssues(_:)),
             keyEquivalent: ""
         )
+        let serialMonitor = menu.addItem(
+            withTitle: "Show Serial Monitor",
+            action: #selector(MainWindowController.toggleSerialMonitor(_:)),
+            keyEquivalent: "m"
+        )
+        serialMonitor.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(.separator())
         let nextTab = menu.addItem(
             withTitle: "Show Next Tab",
@@ -251,12 +257,6 @@ enum MainMenu {
             action: #selector(AppDelegate.showToolchainStatus(_:)),
             keyEquivalent: ""
         )
-        let serialMonitor = menu.addItem(
-            withTitle: "Serial Monitor",
-            action: #selector(AppDelegate.showSerialMonitor(_:)),
-            keyEquivalent: "m"
-        )
-        serialMonitor.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(.separator())
         let close = menu.addItem(
             withTitle: "Close Window",

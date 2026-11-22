@@ -189,17 +189,33 @@ struct SerialMonitorTests {
         #expect(monitor.outputText.hasSuffix(line + "the newest line\n"))
     }
 
-    @Test func theWindowMenuOpensTheSerialMonitor() throws {
+    @Test func theViewMenuShowsTheSerialMonitor() throws {
         let menu = MainMenu.make(appName: "uMeil")
-        let window = try #require(menu.items.first { $0.submenu?.title == "Window" }?.submenu)
-        let item = try #require(window.items.first { $0.title == "Serial Monitor" })
+        let view = try #require(menu.items.first { $0.submenu?.title == "View" }?.submenu)
+        let item = try #require(view.items.first { $0.title == "Show Serial Monitor" })
 
-        #expect(item.action == #selector(AppDelegate.showSerialMonitor(_:)))
+        #expect(item.action == #selector(MainWindowController.toggleSerialMonitor(_:)))
         #expect(item.keyEquivalent == "m")
         #expect(item.keyEquivalentModifierMask == [.command, .shift])
+    }
 
-        let controller = SerialMonitorWindowController()
-        #expect(controller.window?.title == "Serial Monitor")
-        #expect(controller.window?.contentViewController == controller.monitor)
+    @Test func theSerialMonitorIsATabInTheBottomPanelNotAWindow() async throws {
+        let controller = MainWindowController(defaults: defaults, boardMonitor: FakeBoardMonitor())
+        let windowsBefore = NSApp.windows.count
+
+        controller.toggleSerialMonitor(nil)
+
+        #expect(controller.isSerialMonitorVisible)
+        #expect(controller.bottomPanel.selectedTab == .serial)
+        #expect(controller.bottomPanel.serial.view.isDescendant(of: controller.bottomPanel.view))
+        #expect(NSApp.windows.count == windowsBefore, "no separate window opens")
+
+        let toggle = #selector(MainWindowController.toggleSerialMonitor(_:))
+        let item = NSMenuItem(title: "", action: toggle, keyEquivalent: "")
+        #expect(controller.validateMenuItem(item))
+        #expect(item.title == "Hide Serial Monitor")
+
+        controller.toggleSerialMonitor(nil)
+        await waitUntil("the panel closes") { !controller.isSerialMonitorVisible }
     }
 }

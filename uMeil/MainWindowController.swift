@@ -25,8 +25,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     /// Runs debug sessions and keeps the breakpoints.
     let debugger = DebugController()
     let debugPanels = DebugPanelsController()
-    /// Run and step buttons floating over the editor during a session.
-    let debugBar = DebugBarView()
+    let debugBar = DebugBarView() // Run and step buttons over the editor during a session.
     /// Floats "Build Succeeded" and "Flashed to Board" over the editor.
     let notice = NoticeView()
     /// File > Open Quickly: finds a project file by a few letters of its name.
@@ -73,7 +72,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         self.boardMonitor = boardMonitor
         self.terminal = TerminalViewController(session: makeTerminalSession())
         self.bottomPanel = BottomPanelViewController(
-            issues: issues, terminal: terminal, debugConsole: debugPanels.command
+            issues: issues, terminal: terminal, debugConsole: debugPanels.command,
+            serial: SerialMonitorViewController(defaults: defaults)
         )
 
         let bottomPanelItem = NSSplitViewItem(viewController: bottomPanel)

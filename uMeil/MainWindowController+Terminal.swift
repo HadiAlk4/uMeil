@@ -3,6 +3,8 @@ import AppKit
 extension MainWindowController {
     /// Whether the issues panel under the editor is showing.
     var isIssuesPanelVisible: Bool { !bottomPanelItem.isCollapsed && bottomPanel.selectedTab == .issues }
+    /// Whether the serial monitor under the editor is showing.
+    var isSerialMonitorVisible: Bool { !bottomPanelItem.isCollapsed && bottomPanel.selectedTab == .serial }
     /// Whether the integrated terminal under the editor is showing.
     var isTerminalVisible: Bool { !bottomPanelItem.isCollapsed && bottomPanel.selectedTab == .terminal }
 
@@ -43,6 +45,8 @@ extension MainWindowController {
             menuItem.title = isTerminalVisible ? "Hide Terminal" : "Show Terminal"
         case #selector(toggleIssues(_:)):
             menuItem.title = isIssuesPanelVisible ? "Hide Issues" : "Show Issues"
+        case #selector(toggleSerialMonitor(_:)):
+            menuItem.title = isSerialMonitorVisible ? "Hide Serial Monitor" : "Show Serial Monitor"
         case #selector(toggleCodeIntelligence(_:)):
             menuItem.state = isCodeIntelligenceEnabled ? .on : .off
         default:
@@ -63,6 +67,24 @@ extension MainWindowController {
         setBottomPanelCollapsed(false)
         terminal.startIfNeeded(folder: folder)
         window?.makeFirstResponder(terminal.focusableView)
+    }
+
+    /// Expands the bottom panel and switches to the serial monitor, with the
+    /// cursor in its send field once a port is open.
+    func showSerialMonitor() {
+        bottomPanel.select(.serial)
+        setBottomPanelCollapsed(false)
+        let serial = bottomPanel.serial
+        window?.makeFirstResponder(serial.isConnected ? serial.inputField : serial.portPopUp)
+    }
+
+    /// View > Show/Hide Serial Monitor (⇧⌘M)
+    @objc func toggleSerialMonitor(_ sender: Any?) {
+        if isSerialMonitorVisible {
+            collapseBottomPanel()
+        } else {
+            showSerialMonitor()
+        }
     }
 
     /// View > Show/Hide Terminal (⌘J)
