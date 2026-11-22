@@ -367,10 +367,12 @@ extension EditorViewController {
     ) -> Bool {
         guard !isLoading else {
             intelligence.lastEditWasSingleTypedCharacter = false
+            editorHighlightsCancelPendingTypedBracket()
             return true
         }
         intelligence.lastEditWasSingleTypedCharacter = replacementString?.count == 1 && affectedCharRange.length <= 1
         placeholdersWillChangeText(in: affectedCharRange, replacement: replacementString)
+        editorHighlightsWillChangeText(in: affectedCharRange, replacementString: replacementString)
         return true
     }
 

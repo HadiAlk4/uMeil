@@ -91,6 +91,34 @@ enum EditorTheme {
         darkAlpha: 0.06
     )
 
+    /// Subtle rounded shading and outline for matched brackets around the cursor.
+    static let bracketMatchBackgroundColor = adaptive(
+        light: 0x0969DA,
+        lightAlpha: 0.13,
+        dark: 0x79C0FF,
+        darkAlpha: 0.18
+    )
+    static let bracketMatchBorderColor = adaptive(
+        light: 0x0969DA,
+        lightAlpha: 0.35,
+        dark: 0x79C0FF,
+        darkAlpha: 0.40
+    )
+
+    /// Brighter brief flash behind the matching opening bracket when typing `)`, `]`, or `}`.
+    static let bracketFlashBackgroundColor = adaptive(
+        light: 0xF5B800,
+        lightAlpha: 0.45,
+        dark: 0xFFD60A,
+        darkAlpha: 0.38
+    )
+    static let bracketFlashBorderColor = adaptive(
+        light: 0xC48A00,
+        lightAlpha: 0.75,
+        dark: 0xFFE55C,
+        darkAlpha: 0.75
+    )
+
     /// Underline colors for live diagnostics reported while typing.
     /// The shading behind a snippet placeholder still waiting to be filled in.
     static let placeholderBackgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.18)

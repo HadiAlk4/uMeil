@@ -34,6 +34,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
 
     let textView: NSTextView
     let intelligence = EditorCodeIntelligenceState()
+    let highlightState = EditorHighlightState()
     private let scrollView = NSScrollView()
     private let editorStack = NSStackView()
     private(set) var ruler: LineNumberRulerView?
