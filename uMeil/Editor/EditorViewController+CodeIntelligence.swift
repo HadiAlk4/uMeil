@@ -33,7 +33,6 @@ final class EditorCodeIntelligenceState {
     var liveDiagnostics: [LSPDiagnostic] = []
     var quickFixesByDiagnostic: [LSPDiagnostic: LSPCodeAction] = [:]
     var quickFixTask: Task<Void, Never>?
-    var diagnosticRanges: [NSRange] = []
     var completionAnchorOffset: Int?
     var completionRequestVersion = 0
     var completionTask: Task<Void, Never>?
@@ -144,7 +143,6 @@ extension EditorViewController {
                 layoutManager.addTemporaryAttribute(.underlineStyle, value: style, forCharacterRange: range)
                 layoutManager.addTemporaryAttribute(.underlineColor, value: color, forCharacterRange: range)
                 layoutManager.addTemporaryAttribute(.toolTip, value: diagnostic.message, forCharacterRange: range)
-                intelligence.diagnosticRanges.append(range)
             }
         }
         updateDiagnosticBar()
@@ -161,20 +159,16 @@ extension EditorViewController {
         diagnosticBar.update(diagnostics: [], cursorLineZeroBased: 0)
     }
 
+    /// Removes every diagnostic underline and tooltip. The underlines move
+    /// with the text as it is edited, so they are cleared across the whole
+    /// file rather than where they were first drawn.
     private func clearInlineDiagnosticAttributes() {
-        guard let layoutManager = textView.layoutManager else {
-            intelligence.diagnosticRanges.removeAll()
-            return
-        }
-        let textLength = textView.textStorage?.length ?? 0
-        for stored in intelligence.diagnosticRanges {
-            let clamped = NSIntersectionRange(stored, NSRange(location: 0, length: textLength))
-            guard clamped.length > 0 else { continue }
-            layoutManager.removeTemporaryAttribute(.underlineStyle, forCharacterRange: clamped)
-            layoutManager.removeTemporaryAttribute(.underlineColor, forCharacterRange: clamped)
-            layoutManager.removeTemporaryAttribute(.toolTip, forCharacterRange: clamped)
-        }
-        intelligence.diagnosticRanges.removeAll()
+        guard let layoutManager = textView.layoutManager else { return }
+        let all = NSRange(location: 0, length: textView.textStorage?.length ?? 0)
+        guard all.length > 0 else { return }
+        layoutManager.removeTemporaryAttribute(.underlineStyle, forCharacterRange: all)
+        layoutManager.removeTemporaryAttribute(.underlineColor, forCharacterRange: all)
+        layoutManager.removeTemporaryAttribute(.toolTip, forCharacterRange: all)
     }
 
     /// Expands zero-width diagnostic points (e.g. missing semicolon at end of line)
