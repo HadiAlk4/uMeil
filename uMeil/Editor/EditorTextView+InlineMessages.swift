@@ -27,6 +27,14 @@ extension EditorTextView {
         message.moreCount > 0 ? "\(message.text)  (+\(message.moreCount) more)" : message.text
     }
 
+    /// How wide a message's capsule is when there is room for all of it.
+    static func capsuleWidth(for message: BuildSummary.LineMessage) -> CGFloat {
+        let text = inlineText(for: message) as NSString
+        let textWidth = ceil(text.size(withAttributes: [.font: inlineMessageFont]).width)
+        let iconSize: CGFloat = 11, padding: CGFloat = 7, spacing: CGFloat = 5
+        return padding + iconSize + spacing + textWidth + padding
+    }
+
     /// Draws each message behind the text: a faint tint across its line and
     /// a capsule with an icon and the message after the line's last character.
     func drawInlineMessages(in dirtyRect: NSRect) {
@@ -67,9 +75,8 @@ extension EditorTextView {
             .foregroundColor: NSColor.labelColor
         ]
         let iconSize: CGFloat = 11, padding: CGFloat = 7, spacing: CGFloat = 5
-        let textWidth = ceil(text.size(withAttributes: attributes).width)
         let available = bounds.maxX - start - 8
-        let width = min(padding + iconSize + spacing + textWidth + padding, available)
+        let width = min(Self.capsuleWidth(for: message), available)
         guard width >= Self.inlineMessageMinimumWidth else { return }
 
         let height = min(lineRect.height - 2, 17)

@@ -55,6 +55,7 @@ extension EditorViewController {
         showExecutionLine(nil)
         breakpointLines = []
         executableLines = []
+        showInlineValues([:])
         cancelHover()
     }
 
@@ -140,6 +141,30 @@ extension EditorViewController {
     private func clearHoverValue() {
         if textView.toolTip != nil {
             textView.toolTip = nil
+        }
+    }
+}
+
+// MARK: - Inline values
+
+extension EditorViewController {
+    /// The values printed after lines of the open file, by line number.
+    var inlineValues: [Int: String] {
+        guard let textView = textView as? EditorTextView else { return [:] }
+        var result: [Int: String] = [:]
+        for annotation in textView.inlineAnnotations {
+            result[lineIndex.lineNumber(atOffset: annotation.lineStart)] = annotation.text
+        }
+        return result
+    }
+
+    /// Prints `values` in dim text after the lines they belong to, replacing
+    /// any shown before. An empty dictionary removes them all.
+    func showInlineValues(_ values: [Int: String]) {
+        guard let textView = textView as? EditorTextView else { return }
+        textView.inlineAnnotations = values.keys.sorted().compactMap { line in
+            guard let start = lineIndex.offset(ofLine: line), let text = values[line] else { return nil }
+            return EditorTextView.InlineAnnotation(lineStart: start, text: text)
         }
     }
 }

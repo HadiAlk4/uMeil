@@ -72,6 +72,7 @@ extension MainWindowController {
         debugPanels.callStackLocals.onDereferenceInFrame = { [weak self] expr, level in
             await self?.debugger.evaluate(expr, inFrame: level)
         }
+        debugPanels.onVariablesChange = { [weak self] in self?.showInlineValues() }
         debugPanels.watch.onExpressionsChanged = { [weak self] _ in self?.refreshWatchedExpressions() }
         debugPanels.memory.onRequestAddress = { [weak self] query in self?.inspectMemory(query) }
         debugPanels.memory.onLengthChange = { [weak self] in self?.refreshMemoryView() }
@@ -172,9 +173,13 @@ extension MainWindowController {
             editor.isReadOnly = false
             editor.showExecutionLine(nil)
             editor.executableLines = []
+            debugPanels.forgetVariables()
+            editor.showInlineValues([:])
         case .starting, .running:
             debugPanels.cancelRefresh()
+            debugPanels.forgetVariables()
             editor.showExecutionLine(nil)
+            editor.showInlineValues([:])
         case .stopped(let frame):
             showStop(at: frame)
             scheduleDebugRefresh(at: frame)
@@ -190,6 +195,7 @@ extension MainWindowController {
 
     private func selectFrame(_ frame: StackFrame) {
         editor.cancelHover()
+        debugPanels.inlineFrame = frame
         showStop(at: frame)
         guard debugger.isStopped else { return }
         replaceTask(\.selectFrameTask) {
@@ -207,6 +213,7 @@ extension MainWindowController {
     /// Brings the line the program stopped on into view, opening its file
     /// if another one is showing.
     private func showStop(at frame: StackFrame?) {
+        defer { showInlineValues() }
         guard let file = frame?.file, let line = frame?.line,
               FileManager.default.fileExists(atPath: file.path(percentEncoded: false))
         else {
@@ -235,6 +242,23 @@ extension MainWindowController {
         editor.document.map { SourceLine(file: $0.url, line: 0) } == SourceLine(file: file, line: 0)
     }
 
+    // MARK: - Values in the code
+
+    /// Prints the values of the chosen frame's locals after the lines of its
+    /// function that use them, if that frame's file is the one showing.
+    func showInlineValues() {
+        guard debugger.isStopped, let frame = debugPanels.inlineFrame,
+              let file = frame.file, let line = frame.line, isShowing(file),
+              let variables = debugPanels.variablesByFrame[frame.level]
+        else {
+            editor.showInlineValues([:])
+            return
+        }
+        editor.showInlineValues(
+            InlineValues.annotations(source: editor.textView.string, stoppedAt: line, variables: variables)
+        )
+    }
+
     // MARK: - Marks in the gutter
 
     /// Puts the debugger's marks back after the editor opened a file.
@@ -244,6 +268,7 @@ extension MainWindowController {
             editor.showExecutionLine(frame?.line)
         }
         showExecutableLines()
+        showInlineValues()
     }
 
     private func showBreakpoints() {
