@@ -300,5 +300,12 @@ extension MainMenu {
             keyEquivalent: downKey
         )
         duplicate.keyEquivalentModifierMask = [.option, .shift]
+
+        let selectNext = menu.addItem(
+            withTitle: "Select Next Occurrence",
+            action: #selector(EditorTextView.selectNextOccurrence(_:)),
+            keyEquivalent: "d"
+        )
+        selectNext.keyEquivalentModifierMask = [.command]
     }
 }

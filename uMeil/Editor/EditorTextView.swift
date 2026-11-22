@@ -58,11 +58,16 @@ final class EditorTextView: NSTextView {
         }
     }
 
+    /// The `⌘D` occurrences being edited together, if any.
+    let multiOccurrence = MultiOccurrenceState()
+
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
         drawExecutionLine(in: rect)
         drawEditorHighlights(in: rect)
         drawPlaceholders(in: rect)
+
+        drawMultiOccurrenceHighlights(in: rect)
         drawInlineMessages(in: rect)
         drawInlineQuickFixes(in: rect)
         drawInlineAnnotations(in: rect)
@@ -74,6 +79,7 @@ final class EditorTextView: NSTextView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        endMultiOccurrenceSession()
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if modifiers.isEmpty, handleQuickFixClick(with: event) {
             return
@@ -131,6 +137,7 @@ final class EditorTextView: NSTextView {
         } else {
             autoClosedPairs.removeAll()
         }
+        handleSelectionDidChangeForMultiOccurrence()
     }
 
     /// What one level of indentation is. Settings decides, unless a test does.
@@ -148,6 +155,9 @@ final class EditorTextView: NSTextView {
     /// Typed characters arrive here with no replacement range; text put in by
     /// code, such as an accepted completion, comes with one and is left alone.
     override func insertText(_ string: Any, replacementRange: NSRange) {
+        if handleMultiOccurrenceInsertText(string, replacementRange: replacementRange) {
+            return
+        }
         let typed = (string as? String) ?? (string as? NSAttributedString)?.string
         if replacementRange.location == NSNotFound, let typed, handleTyped(typed) {
             return
@@ -207,9 +217,47 @@ final class EditorTextView: NSTextView {
     }
 
     override func deleteBackward(_ sender: Any?) {
-        if !handleDeleteBackward() {
+        if !handleMultiOccurrenceDeleteBackward(), !handleDeleteBackward() {
             super.deleteBackward(sender)
         }
+    }
+
+    // MARK: - Editing every ⌘D occurrence at once
+
+    override func deleteForward(_ sender: Any?) {
+        if !handleMultiOccurrenceDeleteForward() {
+            super.deleteForward(sender)
+        }
+    }
+
+    override func paste(_ sender: Any?) {
+        if !handleMultiOccurrencePaste() {
+            super.paste(sender)
+        }
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        if !handleMultiOccurrenceCancelOperation() {
+            super.cancelOperation(sender)
+        }
+    }
+
+    override func doCommand(by selector: Selector) {
+        endMultiOccurrenceSessionBefore(selector)
+        super.doCommand(by: selector)
+    }
+
+    override func didChangeText() {
+        handleTextDidChangeForMultiOccurrence()
+        super.didChangeText()
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        if resigned {
+            endMultiOccurrenceSession()
+        }
+        return resigned
     }
 
     override func complete(_ sender: Any?) {
