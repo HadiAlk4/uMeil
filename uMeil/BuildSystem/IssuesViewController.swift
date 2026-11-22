@@ -203,16 +203,6 @@ final class IssuesViewController: NSViewController, NSTableViewDataSource, NSTab
         publish(result.failure == nil ? .succeeded : .failed)
     }
 
-    /// Shows what the debugger is doing. The messages from the build that
-    /// came before it stay listed.
-    func showDebugging(_ status: String, isBusy: Bool = false) {
-        show(status: status, diagnostics: diagnostics)
-        if isBusy {
-            spinner.startAnimation(nil)
-        }
-        publish(isBusy ? .working(progress: nil) : .info)
-    }
-
     /// Shows something the debugger could not do, listed first, above any
     /// warnings from the build.
     func show(debugFailure message: String, status: String) {

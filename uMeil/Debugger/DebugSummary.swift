@@ -1,6 +1,7 @@
 import Foundation
 
-/// Turns the debugger's state into the one-line status under the issues list.
+/// Turns the debugger's state into the one-line status shown in the debug bar
+/// and the toolbar's activity indicator.
 enum DebugSummary {
     /// For example "Stopped at main.c:21 in main" or "Running".
     static func statusText(for state: DebugController.State, reason: StopReason? = nil) -> String {
@@ -20,6 +21,17 @@ enum DebugSummary {
             }
             let address = frame.address.map { " at 0x" + String($0, radix: 16) } ?? ""
             return "\(prefix)\(function)\(address), where there is no source code to show"
+        }
+    }
+
+    /// Whether `reason` is an unexpected fault signal (rather than a normal
+    /// breakpoint, step, or user-initiated `SIGINT` pause).
+    static func isFault(reason: StopReason?) -> Bool {
+        switch reason {
+        case .signal(let name, _):
+            return name != "SIGINT"
+        default:
+            return false
         }
     }
 

@@ -69,6 +69,60 @@ struct DebugBarTests {
         await controller.debugger.stop()
     }
 
+    @Test func showsDebugStatusWithoutPollutingIssuesAndFitsInsideEditor() async throws {
+        let (controller, gdb) = try makeWindow()
+        let bar = controller.debugBar
+        #expect(bar.statusLabel.stringValue.isEmpty)
+        #expect(bar.statusKind == nil)
+        #expect(controller.issues.statusLabel.stringValue == "No build yet")
+
+        try await controller.debugger.start(FakeBlinky.plan)
+        #expect(bar.statusLabel.stringValue == "Running")
+        #expect(bar.statusKind == .running)
+        #expect(controller.issues.statusLabel.stringValue == "No build yet")
+
+        gdb.print(FakeBlinky.stop(atLine: 28, of: URL(filePath: "/tmp/main.c"), reason: "breakpoint-hit"))
+        await waitUntil("the program stops at line 28") { controller.debugger.isStopped }
+        #expect(bar.statusLabel.stringValue == "Stopped at main.c:28 in main")
+        #expect(bar.statusLabel.toolTip == "Stopped at main.c:28 in main")
+        #expect(bar.statusKind == .stopped)
+        #expect(controller.issues.statusLabel.stringValue == "No build yet")
+
+        controller.editor.view.layoutSubtreeIfNeeded()
+        let stoppedFrame = bar.convert(bar.bounds, to: controller.editor.view)
+        let tabBarFrame = controller.editor.tabBar.convert(controller.editor.tabBar.bounds, to: controller.editor.view)
+        #expect(controller.editor.view.bounds.contains(stoppedFrame))
+        #expect(!stoppedFrame.intersects(tabBarFrame), "debug bar clears the editor tab strip")
+
+        // A fault signal highlights as an error in the debug bar, not in Issues.
+        gdb.print("*stopped,reason=\"signal-received\",signal-name=\"SIGSEGV\","
+            + "signal-meaning=\"Segmentation fault\",frame={addr=\"0x20a\",func=\"main\","
+            + "fullname=\"/tmp/main.c\",line=\"28\"},thread-id=\"1\"")
+        await waitUntil("fault stop is shown") { bar.statusKind == .error }
+        #expect(bar.statusLabel.stringValue == "Stopped (SIGSEGV) at main.c:28 in main")
+        #expect(controller.issues.statusLabel.stringValue == "No build yet")
+
+        // A very long status message truncates within the editor bounds rather than overflowing.
+        gdb.print(FakeBlinky.stopInLibrary)
+        await waitUntil("no-source stop is shown") {
+            bar.statusLabel.stringValue == "Stopped in SysCtlDelay at 0x472, where there is no source code to show"
+        }
+        #expect(bar.statusKind == .stopped)
+        controller.window?.setFrame(NSRect(x: 0, y: 0, width: 700, height: 600), display: false)
+        controller.window?.contentView?.layoutSubtreeIfNeeded()
+        controller.editor.view.layoutSubtreeIfNeeded()
+        let longFrame = bar.convert(bar.bounds, to: controller.editor.view)
+        let editorBounds = controller.editor.view.bounds
+        #expect(abs(longFrame.midX - editorBounds.midX) < 1, "the bar stays centred")
+        #expect(editorBounds.contains(longFrame), "long status truncates inside the editor")
+
+        await controller.debugger.stop()
+        #expect(bar.isHidden)
+        #expect(bar.statusLabel.stringValue.isEmpty)
+        #expect(bar.statusKind == nil)
+        #expect(controller.issues.statusLabel.stringValue == "No build yet")
+    }
+
     @Test func tooltipsNameTheKeilKeys() throws {
         let bar = DebugBarView()
 
