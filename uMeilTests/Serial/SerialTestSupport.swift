@@ -86,10 +86,15 @@ final class SerialRecorder: Sendable {
         state.withLock { $0.disconnects += 1 }
     }
 
-    func open(_ terminal: PseudoTerminal, baudRate: Int = SerialPort.defaultBaudRate) throws -> SerialPort {
+    func open(
+        _ terminal: PseudoTerminal,
+        baudRate: Int = SerialPort.defaultBaudRate,
+        framing: SerialFraming = .standard
+    ) throws -> SerialPort {
         try SerialPort(
             path: terminal.path,
             baudRate: baudRate,
+            framing: framing,
             onData: { [self] in record($0) },
             onDisconnect: { [self] in recordDisconnect() }
         )

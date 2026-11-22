@@ -108,6 +108,50 @@ struct SerialPortTests {
         #expect(cfgetospeed(&attributes) == 57600)
     }
 
+    @Test(arguments: [
+        (SerialFraming(dataBits: 7, parity: .none, stopBits: 2), tcflag_t(CS7 | CSTOPB)),
+        (SerialFraming(dataBits: 8, parity: .even, stopBits: 1), tcflag_t(CS8 | PARENB)),
+        (SerialFraming(dataBits: 7, parity: .odd, stopBits: 1), tcflag_t(CS7 | PARENB | PARODD)),
+        (SerialFraming.standard, tcflag_t(CS8))
+    ])
+    func rawModeUsesTheChosenFraming(framing: SerialFraming, flags: tcflag_t) {
+        var attributes = termios()
+        attributes.c_cflag = tcflag_t(CS5 | PARENB | PARODD | CSTOPB | CRTSCTS)
+
+        SerialPort.makeRaw(&attributes, baudRate: 38400, framing: framing)
+
+        #expect(attributes.c_cflag & tcflag_t(CSIZE | PARENB | PARODD | CSTOPB | CRTSCTS) == flags)
+        #expect(attributes.c_cflag & tcflag_t(CLOCAL | CREAD) == tcflag_t(CLOCAL | CREAD))
+        #expect(cfgetospeed(&attributes) == 38400)
+    }
+
+    @Test func opensWithTheChosenFraming() throws {
+        let terminal = try PseudoTerminal()
+        let framing = SerialFraming(dataBits: 7, parity: .none, stopBits: 2)
+        let port = try SerialRecorder().open(terminal, baudRate: 38400, framing: framing)
+        defer { port.close() }
+
+        let attributes = terminal.attributes
+        #expect(attributes.c_cflag & tcflag_t(CSIZE) == tcflag_t(CS7))
+        #expect(attributes.c_cflag & tcflag_t(CSTOPB) != 0)
+        #expect(attributes.c_cflag & tcflag_t(PARENB) == 0)
+        #expect(port.framing == framing)
+    }
+
+    @Test func framingIsWrittenTheWayTheCourseWritesIt() {
+        #expect(SerialFraming.standard.summary == "8,N,1")
+        #expect(SerialFraming(dataBits: 7, parity: .none, stopBits: 2).summary == "7,N,2")
+        #expect(SerialFraming(dataBits: 8, parity: .even, stopBits: 1).summary == "8,E,1")
+        #expect(SerialFraming(dataBits: 7, parity: .odd, stopBits: 2).summary == "7,O,2")
+    }
+
+    @Test func framingFallsBackToEightAndOneForValuesItCannotUse() {
+        let framing = SerialFraming(dataBits: 5, parity: .odd, stopBits: 3)
+        #expect(framing.dataBits == 8)
+        #expect(framing.stopBits == 1)
+        #expect(framing.parity == .odd)
+    }
+
     @Test func reportsWhenTheBoardIsUnplugged() async throws {
         let terminal = try PseudoTerminal()
         let recorder = SerialRecorder()
