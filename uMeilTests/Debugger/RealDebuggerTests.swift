@@ -170,7 +170,8 @@ struct RealDebuggerTests {
         #expect(controller.editor.executionLine == 21)
         #expect(controller.editor.breakpointLines == [28])
         #expect(controller.editor.isReadOnly)
-        #expect(controller.issues.statusLabel.stringValue == "Stopped at main.c:21 in main")
+        #expect(controller.debugBar.statusLabel.stringValue == "Stopped at main.c:21 in main")
+        #expect(!controller.issues.statusLabel.stringValue.contains("Stopped"))
         await waitUntil("the lines with code are marked") { !controller.editor.executableLines.isEmpty }
         #expect(controller.editor.executableLines.contains(21))
         #expect(controller.editor.executableLines.contains(28))
@@ -182,11 +183,11 @@ struct RealDebuggerTests {
 
         controller.debugStepOver(nil)
         await waitUntil("the program steps to line 22") { controller.editor.executionLine == 22 }
-        #expect(controller.issues.statusLabel.stringValue == "Stopped at main.c:22 in main")
+        #expect(controller.debugBar.statusLabel.stringValue == "Stopped at main.c:22 in main")
 
         controller.debugContinue(nil)
         await waitUntil("the program hits the breakpoint on line 28") { controller.editor.executionLine == 28 }
-        #expect(controller.issues.statusLabel.stringValue == "Stopped at main.c:28 in main")
+        #expect(controller.debugBar.statusLabel.stringValue == "Stopped at main.c:28 in main")
 
         await controller.debugger.stop()
         await waitUntil("the session is over") { !controller.debugger.isActive }

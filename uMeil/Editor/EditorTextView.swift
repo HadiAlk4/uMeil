@@ -32,6 +32,13 @@ final class EditorTextView: NSTextView {
         }
     }
 
+    /// UTF-16 offset where the stopped execution line begins, or `nil` when not stopped here.
+    var executionLineStart: Int? {
+        didSet {
+            if executionLineStart != oldValue { needsDisplay = true }
+        }
+    }
+
     /// Snippet placeholders still to be filled in, shaded behind the text.
     var placeholderRanges: [NSRange] = [] {
         didSet {
@@ -41,6 +48,7 @@ final class EditorTextView: NSTextView {
 
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
+        drawExecutionLine(in: rect)
         drawPlaceholders(in: rect)
         drawInlineMessages(in: rect)
         drawInlineAnnotations(in: rect)
@@ -233,6 +241,31 @@ final class EditorTextView: NSTextView {
     @objc private func jumpToClickedDefinition(_ sender: NSMenuItem) {
         guard let offset = sender.representedObject as? Int else { return }
         onCommandClick?(offset)
+    }
+
+    private func drawExecutionLine(in dirtyRect: NSRect) {
+        guard let lineStart = executionLineStart,
+              let layoutManager,
+              let storage = textStorage,
+              lineStart >= 0,
+              lineStart <= storage.length
+        else { return }
+
+        var lineRect: NSRect
+        if lineStart < storage.length {
+            let glyph = layoutManager.glyphIndexForCharacter(at: lineStart)
+            lineRect = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        } else {
+            lineRect = layoutManager.extraLineFragmentRect
+        }
+        guard lineRect.height > 0 else { return }
+
+        lineRect = lineRect.offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+        let band = NSRect(x: bounds.minX, y: lineRect.minY, width: bounds.width, height: lineRect.height)
+        guard band.intersects(dirtyRect) else { return }
+
+        EditorTheme.executionLineColor.setFill()
+        band.fill(using: .sourceOver)
     }
 
     private func drawPlaceholders(in rect: NSRect) {

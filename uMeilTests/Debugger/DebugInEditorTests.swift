@@ -82,7 +82,9 @@ struct DebugInEditorTests {
         #expect(controller.lastBuild?.succeeded == true)
         #expect(controller.editor.executionLine == 21)
         #expect(controller.editor.isReadOnly)
-        #expect(controller.issues.statusLabel.stringValue == "Stopped at main.c:21 in main")
+        #expect(controller.debugBar.statusLabel.stringValue == "Stopped at main.c:21 in main")
+        #expect(controller.debugBar.statusKind == .stopped)
+        #expect(controller.issues.statusLabel.stringValue.hasPrefix("Build succeeded"))
         #expect(controller.toolbar.activity.activity == Activity(text: "Stopped at main.c:21 in main", kind: .info))
         #expect(controller.toolbar.isShowingDebugControls)
         #expect(toolbarActions(of: controller).contains(#selector(MainWindowController.debugStepOver(_:))))
@@ -105,7 +107,10 @@ struct DebugInEditorTests {
         #expect(controller.editor.executionLine == nil)
         #expect(controller.editor.executableLines.isEmpty)
         #expect(!controller.editor.isReadOnly)
-        #expect(controller.issues.statusLabel.stringValue == "Debug session ended")
+        #expect(controller.debugBar.isHidden)
+        #expect(controller.debugBar.statusLabel.stringValue.isEmpty)
+        #expect(controller.toolbar.activity.activity == Activity(text: "Debug session ended", kind: .info))
+        #expect(controller.issues.statusLabel.stringValue.hasPrefix("Build succeeded"))
         #expect(!controller.toolbar.isShowingDebugControls)
         #expect(!toolbarActions(of: controller).contains(#selector(MainWindowController.debugStepOver(_:))))
         #expect(toolbarActions(of: controller).contains(#selector(MainWindowController.toggleDebugging(_:))))
@@ -179,12 +184,16 @@ struct DebugInEditorTests {
         controller.debugStepOver(nil)
         await waitUntil("the program is running") { controller.debugger.state == .running }
         #expect(controller.editor.executionLine == nil)
-        #expect(controller.issues.statusLabel.stringValue == "Running")
+        #expect(controller.debugBar.statusLabel.stringValue == "Running")
+        #expect(controller.debugBar.statusKind == .running)
+        #expect(controller.issues.statusLabel.stringValue.hasPrefix("Build succeeded"))
         #expect(window.gdb.commands.last == "-exec-next")
 
         window.gdb.print(FakeBlinky.stop(atLine: 22, of: window.mainC))
         await waitUntil("the program stops") { controller.debugger.isStopped }
         #expect(controller.editor.executionLine == 22)
+        #expect(controller.debugBar.statusLabel.stringValue == "Stopped at main.c:22 in main")
+        #expect(controller.issues.statusLabel.stringValue.hasPrefix("Build succeeded"))
     }
 
     @Test func aStopInAnotherFileOpensIt() async throws {
@@ -221,8 +230,9 @@ struct DebugInEditorTests {
 
         #expect(controller.editor.executionLine == nil)
         #expect(controller.editor.document?.url.lastPathComponent == "main.c")
-        #expect(controller.issues.statusLabel.stringValue
+        #expect(controller.debugBar.statusLabel.stringValue
             == "Stopped in SysCtlDelay at 0x472, where there is no source code to show")
+        #expect(controller.issues.statusLabel.stringValue.hasPrefix("Build succeeded"))
     }
 
     @Test func runToCursorLineUsesTheLineTheCursorIsOn() async throws {
@@ -252,7 +262,10 @@ struct DebugInEditorTests {
 
         controller.debugStepOut(nil)
 
-        await waitUntil("the refusal is shown") { controller.issues.statusLabel.stringValue == refusal }
+        await waitUntil("the refusal is shown") { controller.debugBar.statusLabel.stringValue == refusal }
+        #expect(controller.debugBar.statusKind == .error)
+        #expect(controller.toolbar.activity.activity == Activity(text: refusal, kind: .info))
+        #expect(controller.issues.statusLabel.stringValue.hasPrefix("Build succeeded"))
         #expect(controller.debugger.isStopped)
     }
 }

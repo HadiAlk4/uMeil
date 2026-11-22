@@ -175,17 +175,22 @@ final class WatchViewController: NSViewController, NSTableViewDataSource, NSTabl
             label = createdLabel
         }
 
-        label.stringValue = isValue ? entry.value : entry.expression
-        label.font = DebugTableStyle.font
-        label.lineBreakMode = .byTruncatingTail
         label.layer?.removeAnimation(forKey: "changedFlash")
         label.layer?.backgroundColor = NSColor.clear.cgColor
         label.drawsBackground = false
         label.backgroundColor = .clear
-        if isValue && entry.isChanged {
-            DebugTableStyle.markChanged(label, flash: DebugTableStyle.shouldFlash(since: updatedAt))
+        if isValue {
+            DebugTableStyle.applyValue(
+                entry.value,
+                to: label,
+                isChanged: entry.isChanged,
+                flash: DebugTableStyle.shouldFlash(since: updatedAt)
+            )
         } else {
+            label.font = DebugTableStyle.font
+            label.lineBreakMode = .byTruncatingTail
             label.textColor = .labelColor
+            label.stringValue = entry.expression
         }
         return cell
     }

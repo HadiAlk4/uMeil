@@ -176,4 +176,53 @@ extension DebugInEditorTests {
         controller.debugPanels.watch.onExpressionsChanged?(["x"])
         #expect(firstTask?.isCancelled == true)
     }
+
+    @Test func debugStatusNeverPollutesIssuesTabWhileLaunchErrorsStillSurface() async throws {
+        let folder = try TemporaryFolder()
+        let window = try makeBlinkyWindow(in: folder)
+        let controller = window.controller
+        await startAtMain(window)
+
+        let buildStatus = controller.issues.statusLabel.stringValue
+        #expect(buildStatus.hasPrefix("Build succeeded"))
+        #expect(controller.issues.diagnostics.isEmpty)
+        #expect(controller.debugBar.statusLabel.stringValue == "Stopped at main.c:21 in main")
+
+        // Stepping to line 28 and trying to toggle a breakpoint while running stay out of Issues.
+        controller.debugContinue(nil)
+        await waitUntil("running") { controller.debugger.state == .running }
+        #expect(controller.debugBar.statusLabel.stringValue == "Running")
+        #expect(controller.issues.statusLabel.stringValue == buildStatus)
+
+        controller.editor.onClickGutterLine?(28)
+        await waitUntil("breakpoint hint shown in debug bar") {
+            controller.debugBar.statusLabel.stringValue == "Stop the program to change breakpoints"
+        }
+        #expect(controller.debugBar.statusKind == .error)
+        #expect(controller.issues.statusLabel.stringValue == buildStatus)
+
+        window.gdb.print(FakeBlinky.stop(atLine: 28, of: window.mainC, reason: "breakpoint-hit"))
+        await waitUntil("stopped at line 28") { controller.debugger.isStopped }
+        #expect(controller.debugBar.statusLabel.stringValue == "Stopped at main.c:28 in main")
+        #expect(controller.debugBar.statusKind == .stopped)
+        #expect(controller.issues.statusLabel.stringValue == buildStatus)
+
+        // Ending the session hides the debug bar without overwriting the Issues tab status.
+        await controller.debugger.stop()
+        await waitUntil("ended") { !controller.debugger.isActive }
+        #expect(controller.debugBar.isHidden)
+        #expect(controller.issues.statusLabel.stringValue == buildStatus)
+        #expect(controller.toolbar.activity.activity == Activity(text: "Debug session ended", kind: .info))
+
+        // Genuine launch failures still surface in the Issues tab as errors.
+        let failingGdb = FakeBlinky.debugger(refusing: "-target-select")
+        controller.debugger.connect = { _ in failingGdb }
+        failingGdb.print("Error: open failed")
+        #expect(await !controller.startDebugging())
+        await waitUntil("failed launch settled") { !controller.debugger.isActive }
+        #expect(controller.issues.statusLabel.stringValue == "Debug session failed to start")
+        #expect(controller.issues.diagnostics.first?.message == FlashFailure.boardNotConnected.localizedDescription)
+        #expect(controller.toolbar.activity.activity == Activity(text: "Debug session failed to start", kind: .failed))
+        #expect(controller.debugBar.isHidden)
+    }
 }

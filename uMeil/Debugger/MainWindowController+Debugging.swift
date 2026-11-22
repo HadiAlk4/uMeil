@@ -23,7 +23,7 @@ struct DebugWindowTasks {
 extension MainWindowController {
     // MARK: - Setup
 
-    /// Connects the debugger to the editor's gutter, status line, and debug panels.
+    /// Connects the debugger to the editor's gutter, debug bar, and debug panels.
     func setUpDebugging() {
         installDebugBar()
         editor.onClickGutterLine = { [weak self] line in self?.toggleBreakpoint(atLine: line) }
@@ -123,16 +123,14 @@ extension MainWindowController {
         if let mainSplit = window?.contentViewController as? NSSplitViewController {
             debugPanels.setLayoutVisible(state != .idle, mainSplit: mainSplit, editorSplit: editorSplit)
         }
+        let status = DebugSummary.statusText(for: state, reason: debugger.lastStopReason)
         // A failed start shows its own message; do not replace it.
         if state != .idle || editor.isReadOnly {
-            issues.showDebugging(
-                DebugSummary.statusText(for: state, reason: debugger.lastStopReason),
-                isBusy: state == .starting
-            )
+            toolbar.activity.show(Activity(text: status, kind: state == .starting ? .working(progress: nil) : .info))
         }
         debugPanels.setEditable(debugger.isStopped)
         toolbar.showDebugControls(state != .idle)
-        updateDebugBar(for: state)
+        updateDebugBar(for: state, status: status, reason: debugger.lastStopReason)
         debugTasks.cancelAll()
         switch state {
         case .idle:
@@ -246,7 +244,7 @@ extension MainWindowController {
         guard let file = editor.document?.url else { return }
         Task {
             if await !debugger.toggleBreakpoint(at: SourceLine(file: file, line: line)) {
-                issues.showDebugging("Stop the program to change breakpoints")
+                showDebugMessage("Stop the program to change breakpoints")
                 NSSound.beep()
             }
         }
@@ -278,9 +276,18 @@ extension MainWindowController {
             do {
                 try await action(debugger)
             } catch {
-                issues.showDebugging(error.localizedDescription)
+                showDebugMessage(error.localizedDescription)
             }
         }
+    }
+
+    /// Shows a debug-session message (such as a refused command or breakpoint
+    /// hint) in the debug bar and toolbar without polluting the Issues tab.
+    private func showDebugMessage(_ message: String, kind: DebugBarView.StatusKind = .error) {
+        if debugger.isActive {
+            debugBar.showStatus(message, kind: kind)
+        }
+        toolbar.activity.show(Activity(text: message, kind: .info))
     }
 
     private func replaceTask(
@@ -310,7 +317,7 @@ extension MainWindowController {
     private func writeMemory(_ bytes: [UInt8], at address: UInt64) {
         replaceTask(\.memoryTask) {
             if let failure = await $0.debugPanels.writeMemory(at: address, bytes: bytes, using: $0.debugger) {
-                $0.issues.showDebugging(failure)
+                $0.showDebugMessage(failure)
             } else if !Task.isCancelled, case .stopped(let frame) = $0.debugger.state {
                 $0.editor.cancelHover()
                 $0.scheduleDebugRefresh(at: frame)

@@ -33,10 +33,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
 
     /// The outcome of the most recent build of the open folder.
     private(set) var lastBuild: BuildResult? { didSet { refreshStatusBar() } }
-    private(set) var isBuilding = false
+    private(set) var isBuilding = false { didSet { window?.toolbar?.validateVisibleItems() } }
     /// True from the moment Build and Flash is chosen until it finishes,
     /// including the build that comes first.
-    var isFlashing = false
+    var isFlashing = false { didSet { window?.toolbar?.validateVisibleItems() } }
     /// The Build and Flash in progress, kept so it can be stopped.
     var flashTask: Task<Void, Never>?
     /// Ad-hoc debug refresh tasks and close-deferral state.
@@ -55,7 +55,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     var answerSavePrompt: ((_ files: [URL]) -> SaveChoice)?
 
     /// The folder open in the navigator, or `nil` before one is chosen.
-    private(set) var folder: URL? { didSet { folderDidChange() } }
+    private(set) var folder: URL? {
+        didSet {
+            folderDidChange()
+            window?.toolbar?.validateVisibleItems()
+        }
+    }
 
     /// Where the last opened folder is remembered between launches.
     static let lastFolderDefaultsKey = "LastOpenedFolder"
@@ -106,6 +111,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         configureTabs()
         window.toolbar = toolbar.toolbar
         window.toolbarStyle = .unified
+        window.toolbar?.validateVisibleItems()
         startWatchingForBoard()
         setUpDebugging()
         setUpBreakpointsAndAppearance()
@@ -193,7 +199,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     /// it could not be opened.
     @discardableResult
     func openFile(_ url: URL) -> Bool {
-        defer { updateTitle() }
+        defer {
+            updateTitle()
+            window?.toolbar?.validateVisibleItems()
+        }
         do {
             try editor.open(url)
             navigator.select(url)
