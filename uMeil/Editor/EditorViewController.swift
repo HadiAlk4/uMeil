@@ -50,7 +50,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
 
     /// Line positions for the current text, shared with the gutter.
     private(set) var lineIndex = LineIndex("") {
-        didSet { ruler?.lineIndex = lineIndex }
+        didSet {
+            ruler?.lineIndex = lineIndex
+            // Line starts move as the text changes; keep the messages on their lines.
+            showBuildMessages()
+        }
     }
 
     init() {
@@ -274,6 +278,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
     /// Flags lines in the gutter with the errors and warnings from a build.
     func setMarkers(_ markers: [Int: Diagnostic.Severity]) {
         intelligence.buildMarkers = markers
+        if markers.isEmpty {
+            setBuildMessages([:])
+        }
         refreshRulerMarkers()
     }
 

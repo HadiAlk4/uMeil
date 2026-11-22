@@ -300,6 +300,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     private func refreshMarkers() {
         guard let file = editor.document?.url else { return }
         editor.setMarkers(BuildSummary.markers(for: file, in: lastBuild?.diagnostics ?? []))
+        editor.setBuildMessages(BuildSummary.lineMessages(for: file, in: lastBuild?.diagnostics ?? []))
     }
 
     /// Takes the editor to the place a build message points at.

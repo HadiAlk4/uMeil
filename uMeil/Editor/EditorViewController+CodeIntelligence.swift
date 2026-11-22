@@ -15,6 +15,8 @@ final class EditorCodeIntelligenceState {
     let completionPanel = CompletionPanelController()
 
     var buildMarkers: [Int: Diagnostic.Severity] = [:]
+    /// The last build's message for each line, written beside the code.
+    var buildMessages: [Int: BuildSummary.LineMessage] = [:]
     var liveDiagnostics: [LSPDiagnostic] = []
     var diagnosticRanges: [NSRange] = []
     var completionAnchorOffset: Int?
