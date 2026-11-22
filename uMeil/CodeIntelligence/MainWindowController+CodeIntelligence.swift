@@ -84,7 +84,8 @@ extension MainWindowController {
             ClangdSession.normalize($0.url) == ClangdSession.normalize(file)
         } ?? false
         if !isOpen {
-            guard confirmDiscardingChanges(), openFile(file) else { return }
+            // The file that was showing keeps its unsaved changes in its tab.
+            guard openFile(file) else { return }
         }
         if let line {
             editor.goTo(line: line, column: column, unit: columnUnit)

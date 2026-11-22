@@ -12,9 +12,14 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         didSet {
             if oldValue != isModified {
                 onModifiedChanged?(isModified)
+                refreshTabBar()
             }
         }
     }
+
+    /// The files open in tabs. The showing one is `document`.
+    var tabs = EditorTabs()
+    let tabBar = EditorTabBar()
 
     /// Called when `isModified` flips.
     var onModifiedChanged: ((Bool) -> Void)?
@@ -60,51 +65,6 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
 
     // MARK: - Setup
 
-    /// Builds a text view that does not wrap lines and scrolls sideways,
-    /// with every "smart" text feature that would corrupt source code off.
-    private static func makeTextView() -> NSTextView {
-        let unlimited = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-
-        // TextKit 1, built by hand: the line number gutter needs the layout manager.
-        let storage = NSTextStorage()
-        let layoutManager = NSLayoutManager()
-        layoutManager.allowsNonContiguousLayout = true
-        storage.addLayoutManager(layoutManager)
-        let container = NSTextContainer(size: unlimited)
-        container.widthTracksTextView = false
-        layoutManager.addTextContainer(container)
-
-        let textView = EditorTextView(frame: .zero, textContainer: container)
-        textView.minSize = .zero
-        textView.maxSize = unlimited
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = true
-        textView.autoresizingMask = [.width, .height]
-        textView.textContainerInset = NSSize(width: 4, height: 4)
-
-        textView.isRichText = false
-        textView.importsGraphics = false
-        textView.allowsUndo = true
-        textView.usesFindBar = true
-        textView.isIncrementalSearchingEnabled = true
-        textView.isAutomaticQuoteSubstitutionEnabled = false
-        textView.isAutomaticDashSubstitutionEnabled = false
-        textView.isAutomaticTextReplacementEnabled = false
-        textView.isAutomaticSpellingCorrectionEnabled = false
-        textView.isAutomaticLinkDetectionEnabled = false
-        textView.isAutomaticDataDetectionEnabled = false
-        textView.isContinuousSpellCheckingEnabled = false
-        textView.isGrammarCheckingEnabled = false
-        textView.smartInsertDeleteEnabled = false
-
-        textView.font = EditorTheme.font
-        textView.textColor = .textColor
-        textView.backgroundColor = .textBackgroundColor
-        textView.defaultParagraphStyle = EditorTheme.paragraphStyle
-        textView.typingAttributes = EditorTheme.textAttributes
-        return textView
-    }
-
     override func loadView() {
         textView.delegate = self
 
@@ -143,6 +103,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
 
         editorStack.orientation = .vertical
         editorStack.spacing = 0
+        editorStack.addArrangedSubview(tabBar)
         editorStack.addArrangedSubview(scrollView)
         editorStack.addArrangedSubview(diagnosticBar)
 
@@ -182,31 +143,41 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
 
     // MARK: - Opening and saving
 
-    /// Shows `url` in the editor. Any unsaved changes to the previous file
-    /// are discarded, so callers must ask the user first.
+    /// Shows `url` in the editor, in its tab, adding one if needed. The
+    /// file that was showing keeps its unsaved changes in its own tab.
     func open(_ url: URL) throws {
         let loaded = try TextDocument.load(from: url)
         loadViewIfNeeded()
+        stashShowingTab()
+        let restored = tabs.tab(for: url)
+        let text = restored?.unsavedText ?? loaded.text
 
         completionPanel.dismiss()
         intelligence.completionTask?.cancel()
         intelligence.completionAnchorOffset = nil
 
         isLoading = true
-        textView.string = loaded.text
-        textView.textStorage?.setAttributes(
-            EditorTheme.textAttributes,
-            range: NSRange(location: 0, length: (loaded.text as NSString).length)
-        )
+        textView.string = text
+        let length = (text as NSString).length
+        textView.textStorage?.setAttributes(EditorTheme.textAttributes, range: NSRange(location: 0, length: length))
         textView.typingAttributes = EditorTheme.textAttributes
         textView.undoManager?.removeAllActions()
-        textView.setSelectedRange(NSRange(location: 0, length: 0))
         textView.scrollToBeginningOfDocument(nil)
+        let selection = restored?.selection ?? NSRange(location: 0, length: 0)
+        if NSMaxRange(selection) <= length {
+            textView.setSelectedRange(selection)
+            textView.scrollRangeToVisible(selection)
+        } else {
+            textView.setSelectedRange(NSRange(location: 0, length: 0))
+        }
         isLoading = false
 
         document = loaded
-        isModified = false
-        lineIndex = LineIndex(loaded.text)
+        tabs.select(url)
+        tabs.stash(url, unsavedText: nil, selection: selection)
+        isModified = restored?.isModified ?? false
+        refreshTabBar()
+        lineIndex = LineIndex(text)
         clearLiveDiagnostics()
         setMarkers([:])
         clearDebugMarks()
@@ -214,7 +185,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         placeholderLabel.isHidden = true
         welcomeView.isHidden = true
         scheduleHighlighting(delay: .zero)
-        intelligence.onDocumentOpened?(loaded.url, loaded.text)
+        intelligence.onDocumentOpened?(loaded.url, text)
     }
 
     /// Writes the editor's text to the file it was opened from.
@@ -227,9 +198,13 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         intelligence.onDocumentSaved?(current.url, current.text)
     }
 
-    /// Empties the editor and shows a hint in its place.
-    func close(hasFolder: Bool) {
+    /// Empties the editor and shows a hint in its place. Every tab closes
+    /// too, unless `keepingTabs` is set because only the showing one is.
+    func close(hasFolder: Bool, keepingTabs: Bool = false) {
         loadViewIfNeeded()
+        if !keepingTabs {
+            tabs.removeAll()
+        }
         let closedURL = document?.url
         completionPanel.dismiss()
         intelligence.completionTask?.cancel()
@@ -247,6 +222,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         setMarkers([:])
         clearDebugMarks()
         showPlaceholder(hasFolder: hasFolder)
+        refreshTabBar()
         scheduleHighlighting(delay: .zero)
         if let closedURL {
             intelligence.onDocumentClosed?(closedURL)

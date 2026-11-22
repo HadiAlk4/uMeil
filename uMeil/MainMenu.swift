@@ -81,6 +81,7 @@ enum MainMenu {
         )
         menu.addItem(.separator())
         menu.addItem(withTitle: "Save", action: #selector(MainWindowController.saveDocument(_:)), keyEquivalent: "s")
+        menu.addItem(withTitle: "Close Tab", action: #selector(NSWindow.closeTabOrWindow(_:)), keyEquivalent: "w")
         menu.addItem(
             withTitle: "Close Folder",
             action: #selector(MainWindowController.closeFolder(_:)),
@@ -101,6 +102,19 @@ enum MainMenu {
             action: #selector(MainWindowController.toggleIssues(_:)),
             keyEquivalent: ""
         )
+        menu.addItem(.separator())
+        let nextTab = menu.addItem(
+            withTitle: "Show Next Tab",
+            action: #selector(MainWindowController.showNextTab(_:)),
+            keyEquivalent: "]"
+        )
+        nextTab.keyEquivalentModifierMask = [.command, .shift]
+        let previousTab = menu.addItem(
+            withTitle: "Show Previous Tab",
+            action: #selector(MainWindowController.showPreviousTab(_:)),
+            keyEquivalent: "["
+        )
+        previousTab.keyEquivalentModifierMask = [.command, .shift]
         return menu
     }
 
@@ -238,7 +252,12 @@ enum MainMenu {
         )
         serialMonitor.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        let close = menu.addItem(
+            withTitle: "Close Window",
+            action: #selector(NSWindow.performClose(_:)),
+            keyEquivalent: "w"
+        )
+        close.keyEquivalentModifierMask = [.command, .shift]
         return menu
     }
 }
