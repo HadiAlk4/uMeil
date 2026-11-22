@@ -20,44 +20,6 @@ struct DebugWindowTasks {
     }
 }
 
-/// Turns the debugger's state into the one-line status under the issues list.
-enum DebugSummary {
-    /// For example "Stopped at main.c:21 in main" or "Running".
-    static func statusText(for state: DebugController.State, reason: StopReason? = nil) -> String {
-        switch state {
-        case .idle:
-            return "Debug session ended"
-        case .starting:
-            return "Starting debug session…"
-        case .running:
-            return "Running"
-        case .stopped(let frame):
-            let prefix = stopPrefix(for: reason)
-            guard let frame else { return prefix }
-            let function = frame.function.map { " in \($0)" } ?? ""
-            if let file = frame.file, let line = frame.line {
-                return "\(prefix) at \(file.lastPathComponent):\(line)\(function)"
-            }
-            let address = frame.address.map { " at 0x" + String($0, radix: 16) } ?? ""
-            return "\(prefix)\(function)\(address), where there is no source code to show"
-        }
-    }
-
-    private static func stopPrefix(for reason: StopReason?) -> String {
-        switch reason {
-        case .signal(let name, let meaning):
-            // Pause (`-exec-interrupt`) always reports SIGINT, which is not a fault.
-            if name == "SIGINT" { return "Stopped" }
-            let label = !name.isEmpty ? name : (meaning ?? "signal")
-            return "Stopped (\(label))"
-        case .exited:
-            return "Stopped (exited)"
-        default:
-            return "Stopped"
-        }
-    }
-}
-
 extension MainWindowController {
     // MARK: - Setup
 
@@ -173,11 +135,11 @@ extension MainWindowController {
             editor.isReadOnly = false
             editor.showExecutionLine(nil)
             editor.executableLines = []
-            debugPanels.forgetVariables()
+            debugPanels.frameVariables = FrameVariables()
             editor.showInlineValues([:])
         case .starting, .running:
             debugPanels.cancelRefresh()
-            debugPanels.forgetVariables()
+            debugPanels.frameVariables = FrameVariables()
             editor.showExecutionLine(nil)
             editor.showInlineValues([:])
         case .stopped(let frame):
@@ -195,7 +157,7 @@ extension MainWindowController {
 
     private func selectFrame(_ frame: StackFrame) {
         editor.cancelHover()
-        debugPanels.inlineFrame = frame
+        debugPanels.frameVariables.selected = frame
         showStop(at: frame)
         guard debugger.isStopped else { return }
         replaceTask(\.selectFrameTask) {
@@ -238,25 +200,8 @@ extension MainWindowController {
         showExecutableLines()
     }
 
-    private func isShowing(_ file: URL) -> Bool {
+    func isShowing(_ file: URL) -> Bool {
         editor.document.map { SourceLine(file: $0.url, line: 0) } == SourceLine(file: file, line: 0)
-    }
-
-    // MARK: - Values in the code
-
-    /// Prints the values of the chosen frame's locals after the lines of its
-    /// function that use them, if that frame's file is the one showing.
-    func showInlineValues() {
-        guard debugger.isStopped, let frame = debugPanels.inlineFrame,
-              let file = frame.file, let line = frame.line, isShowing(file),
-              let variables = debugPanels.variablesByFrame[frame.level]
-        else {
-            editor.showInlineValues([:])
-            return
-        }
-        editor.showInlineValues(
-            InlineValues.annotations(source: editor.textView.string, stoppedAt: line, variables: variables)
-        )
     }
 
     // MARK: - Marks in the gutter

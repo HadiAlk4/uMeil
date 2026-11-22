@@ -1,5 +1,16 @@
 import Foundation
 
+/// The locals of each frame of a stopped program, and the frame whose values
+/// the editor prints: the top one after a stop, or the one picked in
+/// `Call Stack + Locals`.
+struct FrameVariables {
+    var byLevel: [Int: [DebugVariable]] = [:]
+    var selected: StackFrame?
+
+    /// The selected frame's locals, if they were read.
+    var selectedVariables: [DebugVariable]? { selected.flatMap { byLevel[$0.level] } }
+}
+
 /// Works out which variable values to print after each line of code while
 /// the program is stopped, as dim text such as `count = 4`.
 ///

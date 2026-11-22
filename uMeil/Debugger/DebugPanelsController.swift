@@ -25,12 +25,9 @@ final class DebugPanelsController {
     /// The SVD file the `Peripherals` panel describes. Replaceable for tests.
     var svdFile = SVDDevice.bundledFile()
 
-    /// The locals of each frame, by level, from the last refresh. The editor
-    /// prints them after the lines that use them.
-    private(set) var variablesByFrame: [Int: [DebugVariable]] = [:]
-    /// The frame whose values the editor prints: the top one after a stop,
-    /// or the one picked in `Call Stack + Locals`.
-    var inlineFrame: StackFrame?
+    /// The locals read at the last stop, which the editor prints after the
+    /// lines that use them. Emptied when the program runs again.
+    var frameVariables = FrameVariables()
     /// Called when a refresh has read the frames' locals again.
     var onVariablesChange: (() -> Void)?
 
@@ -113,15 +110,8 @@ final class DebugPanelsController {
         refreshTask = nil
     }
 
-    /// Drops the locals read at the last stop, which no longer hold once
-    /// the program runs again.
-    func forgetVariables() {
-        variablesByFrame = [:]
-        inlineFrame = nil
-    }
-
     func clear() {
-        forgetVariables()
+        frameVariables = FrameVariables()
         registers.clear()
         callStackLocals.clear()
         disassembly.clear()
@@ -188,7 +178,8 @@ final class DebugPanelsController {
         if listedFrames.isEmpty {
             let fallback = stopFrame.map { [$0] } ?? []
             callStackLocals.update(frames: fallback, variablesByFrame: [:])
-            showVariables([:], inFrame: stopFrame)
+            frameVariables = FrameVariables(byLevel: [:], selected: stopFrame)
+            onVariablesChange?()
         } else {
             var variablesByFrame: [Int: [DebugVariable]] = [:]
             for frame in listedFrames {
@@ -197,7 +188,8 @@ final class DebugPanelsController {
             }
             guard debugger.isStopped, !Task.isCancelled else { return }
             callStackLocals.update(frames: listedFrames, variablesByFrame: variablesByFrame)
-            showVariables(variablesByFrame, inFrame: listedFrames.first)
+            frameVariables = FrameVariables(byLevel: variablesByFrame, selected: listedFrames.first)
+            onVariablesChange?()
         }
 
         guard debugger.isStopped, !Task.isCancelled else { return }
@@ -239,12 +231,6 @@ final class DebugPanelsController {
             sourceLines: linesMap,
             sourceFile: sourceFile
         )
-    }
-
-    private func showVariables(_ variables: [Int: [DebugVariable]], inFrame frame: StackFrame?) {
-        variablesByFrame = variables
-        inlineFrame = frame
-        onVariablesChange?()
     }
 
     private static func sourceLinesMap(from text: String?) -> [Int: String] {
