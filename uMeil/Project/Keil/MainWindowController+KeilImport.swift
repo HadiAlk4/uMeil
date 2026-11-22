@@ -4,8 +4,6 @@ import UniformTypeIdentifiers
 extension MainWindowController {
     /// File > Import Keil Project…
     @objc func importKeilProject(_ sender: Any?) {
-        guard confirmDiscardingChanges() else { return }
-
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
@@ -15,13 +13,11 @@ extension MainWindowController {
         panel.message = "Choose a Keil µVision project (.uvprojx) to make a uMeil project from"
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
-        openKeilProjectShowingNotes(at: url)
+        window(forOpening: url).openItem(at: url)
     }
 
     /// File > Open…: a folder, a uMeil project, or a Keil project.
     @objc func openDocument(_ sender: Any?) {
-        guard confirmDiscardingChanges() else { return }
-
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = true
@@ -35,7 +31,7 @@ extension MainWindowController {
         panel.message = "Choose a project folder, a uMeil project (.umeil), or a Keil µVision project (.uvprojx)"
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
-        openItem(at: url)
+        window(forOpening: url).openItem(at: url)
     }
 
     /// Opens a Keil project and tells the user anything they should know

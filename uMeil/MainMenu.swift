@@ -59,6 +59,12 @@ enum MainMenu {
 
     private static func fileMenu() -> NSMenu {
         let menu = NSMenu(title: "File")
+        let newWindow = menu.addItem(
+            withTitle: "New Window",
+            action: #selector(AppDelegate.newWindow(_:)),
+            keyEquivalent: "n"
+        )
+        newWindow.keyEquivalentModifierMask = [.command, .option]
         let newProject = menu.addItem(
             withTitle: "New Project…",
             action: #selector(MainWindowController.newProject(_:)),

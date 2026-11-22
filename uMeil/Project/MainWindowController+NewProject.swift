@@ -3,8 +3,6 @@ import AppKit
 extension MainWindowController {
     /// File > New Project…
     @objc func newProject(_ sender: Any?) {
-        guard confirmDiscardingChanges() else { return }
-
         let panel = NSSavePanel()
         panel.title = "New Project"
         panel.message = "Choose a name and location for a new Blinky project"
@@ -14,10 +12,13 @@ extension MainWindowController {
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
+        let target = chooseWindow?(url) ?? self
+        guard target.confirmDiscardingChanges() else { return }
+        target.window?.makeKeyAndOrderFront(nil)
         do {
-            try createProject(named: url.lastPathComponent, in: url.deletingLastPathComponent())
+            try target.createProject(named: url.lastPathComponent, in: url.deletingLastPathComponent())
         } catch {
-            presentError(error)
+            target.presentError(error)
         }
     }
 

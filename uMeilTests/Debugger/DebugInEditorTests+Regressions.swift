@@ -19,7 +19,7 @@ extension DebugInEditorTests {
         await startAtMain(window)
 
         let delegate = AppDelegate()
-        delegate.mainWindowController = controller
+        delegate.track(controller)
         var replied: Bool?
         delegate.replyToTerminate = { replied = $0 }
         #expect(delegate.applicationShouldTerminate(NSApp) == .terminateLater)
@@ -40,6 +40,7 @@ extension DebugInEditorTests {
         let gdb3 = FakeBlinky.debugger()
         controller.debugger.connect = { _ in gdb3 }
         await startAtMain(Window(controller: controller, gdb: gdb3, mainC: window.mainC))
+        delegate.track(controller) // Closing the window above made the app forget it.
         delegate.applicationWillTerminate(Notification(name: NSApplication.willTerminateNotification))
         #expect(!controller.debugger.isActive)
     }

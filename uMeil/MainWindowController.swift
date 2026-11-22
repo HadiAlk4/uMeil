@@ -69,6 +69,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     let defaults: UserDefaults
     /// The folders listed on the welcome screen.
     var recentProjects: RecentProjects { RecentProjects(defaults: defaults) }
+    /// Picks the window a project folder chosen in this one opens in: one
+    /// already showing it, this one if it is empty, or a new one. Set by the
+    /// app delegate; without it, everything opens here.
+    var chooseWindow: ((_ folder: URL) -> MainWindowController?)?
 
     init(
         defaults: UserDefaults = .standard,
@@ -140,6 +144,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         terminal.updateFolder(url)
         defaults.set(url.path(percentEncoded: false), forKey: Self.lastFolderDefaultsKey)
         recentProjects.add(url)
+        if !AppDelegate.isTestHost {
+            // Lists the folder at the top of the Dock icon's menu.
+            NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        }
         showSidebar(true)
         updateTitle()
     }
@@ -175,13 +183,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
             editor.welcomeView.showRecent(recentProjects.folders)
             return
         }
-        openItem(at: url)
+        window(forOpening: url).openItem(at: url)
     }
 
     /// File > Open Folder…
     @objc func chooseFolder(_ sender: Any?) {
-        guard confirmDiscardingChanges() else { return }
-
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -189,7 +195,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         panel.prompt = "Open"
         panel.message = "Choose a project folder"
         if panel.runModal() == .OK, let url = panel.url {
-            openFolder(url)
+            window(forOpening: url).openItem(at: url)
         }
     }
 
@@ -333,44 +339,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
 // Kept out of the class body to keep it short. Same file, so the private
 // members above are still in reach.
 extension MainWindowController {
-    /// Opens a folder or file handed to the app from outside: dropped on the
-    /// Dock icon, opened from Finder, or passed to `open -a uMeil`.
-    ///
-    /// A folder is shown as it is. A project file opens its folder with the
-    /// project's first source showing. A Keil project is opened as a uMeil
-    /// project, imported the first time. Any other file opens its folder with
-    /// that file showing.
-    func openItem(at url: URL) {
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false), isDirectory: &isDirectory),
-              confirmDiscardingChanges()
-        else { return }
-
-        window?.makeKeyAndOrderFront(nil)
-        if isDirectory.boolValue {
-            openFolder(url)
-            return
-        }
-
-        if url.pathExtension == KeilImporter.fileExtension {
-            openKeilProjectShowingNotes(at: url)
-            return
-        }
-
-        let parent = url.deletingLastPathComponent()
-        openFolder(parent)
-        if url.pathExtension == ProjectFile.fileExtension,
-           let project = try? ProjectFile.load(from: url) {
-            if let main = project.sources.first,
-               let mainURL = ProjectSecurity.safeRelativeURL(for: main, in: parent) {
-                openFile(mainURL)
-            }
-        } else {
-            // Also a project file that cannot be read, so it can be fixed.
-            openFile(url)
-        }
-    }
-
     // MARK: - Unsaved changes
 
     /// If any open tab has unsaved changes, asks whether to save them.
@@ -405,5 +373,10 @@ extension MainWindowController {
         window.subtitle = folder?.lastPathComponent ?? ""
         window.representedURL = file
         window.isDocumentEdited = editor.isModified
+        // The Window menu and the Dock icon's menu list windows by title
+        // alone, so there they also name the folder, to tell projects apart.
+        if let folder, !AppDelegate.isTestHost {
+            NSApp.changeWindowsItem(window, title: "\(window.title) — \(folder.lastPathComponent)", filename: false)
+        }
     }
 }
