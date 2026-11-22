@@ -20,6 +20,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
     /// The files open in tabs. The showing one is `document`.
     var tabs = EditorTabs()
     let tabBar = EditorTabBar()
+    /// How full flash and RAM are after the last successful build.
+    let memoryUsageBar = MemoryUsageBar()
 
     /// Called when `isModified` flips.
     var onModifiedChanged: ((Bool) -> Void)?
@@ -110,8 +112,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         editorStack.addArrangedSubview(tabBar)
         editorStack.addArrangedSubview(scrollView)
         editorStack.addArrangedSubview(diagnosticBar)
-        // A vertical stack centers what it holds; the tabs span the editor.
-        tabBar.widthAnchor.constraint(equalTo: editorStack.widthAnchor).isActive = true
+        editorStack.addArrangedSubview(memoryUsageBar)
+        // A vertical stack centers what it holds; these strips span the editor.
+        for strip in [tabBar, memoryUsageBar] {
+            strip.widthAnchor.constraint(equalTo: editorStack.widthAnchor).isActive = true
+        }
 
         view = makeContainer()
 
@@ -209,7 +214,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
     func close(hasFolder: Bool, keepingTabs: Bool = false) {
         loadViewIfNeeded()
         if !keepingTabs {
+            // Another folder, or none: the last build's sizes are not about it.
             tabs.removeAll()
+            memoryUsageBar.show(nil)
         }
         let closedURL = document?.url
         completionPanel.dismiss()

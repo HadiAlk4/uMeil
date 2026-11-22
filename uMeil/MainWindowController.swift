@@ -286,6 +286,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
             lastBuild = result
             issues.show(result)
             refreshMarkers()
+            showMemoryUsage(of: result, projectFile: projectFile)
             codeIntelligence?.buildFinished(in: folder)
             return result
         } catch {
