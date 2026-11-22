@@ -24,6 +24,10 @@ struct SerialMonitorTests {
         #expect(monitor.selectedPort == terminal.info)
         #expect(monitor.portPopUp.titleOfSelectedItem == terminal.info.displayName)
         #expect(monitor.baudPopUp.selectedTag() == 115_200)
+        #expect(monitor.framing == .standard)
+        #expect(monitor.dataBitsPopUp.titleOfSelectedItem == "8 Data Bits")
+        #expect(monitor.parityPopUp.titleOfSelectedItem == "No Parity")
+        #expect(monitor.stopBitsPopUp.titleOfSelectedItem == "1 Stop Bit")
         #expect(monitor.lineEnding == .carriageReturn)
         #expect(monitor.connectButton.title == "Connect")
         #expect(monitor.connectButton.isEnabled)
@@ -35,10 +39,13 @@ struct SerialMonitorTests {
     @Test func showsWhatTheBoardPrints() async {
         monitor.connect()
         #expect(monitor.isConnected)
-        #expect(monitor.statusLabel.stringValue == "Connected at 115200 baud")
+        #expect(monitor.statusLabel.stringValue == "Connected at 115200 baud, 8,N,1")
         #expect(monitor.connectButton.title == "Disconnect")
         #expect(!monitor.portPopUp.isEnabled)
         #expect(!monitor.baudPopUp.isEnabled)
+        #expect(!monitor.dataBitsPopUp.isEnabled)
+        #expect(!monitor.parityPopUp.isEnabled)
+        #expect(!monitor.stopBitsPopUp.isEnabled)
 
         terminal.send("Temperature: 25 °C\r\n")
         terminal.send("Ready\r\n")
@@ -52,7 +59,34 @@ struct SerialMonitorTests {
 
         var attributes = terminal.attributes
         #expect(cfgetospeed(&attributes) == 9600)
-        #expect(monitor.statusLabel.stringValue == "Connected at 9600 baud")
+        #expect(monitor.statusLabel.stringValue == "Connected at 9600 baud, 8,N,1")
+    }
+
+    /// Lab 2 (Wednesday) relays its UART3 output at 38400, 7 bits, no parity, 2 stop bits.
+    @Test func connectsWithTheChosenFraming() {
+        monitor.baudPopUp.selectItem(withTag: 38400)
+        monitor.dataBitsPopUp.selectItem(withTitle: "7 Data Bits")
+        monitor.stopBitsPopUp.selectItem(withTitle: "2 Stop Bits")
+        monitor.connect()
+
+        let attributes = terminal.attributes
+        #expect(attributes.c_cflag & tcflag_t(CSIZE) == tcflag_t(CS7))
+        #expect(attributes.c_cflag & tcflag_t(CSTOPB) != 0)
+        #expect(attributes.c_cflag & tcflag_t(PARENB) == 0)
+        #expect(monitor.statusLabel.stringValue == "Connected at 38400 baud, 7,N,2")
+    }
+
+    @Test func connectsWithOddOrEvenParity() {
+        monitor.parityPopUp.selectItem(withTitle: "Odd Parity")
+        monitor.connect()
+        #expect(terminal.attributes.c_cflag & tcflag_t(PARENB | PARODD) == tcflag_t(PARENB | PARODD))
+        #expect(monitor.statusLabel.stringValue == "Connected at 115200 baud, 8,O,1")
+        monitor.disconnect()
+
+        monitor.parityPopUp.selectItem(withTitle: "Even Parity")
+        monitor.connect()
+        #expect(terminal.attributes.c_cflag & tcflag_t(PARENB | PARODD) == tcflag_t(PARENB))
+        #expect(monitor.statusLabel.stringValue == "Connected at 115200 baud, 8,E,1")
     }
 
     @Test func sendsTheTypedLineWithTheChosenEnding() {
@@ -159,8 +193,9 @@ struct SerialMonitorTests {
         #expect(monitor.connectButton.isEnabled)
     }
 
-    @Test func remembersThePortSpeedAndLineEnding() {
+    @Test func remembersThePortSpeedFramingAndLineEnding() {
         monitor.baudPopUp.selectItem(withTag: 9600)
+        monitor.framing = SerialFraming(dataBits: 7, parity: .even, stopBits: 2)
         monitor.lineEndingPopUp.selectItem(withTitle: "LF")
         monitor.lineEndingPopUp.sendAction(monitor.lineEndingPopUp.action, to: monitor.lineEndingPopUp.target)
         monitor.connect()
@@ -173,6 +208,7 @@ struct SerialMonitorTests {
 
         #expect(next.selectedPort == terminal.info)
         #expect(next.baudPopUp.selectedTag() == 9600)
+        #expect(next.framing == SerialFraming(dataBits: 7, parity: .even, stopBits: 2))
         #expect(next.lineEnding == .lineFeed)
     }
 

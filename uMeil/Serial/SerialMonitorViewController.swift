@@ -3,10 +3,13 @@ import AppKit
 /// A console for a board's serial port: shows what the board prints and
 /// sends what the user types.
 final class SerialMonitorViewController: NSViewController {
-    /// Where the chosen port, speed and line ending are remembered between launches.
+    /// Where the chosen port, speed, framing and line ending are remembered between launches.
     enum DefaultsKey {
         static let port = "SerialMonitorPort"
         static let baudRate = "SerialMonitorBaudRate"
+        static let dataBits = "SerialMonitorDataBits"
+        static let parity = "SerialMonitorParity"
+        static let stopBits = "SerialMonitorStopBits"
         static let lineEnding = "SerialMonitorLineEnding"
     }
 
@@ -14,7 +17,7 @@ final class SerialMonitorViewController: NSViewController {
     static let maximumLength = 500_000
 
     private let listPorts: () -> [SerialPortInfo]
-    private let defaults: UserDefaults
+    let defaults: UserDefaults
 
     private(set) var ports: [SerialPortInfo] = []
     private(set) var port: SerialPort?
@@ -25,6 +28,9 @@ final class SerialMonitorViewController: NSViewController {
 
     let portPopUp = NSPopUpButton()
     let baudPopUp = NSPopUpButton()
+    let dataBitsPopUp = NSPopUpButton()
+    let parityPopUp = NSPopUpButton()
+    let stopBitsPopUp = NSPopUpButton()
     let lineEndingPopUp = NSPopUpButton()
     let statusLabel = NSTextField(labelWithString: "Not connected")
     let inputField = NSTextField()
@@ -80,7 +86,9 @@ final class SerialMonitorViewController: NSViewController {
         inputField.action = #selector(sendInput(_:)) // Return sends.
         inputField.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        let topBar = NSStackView(views: [portPopUp, baudPopUp, connectButton, statusLabel, NSView(), clearButton])
+        let topBar = NSStackView(views: [
+            portPopUp, baudPopUp, dataBitsPopUp, parityPopUp, stopBitsPopUp, connectButton, statusLabel, NSView(), clearButton
+        ])
         let bottomBar = NSStackView(views: [inputField, lineEndingPopUp, sendButton])
         for bar in [topBar, bottomBar] {
             bar.orientation = .horizontal
@@ -105,6 +113,7 @@ final class SerialMonitorViewController: NSViewController {
         let savedRate = defaults.integer(forKey: DefaultsKey.baudRate)
         baudPopUp.selectItem(withTag: SerialPort.baudRates.contains(savedRate) ? savedRate : SerialPort.defaultBaudRate)
         baudPopUp.toolTip = "Speed. It must match the speed the firmware sets."
+        setUpFramingMenus()
 
         for ending in SerialLineEnding.allCases {
             lineEndingPopUp.addItem(withTitle: ending.title)
@@ -184,6 +193,7 @@ final class SerialMonitorViewController: NSViewController {
     func connect() {
         guard !isConnected, let info = selectedPort else { return }
         let baudRate = baudPopUp.selectedTag()
+        let framing = self.framing
         connection += 1
         let connection = connection
 
@@ -193,6 +203,7 @@ final class SerialMonitorViewController: NSViewController {
             port = try SerialPort(
                 path: info.path,
                 baudRate: baudRate,
+                framing: framing,
                 onData: { [weak self] data in
                     DispatchQueue.main.async { [weak self] in self?.received(data, from: connection) }
                 },
@@ -208,7 +219,8 @@ final class SerialMonitorViewController: NSViewController {
         decoder = SerialTextDecoder()
         defaults.set(info.path, forKey: DefaultsKey.port)
         defaults.set(baudRate, forKey: DefaultsKey.baudRate)
-        show(status: "Connected at \(baudRate) baud")
+        remember(framing)
+        show(status: "Connected at \(baudRate) baud, \(framing.summary)")
         updateControls()
         view.window?.makeFirstResponder(inputField)
     }
@@ -237,6 +249,9 @@ final class SerialMonitorViewController: NSViewController {
         connectButton.isEnabled = isConnected || selectedPort != nil
         portPopUp.isEnabled = !isConnected && !ports.isEmpty
         baudPopUp.isEnabled = !isConnected
+        for popUp in [dataBitsPopUp, parityPopUp, stopBitsPopUp] {
+            popUp.isEnabled = !isConnected
+        }
         inputField.isEnabled = isConnected
         sendButton.isEnabled = isConnected
     }
