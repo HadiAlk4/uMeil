@@ -195,7 +195,7 @@ h2::after {
   padding: 10px 16px;
   border: 1px solid var(--rule);
   overflow-x: auto;
-  cursor: copy;
+  cursor: pointer;
 }
 
 .brew pre:hover,
