@@ -244,7 +244,7 @@ h2::after {
   width: 100%;
   /* Sized to the window's height so the rider shows without scrolling. */
   height: clamp(200px, 38vh, 460px);
-  background: url("landscape.jpg") center top / cover no-repeat;
+  background: url("landscape.jpg?v=2") center top / cover no-repeat;
   /* Fade the illustration's sky into the page. */
   -webkit-mask-image: linear-gradient(to bottom, transparent, #000 22%);
   mask-image: linear-gradient(to bottom, transparent, #000 22%);
