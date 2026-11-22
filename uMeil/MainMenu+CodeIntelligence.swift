@@ -29,5 +29,12 @@ extension MainMenu {
             keyEquivalent: "e"
         )
         rename.keyEquivalentModifierMask = [.control, .command]
+
+        let format = menu.addItem(
+            withTitle: "Format Selection",
+            action: #selector(EditorViewController.formatSelection(_:)),
+            keyEquivalent: "i"
+        )
+        format.keyEquivalentModifierMask = [.control]
     }
 }

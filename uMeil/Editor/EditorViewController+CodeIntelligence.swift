@@ -17,6 +17,9 @@ final class EditorCodeIntelligenceState {
     /// Replace the new-name and problem alerts, for tests.
     var renamePrompt: ((String) async -> String?)?
     var renameProblemHandler: ((String) -> Void)?
+    /// Formats the given 1-based lines of a file's text with clang-format.
+    var onFormatRequested: ((URL, String, ClosedRange<Int>) async throws -> String)?
+    var formatProblemHandler: ((String) -> Void)?
 
     let diagnosticBar = EditorDiagnosticBar()
     let completionPanel = CompletionPanelController()
@@ -348,6 +351,9 @@ extension EditorViewController {
     // MARK: - Delegate and menu hooks
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(formatSelection(_:)) {
+            return document.map { SourceLanguage(url: $0.url) == .c } ?? false
+        }
         if menuItem.action == #selector(triggerCompletion(_:)) || menuItem.action == #selector(renameSymbol(_:)) {
             return intelligence.isEnabled && (document.map { SourceLanguage(url: $0.url) == .c } ?? false)
         }
