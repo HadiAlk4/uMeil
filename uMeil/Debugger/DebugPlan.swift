@@ -25,6 +25,11 @@ struct DebugPlan: Equatable, Sendable {
             "-gdb-set mi-async on",
             "-gdb-set confirm off",
             "-file-exec-and-symbols \(Self.cQuoted(image.path(percentEncoded: false)))",
+            // GDB maps `-target-select` directly to the CLI `target` command
+            // (`DEF_MI_CMD_CLI`) without running `mi_parse_argv`: MI-quoting
+            // the pipe command makes GDB treat `"| ..."` as a literal device
+            // name, whereas raw `| <shellQuoted>` passes paths with consecutive
+            // spaces, quotes, and backslashes verbatim to `$SHELL -c`.
             "-target-select extended-remote | \(openOCDCommand)"
         ]
     }
@@ -70,8 +75,10 @@ struct DebugPlan: Equatable, Sendable {
         return "'" + sanitized.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
     }
 
-    /// `text` as a quoted string in a GDB/MI command, escaping line breaks/tabs
-    /// and stripping NUL and remaining ASCII control characters.
+    /// `text` as a quoted string in a GDB/MI command, escaping quotes,
+    /// backslashes, line breaks, and tabs, and stripping NUL and remaining
+    /// ASCII control characters so pasted or multiline input cannot inject
+    /// extra MI command lines.
     static func cQuoted(_ text: String) -> String {
         var quoted = "\""
         for scalar in text.unicodeScalars {
@@ -92,6 +99,7 @@ struct DebugPlan: Equatable, Sendable {
                 quoted.unicodeScalars.append(scalar)
             }
         }
-        return quoted + "\""
+        quoted.append("\"")
+        return quoted
     }
 }

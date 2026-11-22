@@ -99,9 +99,14 @@ extension GDBSession {
         return frames.compactMap(StackFrame.init)
     }
 
+    /// Selects the frame at `level` as GDB's active frame.
+    func selectFrame(_ level: Int) async throws {
+        try await send("-stack-select-frame \(level)")
+    }
+
     /// The arguments and local variables of the frame at `level`.
     func variables(inFrame level: Int = 0) async throws -> [DebugVariable] {
-        let command = "-stack-list-variables --thread 1 --frame \(level) --simple-values"
+        let command = "-stack-list-variables --thread \(currentThreadId) --frame \(level) --simple-values"
         guard let variables = try await send(command)["variables"]?.list else {
             throw DebugError.unexpectedAnswer(command)
         }
@@ -135,16 +140,64 @@ extension GDBSession {
 
     /// Reads `count` bytes of the chip's memory starting at `address`.
     func readMemory(at address: UInt64, count: Int) async throws -> [UInt8] {
+        guard count > 0 else { return [] }
         let command = "-data-read-memory-bytes 0x\(String(address, radix: 16)) \(count)"
-        guard let blocks = try await send(command)["memory"]?.list,
-              let contents = blocks.first?.text("contents")
-        else {
+        guard let blocks = try await send(command)["memory"]?.list, !blocks.isEmpty else {
             throw DebugError.unexpectedAnswer(command)
         }
-        // Two hex digits per byte, in address order.
+
+        var parsedBlocks: [(offset: UInt64, bytes: [UInt8])] = []
+        parsedBlocks.reserveCapacity(blocks.count)
+        for block in blocks {
+            guard let contents = block.text("contents"),
+                  let decoded = Self.decodeHexBytes(contents)
+            else {
+                throw DebugError.unexpectedAnswer(command)
+            }
+            let offset: UInt64
+            if block["offset"] != nil {
+                guard let parsedOffset = Self.parseOffset(block) else {
+                    throw DebugError.unexpectedAnswer(command)
+                }
+                offset = parsedOffset
+            } else if blocks.count == 1 {
+                offset = 0
+            } else {
+                throw DebugError.unexpectedAnswer(command)
+            }
+            parsedBlocks.append((offset: offset, bytes: decoded))
+        }
+        parsedBlocks.sort { $0.offset < $1.offset }
+
         var bytes: [UInt8] = []
+        for block in parsedBlocks {
+            // Stop at any unreadable gap or overlap so bytes are never misaligned.
+            guard block.offset == UInt64(bytes.count) else { break }
+            bytes.append(contentsOf: block.bytes)
+        }
+        guard !bytes.isEmpty else {
+            throw DebugError.unexpectedAnswer(command)
+        }
+        return bytes
+    }
+
+    private static func parseOffset(_ block: MIValue) -> UInt64? {
+        if let address = block.address("offset") {
+            return address
+        }
+        if let decimal = block.integer("offset"), decimal >= 0 {
+            return UInt64(decimal)
+        }
+        return nil
+    }
+
+    private static func decodeHexBytes(_ contents: String) -> [UInt8]? {
+        guard contents.count.isMultiple(of: 2) else { return nil }
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(contents.count / 2)
         var rest = Substring(contents)
-        while rest.count >= 2, let byte = UInt8(rest.prefix(2), radix: 16) {
+        while rest.count >= 2 {
+            guard let byte = UInt8(rest.prefix(2), radix: 16) else { return nil }
             bytes.append(byte)
             rest = rest.dropFirst(2)
         }
@@ -160,20 +213,28 @@ extension GDBSession {
         try await send("-data-write-memory-bytes 0x\(String(address, radix: 16)) \(contents)")
     }
 
-    /// The value of a C expression in the current frame, as GDB prints it.
-    func evaluate(_ expression: String) async throws -> String {
-        let command = "-data-evaluate-expression \(DebugPlan.cQuoted(expression))"
+    /// The value of a C expression in the current frame (or in frame `level`
+    /// when specified), as GDB prints it.
+    func evaluate(_ expression: String, inFrame level: Int? = nil) async throws -> String {
+        let quoted = DebugPlan.cQuoted(expression)
+        let command = if let level {
+            "-data-evaluate-expression --thread \(currentThreadId) --frame \(level) \(quoted)"
+        } else {
+            "-data-evaluate-expression \(quoted)"
+        }
         guard let value = try await send(command).text("value") else {
             throw DebugError.unexpectedAnswer(command)
         }
         return value
     }
 
-    /// Disassembles `count` bytes starting at `address`, including raw opcodes.
+    /// Disassembles `count` bytes starting at `address`, including source lines
+    /// and raw opcodes.
     func disassemble(from address: UInt64, count: Int = 64) async throws -> [DisassembledInstruction] {
         let start = "0x" + String(address, radix: 16)
-        let end = "0x" + String(address + UInt64(max(count, 4)), radix: 16)
-        let command = "-data-disassemble -s \(start) -e \(end) -- 2"
+        let (endAddress, overflow) = address.addingReportingOverflow(UInt64(max(count, 4)))
+        let end = "0x" + String(overflow ? UInt64.max : endAddress, radix: 16)
+        let command = "-data-disassemble -s \(start) -e \(end) -- 5"
         guard let items = try await send(command)["asm_insns"]?.list else {
             throw DebugError.unexpectedAnswer(command)
         }
