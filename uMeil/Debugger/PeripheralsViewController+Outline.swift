@@ -26,6 +26,9 @@ extension PeripheralsViewController: NSOutlineViewDataSource, NSOutlineViewDeleg
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let node = item as? Node, let identifier = tableColumn?.identifier else { return nil }
+        if identifier.rawValue == "value", let bit = bitValue(of: node) {
+            return checkboxCell(in: outlineView, isOn: bit, for: node)
+        }
         let (cell, label) = dequeueCell(in: outlineView, identifier: identifier)
 
         // Reset all recycled cell state before applying column-specific properties.
@@ -95,6 +98,63 @@ extension PeripheralsViewController: NSOutlineViewDataSource, NSOutlineViewDeleg
             label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
         ])
         return (cell, label)
+    }
+
+    // MARK: - Clicking a bit
+
+    /// Whether the single-bit field `node` is set, for a field that can be
+    /// written and has been read. Other rows show their value as text.
+    func bitValue(of node: Node) -> Bool? {
+        guard let field = node.field, field.bitWidth == 1, isWritable(node),
+              case .value(let registerValue) = readings[node.register.name]
+        else { return nil }
+        return field.value(in: registerValue) != 0
+    }
+
+    private static let checkboxIdentifier = NSUserInterfaceItemIdentifier("bitCheckbox")
+
+    /// A checkbox for one writable bit, such as a GPIO pin's data bit: one
+    /// click switches an LED on or off, without typing a hex value.
+    private func checkboxCell(in outlineView: NSOutlineView, isOn: Bool, for node: Node) -> NSView {
+        let cell: NSTableCellView
+        let checkbox: NSButton
+        if let reused = outlineView.makeView(withIdentifier: Self.checkboxIdentifier, owner: self) as? NSTableCellView,
+           let existing = reused.subviews.first as? NSButton {
+            cell = reused
+            checkbox = existing
+        } else {
+            checkbox = NSButton(checkboxWithTitle: "", target: self, action: #selector(bitClicked(_:)))
+            checkbox.controlSize = .small
+            checkbox.translatesAutoresizingMaskIntoConstraints = false
+            cell = NSTableCellView()
+            cell.identifier = Self.checkboxIdentifier
+            cell.addSubview(checkbox)
+            NSLayoutConstraint.activate([
+                checkbox.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
+                checkbox.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+            ])
+        }
+        checkbox.state = isOn ? .on : .off
+        checkbox.isEnabled = isEditable
+        checkbox.title = isOn ? "1" : "0"
+        checkbox.font = DebugTableStyle.font
+        checkbox.contentTintColor = isChanged(node) ? DebugTableStyle.changedColor : nil
+        checkbox.toolTip = isEditable
+            ? "Click to \(isOn ? "clear" : "set") \(node.name)"
+            : "Stop the program to change \(node.name)"
+        checkbox.setAccessibilityLabel(node.name)
+        return cell
+    }
+
+    @objc func bitClicked(_ sender: NSButton) {
+        let row = outlineView.row(for: sender)
+        guard let node = outlineView.item(atRow: row) as? Node, let field = node.field,
+              let peripheral = selectedPeripheral, isEditable
+        else {
+            revertEdits()
+            return
+        }
+        onWrite?(peripheral, node.register, field, sender.state == .on ? "1" : "0")
     }
 
     // MARK: - Typing a value
