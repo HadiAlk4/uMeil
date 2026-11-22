@@ -233,24 +233,7 @@ enum MainMenu {
         find.submenu = findMenu()
 
         menu.addItem(.separator())
-        menu.addItem(
-            withTitle: "Code Intelligence",
-            action: #selector(MainWindowController.toggleCodeIntelligence(_:)),
-            keyEquivalent: ""
-        )
-        let complete = menu.addItem(
-            withTitle: "Complete",
-            action: #selector(EditorViewController.triggerCompletion(_:)),
-            keyEquivalent: " "
-        )
-        complete.keyEquivalentModifierMask = [.control]
-
-        let jump = menu.addItem(
-            withTitle: "Jump to Definition",
-            action: #selector(MainWindowController.jumpToDefinitionMenuAction(_:)),
-            keyEquivalent: "j"
-        )
-        jump.keyEquivalentModifierMask = [.control, .command]
+        addCodeIntelligenceItems(to: menu)
         return menu
     }
 

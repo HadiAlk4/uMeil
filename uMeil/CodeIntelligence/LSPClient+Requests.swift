@@ -64,4 +64,31 @@ extension LSPClient {
         }
         return hover.contents.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : hover
     }
+
+    /// Checks that the name at `position` can be renamed. Returns the
+    /// range of the name, or throws the server's reason when it cannot be.
+    func prepareRename(url: URL, position: LSPPosition) async throws -> LSPRange? {
+        let data = try await sendRequest(method: "textDocument/prepareRename", params: [
+            "textDocument": ["uri": url.standardizedFileURL.absoluteString],
+            "position": ["line": position.line, "character": position.character]
+        ])
+        if isJSONNull(data) { return nil }
+        if let range = try? decoder.decode(LSPRange.self, from: data) { return range }
+        struct WithPlaceholder: Decodable { var range: LSPRange }
+        return try? decoder.decode(WithPlaceholder.self, from: data).range
+    }
+
+    /// The edits that rename the symbol at `position` to `newName` everywhere.
+    func rename(url: URL, position: LSPPosition, newName: String) async throws -> LSPWorkspaceEdit {
+        let data = try await sendRequest(method: "textDocument/rename", params: [
+            "textDocument": ["uri": url.standardizedFileURL.absoluteString],
+            "position": ["line": position.line, "character": position.character],
+            "newName": newName
+        ])
+        if isJSONNull(data) { return LSPWorkspaceEdit(edits: [:]) }
+        guard let edit = try? decoder.decode(LSPWorkspaceEdit.self, from: data) else {
+            throw LSPError.invalidResponse
+        }
+        return edit
+    }
 }

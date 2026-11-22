@@ -138,31 +138,33 @@ final class CodeIntelligenceController {
         }
     }
 
-    func completion(in url: URL, text: String, position: LSPPosition) async -> [LSPCompletionItem] {
+    /// The running session, once the file being opened has reached it.
+    func readySession() async -> ClangdSession? {
         let pendingOpen = openFileTaskBox.withLockUnchecked { $0 }
         await pendingOpen?.value
-        guard let session else { return [] }
+        return session
+    }
+
+    /// The open folder, which edits from `clangd` must stay inside.
+    var workspaceFolder: URL? { folder }
+
+    func completion(in url: URL, text: String, position: LSPPosition) async -> [LSPCompletionItem] {
+        guard let session = await readySession() else { return [] }
         return (try? await session.completion(at: position, in: url, currentText: text)) ?? []
     }
 
     func signatureHelp(in url: URL, text: String, position: LSPPosition) async -> LSPSignatureHelp? {
-        let pendingOpen = openFileTaskBox.withLockUnchecked { $0 }
-        await pendingOpen?.value
-        guard let session else { return nil }
+        guard let session = await readySession() else { return nil }
         return try? await session.signatureHelp(at: position, in: url, currentText: text)
     }
 
     func hover(in url: URL, text: String, position: LSPPosition) async -> LSPHover? {
-        let pendingOpen = openFileTaskBox.withLockUnchecked { $0 }
-        await pendingOpen?.value
-        guard let session else { return nil }
+        guard let session = await readySession() else { return nil }
         return try? await session.hover(at: position, in: url, currentText: text)
     }
 
     func jumpToDefinition(in url: URL, text: String, position: LSPPosition) async {
-        let pendingOpen = openFileTaskBox.withLockUnchecked { $0 }
-        await pendingOpen?.value
-        guard let session,
+        guard let session = await readySession(),
               let locations = try? await session.definition(at: position, in: url, currentText: text),
               let first = locations.first
         else { return }

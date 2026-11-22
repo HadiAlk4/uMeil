@@ -11,6 +11,8 @@ final class EditorTextView: NSTextView {
     var onHoverCharacter: ((Int?) -> Void)?
     /// Called when the user invokes autocomplete (`Ctrl+Space` or `Esc`/`F5` `complete(_:)`).
     var onRequestCompletion: (() -> Void)?
+    /// Called when the user presses F2 to rename the symbol at the cursor.
+    var onRequestRename: (() -> Void)?
     /// Called first on `keyDown` so an open completion popup can intercept arrows, Return, Tab, and Esc.
     var completionKeyHandler: ((NSEvent) -> Bool)?
 
@@ -60,6 +62,10 @@ final class EditorTextView: NSTextView {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if modifiers == .control, event.charactersIgnoringModifiers == " " {
             onRequestCompletion?()
+            return
+        }
+        if event.specialKey == .f2, modifiers.subtracting([.function, .numericPad]).isEmpty {
+            onRequestRename?()
             return
         }
         super.keyDown(with: event)

@@ -126,4 +126,60 @@ struct ClangdFeaturesInEditorTests {
         editor.completionPanel.dismiss()
         controller.codeIntelligence?.stop()
     }
+
+    @Test(.timeLimit(TestTiming.minutes(1)))
+    func renamingAVariableChangesEveryUseInOneUndo() async throws {
+        let temp = try TemporaryDirectory()
+        let controller = try makeBlinkyWindow(in: temp)
+        let editor = controller.editor
+        let textView = editor.textView
+        let before = textView.string
+            .replacingOccurrences(of: "for (;;) {", with: "uint32_t pause = HALF_SECOND;\n    for (;;) {")
+            .replacingOccurrences(of: "SysCtlDelay(HALF_SECOND)", with: "SysCtlDelay(pause)")
+        let everything = NSRange(location: 0, length: (textView.string as NSString).length)
+        textView.insertText(before, replacementRange: everything)
+        textView.undoManager?.removeAllActions()
+
+        var problems: [String] = []
+        editor.intelligence.renamePrompt = { _ in "halfSecond" }
+        editor.intelligence.renameProblemHandler = { problems.append($0) }
+        let use = (before as NSString).range(of: "SysCtlDelay(pause)").location + 14
+        textView.setSelectedRange(NSRange(location: use, length: 0))
+
+        let renamed = await retry {
+            problems.removeAll()
+            await editor.performRename()
+            return !textView.string.contains("pause")
+        }
+        #expect(renamed, "problems: \(problems)")
+        #expect(textView.string.components(separatedBy: "halfSecond").count - 1 == 3)
+        #expect(editor.isModified)
+
+        textView.undoManager?.undo()
+        #expect(textView.string == before)
+        controller.codeIntelligence?.stop()
+    }
+
+    @Test(.timeLimit(TestTiming.minutes(1)))
+    func renamingATivaWareFunctionIsRefused() async throws {
+        let temp = try TemporaryDirectory()
+        let controller = try makeBlinkyWindow(in: temp)
+        let editor = controller.editor
+        let original = editor.textView.string
+        var problems: [String] = []
+        editor.intelligence.renamePrompt = { _ in "WritePin" }
+        editor.intelligence.renameProblemHandler = { problems.append($0) }
+        let call = (original as NSString).range(of: "GPIOPinWrite(").location + 3
+        editor.textView.setSelectedRange(NSRange(location: call, length: 0))
+
+        // Early answers can be "not indexed yet"; wait for clangd's real answer.
+        let refused = await retry {
+            problems.removeAll()
+            await editor.performRename()
+            return problems.contains { $0.contains("gpio.h") }
+        }
+        #expect(refused, "problems: \(problems)")
+        #expect(editor.textView.string == original)
+        controller.codeIntelligence?.stop()
+    }
 }

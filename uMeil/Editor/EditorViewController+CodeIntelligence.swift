@@ -12,6 +12,11 @@ final class EditorCodeIntelligenceState {
     var onDefinitionRequested: ((URL, String, LSPPosition) async -> Void)?
     var onSignatureHelpRequested: ((URL, String, LSPPosition) async -> LSPSignatureHelp?)?
     var onHoverRequested: ((URL, String, LSPPosition) async -> LSPHover?)?
+    var onPrepareRename: ((URL, String, LSPPosition) async throws -> LSPRange?)?
+    var onRename: ((URL, String, LSPPosition, String) async throws -> [URL: [LSPTextEdit]])?
+    /// Replace the new-name and problem alerts, for tests.
+    var renamePrompt: ((String) async -> String?)?
+    var renameProblemHandler: ((String) -> Void)?
 
     let diagnosticBar = EditorDiagnosticBar()
     let completionPanel = CompletionPanelController()
@@ -57,6 +62,9 @@ extension EditorViewController {
         }
         editorTextView?.onRequestCompletion = { [weak self] in
             self?.triggerCompletion(nil)
+        }
+        editorTextView?.onRequestRename = { [weak self] in
+            self?.renameSymbol(nil)
         }
         editorTextView?.completionKeyHandler = { [weak self] event in
             guard let self else { return false }
@@ -340,7 +348,7 @@ extension EditorViewController {
     // MARK: - Delegate and menu hooks
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        if menuItem.action == #selector(triggerCompletion(_:)) {
+        if menuItem.action == #selector(triggerCompletion(_:)) || menuItem.action == #selector(renameSymbol(_:)) {
             return intelligence.isEnabled && (document.map { SourceLanguage(url: $0.url) == .c } ?? false)
         }
         return true

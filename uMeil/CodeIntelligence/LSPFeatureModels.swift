@@ -169,3 +169,49 @@ private struct LSPMarkedString: Decodable {
         }
     }
 }
+
+/// The edits a rename makes, by file: LSP's `WorkspaceEdit`, read from
+/// either its `changes` map or its `documentChanges` list.
+struct LSPWorkspaceEdit: Decodable, Equatable, Sendable {
+    private struct DocumentChange: Decodable {
+        var textDocument: LSPTextDocumentIdentifier
+        var edits: [LSPTextEdit]
+    }
+
+    private enum CodingKeys: String, CodingKey { case changes, documentChanges }
+
+    /// Edits keyed by standardized file URL.
+    var edits: [URL: [LSPTextEdit]]
+
+    init(edits: [URL: [LSPTextEdit]]) {
+        self.edits = edits
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        var edits: [URL: [LSPTextEdit]] = [:]
+        if let changes = try container.decodeIfPresent([String: [LSPTextEdit]].self, forKey: .changes) {
+            for (uri, list) in changes {
+                guard let url = Self.fileURL(uri) else { continue }
+                edits[url, default: []] += list
+            }
+        }
+        if let documents = try? container.decodeIfPresent([DocumentChange].self, forKey: .documentChanges) {
+            for change in documents {
+                guard let url = Self.fileURL(change.textDocument.uri) else { continue }
+                edits[url, default: []] += change.edits
+            }
+        }
+        self.edits = edits
+    }
+
+    private static func fileURL(_ uri: String) -> URL? {
+        guard let url = URL(string: uri), url.isFileURL else { return nil }
+        return url.standardizedFileURL
+    }
+}
+
+/// LSP's `TextDocumentIdentifier`: which file a change is for.
+struct LSPTextDocumentIdentifier: Decodable, Equatable, Sendable {
+    var uri: String
+}
