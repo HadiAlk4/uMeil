@@ -315,13 +315,13 @@ struct LSPVersionedTextDocumentIdentifier: Codable, Equatable, Sendable {
     var version: Int?
 }
 
-/// Text edits targeting one document inside `LSPWorkspaceEdit.documentChanges`.
+/// Text edits targeting one document inside `LSPCodeActionEdit.documentChanges`.
 struct LSPTextDocumentEdit: Codable, Equatable, Sendable {
     var textDocument: LSPVersionedTextDocumentIdentifier
     var edits: [LSPTextEdit]
 }
 
-/// An entry in `LSPWorkspaceEdit.documentChanges`: either text edits or a file operation.
+/// An entry in `LSPCodeActionEdit.documentChanges`: either text edits or a file operation.
 enum LSPDocumentChange: Codable, Equatable, Sendable {
     case textDocumentEdit(LSPTextDocumentEdit)
     case resourceOperation(kind: String)
@@ -351,7 +351,7 @@ enum LSPDocumentChange: Codable, Equatable, Sendable {
 }
 
 /// Text edits returned by a code action. Only edits confined to the open document are accepted.
-struct LSPWorkspaceEdit: Codable, Equatable, Sendable {
+struct LSPCodeActionEdit: Codable, Equatable, Sendable {
     var changes: [String: [LSPTextEdit]]?
     var documentChanges: [LSPDocumentChange]?
 }
@@ -375,7 +375,7 @@ struct LSPCodeAction: Codable, Equatable, Sendable {
     var diagnostics: [LSPDiagnostic]?
     var isPreferred: Bool?
     var disabled: Disabled?
-    var edit: LSPWorkspaceEdit?
+    var edit: LSPCodeActionEdit?
 
     var isQuickFix: Bool {
         guard let kind else { return false }

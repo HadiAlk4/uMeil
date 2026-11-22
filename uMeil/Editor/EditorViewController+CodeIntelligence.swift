@@ -161,20 +161,6 @@ extension EditorViewController {
         diagnosticBar.update(diagnostics: [], cursorLineZeroBased: 0)
     }
 
-    func updateDiagnosticBar() {
-        let cursorLine = lineIndex.lineNumber(atOffset: textView.selectedRange().location) - 1
-        let selected = EditorDiagnosticBar.selectedDiagnostic(
-            from: intelligence.liveDiagnostics,
-            cursorLineZeroBased: cursorLine
-        )
-        let quickFix = selected.flatMap { intelligence.quickFixesByDiagnostic[$0] }
-        diagnosticBar.update(
-            diagnostics: intelligence.liveDiagnostics,
-            cursorLineZeroBased: cursorLine,
-            quickFix: quickFix
-        )
-    }
-
     private func clearInlineDiagnosticAttributes() {
         guard let layoutManager = textView.layoutManager else {
             intelligence.diagnosticRanges.removeAll()

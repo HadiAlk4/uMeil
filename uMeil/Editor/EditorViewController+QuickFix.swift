@@ -3,6 +3,21 @@ import AppKit
 /// Fetches LSP quick-fix code actions for live diagnostics and applies them in one click.
 @MainActor
 extension EditorViewController {
+    /// Shows the diagnostic on the cursor's line, with its one-click fix if it has one.
+    func updateDiagnosticBar() {
+        let cursorLine = lineIndex.lineNumber(atOffset: textView.selectedRange().location) - 1
+        let selected = EditorDiagnosticBar.selectedDiagnostic(
+            from: intelligence.liveDiagnostics,
+            cursorLineZeroBased: cursorLine
+        )
+        let quickFix = selected.flatMap { intelligence.quickFixesByDiagnostic[$0] }
+        diagnosticBar.update(
+            diagnostics: intelligence.liveDiagnostics,
+            cursorLineZeroBased: cursorLine,
+            quickFix: quickFix
+        )
+    }
+
     private static let maxQuickFixDiagnosticQueries = 12
 
     func clearQuickFixes() {

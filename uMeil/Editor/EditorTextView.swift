@@ -222,44 +222,6 @@ final class EditorTextView: NSTextView {
         }
     }
 
-    // MARK: - Editing every ⌘D occurrence at once
-
-    override func deleteForward(_ sender: Any?) {
-        if !handleMultiOccurrenceDeleteForward() {
-            super.deleteForward(sender)
-        }
-    }
-
-    override func paste(_ sender: Any?) {
-        if !handleMultiOccurrencePaste() {
-            super.paste(sender)
-        }
-    }
-
-    override func cancelOperation(_ sender: Any?) {
-        if !handleMultiOccurrenceCancelOperation() {
-            super.cancelOperation(sender)
-        }
-    }
-
-    override func doCommand(by selector: Selector) {
-        endMultiOccurrenceSessionBefore(selector)
-        super.doCommand(by: selector)
-    }
-
-    override func didChangeText() {
-        handleTextDidChangeForMultiOccurrence()
-        super.didChangeText()
-    }
-
-    override func resignFirstResponder() -> Bool {
-        let resigned = super.resignFirstResponder()
-        if resigned {
-            endMultiOccurrenceSession()
-        }
-        return resigned
-    }
-
     override func complete(_ sender: Any?) {
         onRequestCompletion?()
     }
@@ -321,6 +283,26 @@ final class EditorTextView: NSTextView {
         onCommandClick?(offset)
     }
 
+    private func characterOffset(for event: NSEvent) -> Int? {
+        guard let layoutManager, let textContainer, let storage = textStorage, storage.length > 0 else {
+            return nil
+        }
+        let viewPoint = convert(event.locationInWindow, from: nil)
+        let containerPoint = NSPoint(
+            x: viewPoint.x - textContainerOrigin.x,
+            y: viewPoint.y - textContainerOrigin.y
+        )
+        let glyphIndex = layoutManager.glyphIndex(for: containerPoint, in: textContainer)
+        let lineRect = layoutManager.lineFragmentUsedRect(forGlyphAt: glyphIndex, effectiveRange: nil)
+        guard lineRect.insetBy(dx: -4, dy: -2).contains(containerPoint) else { return nil }
+        let charIndex = layoutManager.characterIndexForGlyph(at: glyphIndex)
+        return charIndex < storage.length ? charIndex : nil
+    }
+}
+
+// MARK: - Execution line and snippet placeholders
+
+extension EditorTextView {
     private func drawExecutionLine(in dirtyRect: NSRect) {
         guard let lineStart = executionLineStart,
               let layoutManager,
@@ -362,21 +344,5 @@ final class EditorTextView: NSTextView {
             guard box.intersects(rect) else { continue }
             NSBezierPath(roundedRect: box.insetBy(dx: -1, dy: 0), xRadius: 3, yRadius: 3).fill()
         }
-    }
-
-    private func characterOffset(for event: NSEvent) -> Int? {
-        guard let layoutManager, let textContainer, let storage = textStorage, storage.length > 0 else {
-            return nil
-        }
-        let viewPoint = convert(event.locationInWindow, from: nil)
-        let containerPoint = NSPoint(
-            x: viewPoint.x - textContainerOrigin.x,
-            y: viewPoint.y - textContainerOrigin.y
-        )
-        let glyphIndex = layoutManager.glyphIndex(for: containerPoint, in: textContainer)
-        let lineRect = layoutManager.lineFragmentUsedRect(forGlyphAt: glyphIndex, effectiveRange: nil)
-        guard lineRect.insetBy(dx: -4, dy: -2).contains(containerPoint) else { return nil }
-        let charIndex = layoutManager.characterIndexForGlyph(at: glyphIndex)
-        return charIndex < storage.length ? charIndex : nil
     }
 }

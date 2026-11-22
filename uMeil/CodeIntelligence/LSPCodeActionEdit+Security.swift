@@ -1,6 +1,6 @@
 import Foundation
 
-extension LSPWorkspaceEdit {
+extension LSPCodeActionEdit {
     /// Returns all text edits if every change in this workspace edit targets `documentURL`
     /// (after symlink and path normalization) and performs no file-level resource operations.
     /// Returns `nil` if any URI points elsewhere, uses a non-file/remote URI, or has no edits.

@@ -103,7 +103,7 @@ struct DiagnosticQuickFixTests {
             title: "Touch both files",
             kind: LSPCodeAction.quickFixKind,
             isPreferred: true,
-            edit: LSPWorkspaceEdit(changes: [
+            edit: LSPCodeActionEdit(changes: [
                 fixture.file.standardizedFileURL.absoluteString: [foreignEdit],
                 other.standardizedFileURL.absoluteString: [foreignEdit]
             ])
@@ -285,7 +285,7 @@ private extension DiagnosticQuickFixTests {
             title: title,
             kind: LSPCodeAction.quickFixKind,
             isPreferred: isPreferred,
-            edit: LSPWorkspaceEdit(changes: [url.standardizedFileURL.absoluteString: edits])
+            edit: LSPCodeActionEdit(changes: [url.standardizedFileURL.absoluteString: edits])
         )
     }
 

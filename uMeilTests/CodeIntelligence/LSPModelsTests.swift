@@ -170,19 +170,19 @@ struct LSPModelsTests {
         let symlinkURI = symlinkFile.standardizedFileURL.absoluteString
 
         // Symlink and percent-encoded spaces resolving to the open document are allowed.
-        #expect(LSPWorkspaceEdit(changes: [symlinkURI: [edit]]).edits(targeting: openFile) == [edit])
-        #expect(LSPWorkspaceEdit(changes: [openURI: [edit]]).edits(targeting: symlinkFile) == [edit])
+        #expect(LSPCodeActionEdit(changes: [symlinkURI: [edit]]).edits(targeting: openFile) == [edit])
+        #expect(LSPCodeActionEdit(changes: [openURI: [edit]]).edits(targeting: symlinkFile) == [edit])
 
         // Edits targeting another file, or mixing open + other file, are rejected completely.
-        #expect(LSPWorkspaceEdit(changes: [otherURI: [edit]]).edits(targeting: openFile) == nil)
-        #expect(LSPWorkspaceEdit(changes: [openURI: [edit], otherURI: [edit]]).edits(targeting: openFile) == nil)
+        #expect(LSPCodeActionEdit(changes: [otherURI: [edit]]).edits(targeting: openFile) == nil)
+        #expect(LSPCodeActionEdit(changes: [openURI: [edit], otherURI: [edit]]).edits(targeting: openFile) == nil)
 
         // Non-file URIs, remote file hosts, path traversal, and %00 are rejected.
-        #expect(LSPWorkspaceEdit(changes: ["https://example.com/main.c": [edit]]).edits(targeting: openFile) == nil)
-        #expect(LSPWorkspaceEdit(changes: ["file://evil.example\(openFile.path)": [edit]])
+        #expect(LSPCodeActionEdit(changes: ["https://example.com/main.c": [edit]]).edits(targeting: openFile) == nil)
+        #expect(LSPCodeActionEdit(changes: ["file://evil.example\(openFile.path)": [edit]])
             .edits(targeting: openFile) == nil)
-        #expect(LSPWorkspaceEdit(changes: ["file:///tmp/../etc/passwd": [edit]]).edits(targeting: openFile) == nil)
-        #expect(LSPWorkspaceEdit(changes: ["\(openURI)%00": [edit]]).edits(targeting: openFile) == nil)
+        #expect(LSPCodeActionEdit(changes: ["file:///tmp/../etc/passwd": [edit]]).edits(targeting: openFile) == nil)
+        #expect(LSPCodeActionEdit(changes: ["\(openURI)%00": [edit]]).edits(targeting: openFile) == nil)
 
         // Resource operations (create/rename/delete) inside documentChanges are rejected.
         let createJSON = """
@@ -199,7 +199,7 @@ struct LSPModelsTests {
           ]
         }
         """
-        let workspaceEdit = try JSONDecoder().decode(LSPWorkspaceEdit.self, from: Data(createJSON.utf8))
+        let workspaceEdit = try JSONDecoder().decode(LSPCodeActionEdit.self, from: Data(createJSON.utf8))
         #expect(workspaceEdit.edits(targeting: openFile) == nil)
     }
 
@@ -214,32 +214,32 @@ struct LSPModelsTests {
             title: "Extract function",
             kind: "refactor.extract",
             isPreferred: true,
-            edit: LSPWorkspaceEdit(changes: [target.absoluteString: [edit]])
+            edit: LSPCodeActionEdit(changes: [target.absoluteString: [edit]])
         )
         let foreignFix = LSPCodeAction(
             title: "Fix other file",
             kind: "quickfix",
             isPreferred: true,
-            edit: LSPWorkspaceEdit(changes: [other.absoluteString: [edit]])
+            edit: LSPCodeActionEdit(changes: [other.absoluteString: [edit]])
         )
         let disabledFix = LSPCodeAction(
             title: "Disabled fix",
             kind: "quickfix",
             isPreferred: true,
             disabled: .init(reason: "unavailable"),
-            edit: LSPWorkspaceEdit(changes: [target.absoluteString: [edit]])
+            edit: LSPCodeActionEdit(changes: [target.absoluteString: [edit]])
         )
         let secondaryFix = LSPCodeAction(
             title: "Insert declaration",
             kind: "quickfix",
             isPreferred: false,
-            edit: LSPWorkspaceEdit(changes: [target.absoluteString: [edit]])
+            edit: LSPCodeActionEdit(changes: [target.absoluteString: [edit]])
         )
         let preferredFix = LSPCodeAction(
             title: "Include <stdio.h>",
             kind: "quickfix",
             isPreferred: true,
-            edit: LSPWorkspaceEdit(changes: [target.absoluteString: [edit]])
+            edit: LSPCodeActionEdit(changes: [target.absoluteString: [edit]])
         )
 
         let picked = LSPCodeAction.preferredQuickFix(
