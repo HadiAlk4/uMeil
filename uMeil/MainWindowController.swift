@@ -27,6 +27,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     let debugPanels = DebugPanelsController()
     /// Floats "Build Succeeded" and "Flashed to Board" over the editor.
     let notice = NoticeView()
+    /// File > Open Quickly: finds a project file by a few letters of its name.
+    let quickOpen = QuickOpenController()
 
     /// The outcome of the most recent build of the open folder.
     private(set) var lastBuild: BuildResult?
@@ -239,7 +241,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
             !isBuilding && !isFlashing && !debugger.isActive
         case #selector(stopFlashing(_:)):
             isFlashing
-        case #selector(closeFolder(_:)):
+        case #selector(closeFolder(_:)), #selector(openQuickly(_:)):
             folder != nil
         default:
             isDebugActionEnabled(action)

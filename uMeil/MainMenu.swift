@@ -73,7 +73,13 @@ enum MainMenu {
             action: #selector(MainWindowController.chooseFolder(_:)),
             keyEquivalent: "o"
         )
-        openFolder.keyEquivalentModifierMask = [.command, .shift]
+        openFolder.keyEquivalentModifierMask = [.command, .option]
+        let openQuickly = menu.addItem(
+            withTitle: "Open Quickly…",
+            action: #selector(MainWindowController.openQuickly(_:)),
+            keyEquivalent: "o"
+        )
+        openQuickly.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(
             withTitle: "Import Keil Project…",
             action: #selector(MainWindowController.importKeilProject(_:)),
