@@ -28,6 +28,7 @@ actor LSPClient {
     private var lastWrite: Task<Void, Never>?
 
     let decoder = JSONDecoder()
+    private let encoder = JSONEncoder()
 
     init(
         transport: any LSPTransporting,
@@ -75,6 +76,7 @@ actor LSPClient {
                     "definition": [
                         "linkSupport": true
                     ],
+                    "codeAction": Self.codeActionCapability,
                     "publishDiagnostics": [
                         "versionSupport": true
                     ]
@@ -278,6 +280,15 @@ actor LSPClient {
 }
 
 extension LSPClient {
+    private static var codeActionCapability: [String: Any] {
+        [
+            "codeActionLiteralSupport": [
+                "codeActionKind": ["valueSet": [LSPCodeAction.quickFixKind]]
+            ],
+            "isPreferredSupport": true
+        ]
+    }
+
     /// Queues `payload` behind every earlier write. The queue position is
     /// taken now, synchronously on the actor, so ordering follows call order
     /// even though the write itself happens later.
@@ -290,4 +301,34 @@ extension LSPClient {
         lastWrite = Task { _ = try? await write.value }
         return write
     }
+
+    func codeAction(
+        url: URL,
+        range: LSPRange,
+        diagnostics: [LSPDiagnostic],
+        only: [String]? = [LSPCodeAction.quickFixKind]
+    ) async throws -> [LSPCodeAction] {
+        let request = CodeActionRequestParams(
+            textDocument: CodeActionDocumentIdentifier(uri: url.standardizedFileURL.absoluteString),
+            range: range,
+            context: LSPCodeActionContext(diagnostics: diagnostics, only: only)
+        )
+        let paramsObject = try JSONSerialization.jsonObject(with: try encoder.encode(request))
+        let data = try await sendRequest(method: "textDocument/codeAction", params: paramsObject)
+        if isJSONNull(data) { return [] }
+        if let actions = try? decoder.decode([LSPCodeAction].self, from: data) {
+            return actions
+        }
+        throw LSPError.invalidResponse
+    }
+}
+
+private struct CodeActionDocumentIdentifier: Encodable {
+    var uri: String
+}
+
+private struct CodeActionRequestParams: Encodable {
+    var textDocument: CodeActionDocumentIdentifier
+    var range: LSPRange
+    var context: LSPCodeActionContext
 }

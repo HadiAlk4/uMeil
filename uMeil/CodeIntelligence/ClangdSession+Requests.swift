@@ -20,6 +20,18 @@ extension ClangdSession {
         return try await client.definition(url: normalized, position: position)
     }
 
+    func codeAction(
+        url: URL,
+        range: LSPRange,
+        diagnostics: [LSPDiagnostic],
+        currentText: String? = nil
+    ) async throws -> [LSPCodeAction] {
+        let normalized = Self.normalize(url)
+        try await ensureSynced(url: normalized, currentText: currentText)
+        let client = try await ensureClient()
+        return try await client.codeAction(url: normalized, range: range, diagnostics: diagnostics)
+    }
+
     func signatureHelp(
         at position: LSPPosition,
         in url: URL,

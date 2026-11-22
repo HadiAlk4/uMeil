@@ -20,6 +20,7 @@ final class EditorCodeIntelligenceState {
     /// Formats the given 1-based lines of a file's text with clang-format.
     var onFormatRequested: ((URL, String, ClosedRange<Int>) async throws -> String)?
     var formatProblemHandler: ((String) -> Void)?
+    var onCodeActionsRequested: ((URL, String, LSPRange, [LSPDiagnostic]) async -> [LSPCodeAction])?
 
     let diagnosticBar = EditorDiagnosticBar()
     let completionPanel = CompletionPanelController()

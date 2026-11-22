@@ -196,7 +196,7 @@ struct LSPCompletionItem: Codable, Equatable, Sendable {
 }
 
 /// An inline error, warning, or hint published by the language server.
-struct LSPDiagnostic: Codable, Equatable, Sendable {
+struct LSPDiagnostic: Codable, Equatable, Hashable, Sendable {
     enum Severity: Int, Codable, Comparable, Sendable {
         case error = 1
         case warning = 2
@@ -306,5 +306,91 @@ extension LineIndex {
         let start = utf16Offset(for: range.start)
         let end = max(start, utf16Offset(for: range.end))
         return NSRange(location: start, length: end - start)
+    }
+}
+
+/// Identifies a specific version of a text document in `documentChanges`.
+struct LSPVersionedTextDocumentIdentifier: Codable, Equatable, Sendable {
+    var uri: String
+    var version: Int?
+}
+
+/// Text edits targeting one document inside `LSPWorkspaceEdit.documentChanges`.
+struct LSPTextDocumentEdit: Codable, Equatable, Sendable {
+    var textDocument: LSPVersionedTextDocumentIdentifier
+    var edits: [LSPTextEdit]
+}
+
+/// An entry in `LSPWorkspaceEdit.documentChanges`: either text edits or a file operation.
+enum LSPDocumentChange: Codable, Equatable, Sendable {
+    case textDocumentEdit(LSPTextDocumentEdit)
+    case resourceOperation(kind: String)
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let kind = try container.decodeIfPresent(String.self, forKey: .kind) {
+            self = .resourceOperation(kind: kind)
+            return
+        }
+        self = .textDocumentEdit(try LSPTextDocumentEdit(from: decoder))
+    }
+
+    func encode(to encoder: Encoder) throws {
+        switch self {
+        case .textDocumentEdit(let edit):
+            try edit.encode(to: encoder)
+        case .resourceOperation(let kind):
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(kind, forKey: .kind)
+        }
+    }
+}
+
+/// Text edits returned by a code action. Only edits confined to the open document are accepted.
+struct LSPWorkspaceEdit: Codable, Equatable, Sendable {
+    var changes: [String: [LSPTextEdit]]?
+    var documentChanges: [LSPDocumentChange]?
+}
+
+/// Request context sent with `textDocument/codeAction`.
+struct LSPCodeActionContext: Codable, Equatable, Sendable {
+    var diagnostics: [LSPDiagnostic]
+    var only: [String]?
+}
+
+/// A diagnostic quick-fix or refactoring returned by `textDocument/codeAction`.
+struct LSPCodeAction: Codable, Equatable, Sendable {
+    struct Disabled: Codable, Equatable, Sendable {
+        var reason: String
+    }
+
+    static let quickFixKind = "quickfix"
+
+    var title: String
+    var kind: String?
+    var diagnostics: [LSPDiagnostic]?
+    var isPreferred: Bool?
+    var disabled: Disabled?
+    var edit: LSPWorkspaceEdit?
+
+    var isQuickFix: Bool {
+        guard let kind else { return false }
+        return kind == Self.quickFixKind || kind.hasPrefix(Self.quickFixKind + ".")
+    }
+
+    /// Returns the single-document edits if this is an enabled quick-fix targeting `documentURL`.
+    func quickFixEdits(targeting documentURL: URL) -> [LSPTextEdit]? {
+        guard disabled == nil, isQuickFix, let edit else { return nil }
+        return edit.edits(targeting: documentURL)
+    }
+
+    /// Picks the best auto-applicable quick-fix for `documentURL`, preferring `isPreferred == true`.
+    static func preferredQuickFix(from actions: [LSPCodeAction], targeting documentURL: URL) -> LSPCodeAction? {
+        let applicable = actions.filter { $0.quickFixEdits(targeting: documentURL) != nil }
+        return applicable.first { $0.isPreferred == true } ?? applicable.first
     }
 }

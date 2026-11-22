@@ -80,6 +80,177 @@ struct LSPModelsTests {
         // 0-based line 1 -> 1-based line 2; error outranks warning; info/hint ignored in gutter.
         #expect(params.lineMarkers == [2: .error])
     }
+
+    @Test func decodesCodeActionWithChanges() throws {
+        let changesJSON = """
+        {
+          "title": "Include <stdio.h> for symbol printf",
+          "kind": "quickfix",
+          "isPreferred": true,
+          "diagnostics": [
+            {
+              "range": { "start": { "line": 1, "character": 4 }, "end": { "line": 1, "character": 10 } },
+              "severity": 1,
+              "code": "-Wimplicit-function-declaration",
+              "source": "clang",
+              "message": "Call to undeclared library function 'printf'"
+            }
+          ],
+          "edit": {
+            "changes": {
+              "file:///tmp/Blinky/src/main.c": [
+                {
+                  "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } },
+                  "newText": "#include <stdio.h>\\n"
+                }
+              ]
+            }
+          }
+        }
+        """
+        let action = try JSONDecoder().decode(LSPCodeAction.self, from: Data(changesJSON.utf8))
+        #expect(action.title == "Include <stdio.h> for symbol printf")
+        #expect(action.isQuickFix)
+        #expect(action.isPreferred == true)
+        #expect(action.diagnostics?.count == 1)
+        let targetURL = URL(filePath: "/tmp/Blinky/src/main.c")
+        let edits = try #require(action.quickFixEdits(targeting: targetURL))
+        #expect(edits == [
+            LSPTextEdit(
+                range: LSPRange(start: LSPPosition(line: 0, character: 0), end: LSPPosition(line: 0, character: 0)),
+                newText: "#include <stdio.h>\n"
+            )
+        ])
+    }
+
+    @Test func decodesCodeActionWithDocumentChanges() throws {
+        let docChangesJSON = """
+        {
+          "title": "Insert semicolon",
+          "kind": "quickfix.clang",
+          "edit": {
+            "documentChanges": [
+              {
+                "textDocument": { "uri": "file:///tmp/Blinky/src/main.c", "version": 4 },
+                "edits": [
+                  {
+                    "range": { "start": { "line": 2, "character": 12 }, "end": { "line": 2, "character": 12 } },
+                    "newText": ";"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+        """
+        let targetURL = URL(filePath: "/tmp/Blinky/src/main.c")
+        let docAction = try JSONDecoder().decode(LSPCodeAction.self, from: Data(docChangesJSON.utf8))
+        #expect(docAction.isQuickFix)
+        let docEdits = try #require(docAction.quickFixEdits(targeting: targetURL))
+        #expect(docEdits.map(\.newText) == [";"])
+    }
+
+    @Test func workspaceEditSecurityRejectsOtherFilesResourceOpsAndUnsafeURIs() throws {
+        let temp = try TemporaryDirectory()
+        let spaceDir = try temp.directory("My Project")
+        let openFile = spaceDir.appending(path: "main.c")
+        let otherFile = spaceDir.appending(path: "other.c")
+        try Data("int main(void) { return 0; }\n".utf8).write(to: openFile)
+        try Data("int other(void) { return 1; }\n".utf8).write(to: otherFile)
+
+        let symlinkFile = temp.url.appending(path: "link-main.c")
+        try FileManager.default.createSymbolicLink(at: symlinkFile, withDestinationURL: openFile)
+
+        let edit = LSPTextEdit(
+            range: LSPRange(start: LSPPosition(line: 0, character: 0), end: LSPPosition(line: 0, character: 0)),
+            newText: "#include <stdio.h>\n"
+        )
+        let openURI = openFile.standardizedFileURL.absoluteString
+        let otherURI = otherFile.standardizedFileURL.absoluteString
+        let symlinkURI = symlinkFile.standardizedFileURL.absoluteString
+
+        // Symlink and percent-encoded spaces resolving to the open document are allowed.
+        #expect(LSPWorkspaceEdit(changes: [symlinkURI: [edit]]).edits(targeting: openFile) == [edit])
+        #expect(LSPWorkspaceEdit(changes: [openURI: [edit]]).edits(targeting: symlinkFile) == [edit])
+
+        // Edits targeting another file, or mixing open + other file, are rejected completely.
+        #expect(LSPWorkspaceEdit(changes: [otherURI: [edit]]).edits(targeting: openFile) == nil)
+        #expect(LSPWorkspaceEdit(changes: [openURI: [edit], otherURI: [edit]]).edits(targeting: openFile) == nil)
+
+        // Non-file URIs, remote file hosts, path traversal, and %00 are rejected.
+        #expect(LSPWorkspaceEdit(changes: ["https://example.com/main.c": [edit]]).edits(targeting: openFile) == nil)
+        #expect(LSPWorkspaceEdit(changes: ["file://evil.example\(openFile.path)": [edit]])
+            .edits(targeting: openFile) == nil)
+        #expect(LSPWorkspaceEdit(changes: ["file:///tmp/../etc/passwd": [edit]]).edits(targeting: openFile) == nil)
+        #expect(LSPWorkspaceEdit(changes: ["\(openURI)%00": [edit]]).edits(targeting: openFile) == nil)
+
+        // Resource operations (create/rename/delete) inside documentChanges are rejected.
+        let createJSON = """
+        {
+          "documentChanges": [
+            {
+              "textDocument": { "uri": "\(openURI)", "version": 1 },
+              "edits": [{
+                "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } },
+                "newText": ";"
+              }]
+            },
+            { "kind": "create", "uri": "\(otherURI)" }
+          ]
+        }
+        """
+        let workspaceEdit = try JSONDecoder().decode(LSPWorkspaceEdit.self, from: Data(createJSON.utf8))
+        #expect(workspaceEdit.edits(targeting: openFile) == nil)
+    }
+
+    @Test func preferredQuickFixSelectsPreferredEnabledQuickFixForTargetFile() {
+        let target = URL(filePath: "/tmp/main.c")
+        let other = URL(filePath: "/tmp/other.c")
+        let edit = LSPTextEdit(
+            range: LSPRange(start: LSPPosition(line: 0, character: 0), end: LSPPosition(line: 0, character: 0)),
+            newText: "#include <stdio.h>\n"
+        )
+        let refactor = LSPCodeAction(
+            title: "Extract function",
+            kind: "refactor.extract",
+            isPreferred: true,
+            edit: LSPWorkspaceEdit(changes: [target.absoluteString: [edit]])
+        )
+        let foreignFix = LSPCodeAction(
+            title: "Fix other file",
+            kind: "quickfix",
+            isPreferred: true,
+            edit: LSPWorkspaceEdit(changes: [other.absoluteString: [edit]])
+        )
+        let disabledFix = LSPCodeAction(
+            title: "Disabled fix",
+            kind: "quickfix",
+            isPreferred: true,
+            disabled: .init(reason: "unavailable"),
+            edit: LSPWorkspaceEdit(changes: [target.absoluteString: [edit]])
+        )
+        let secondaryFix = LSPCodeAction(
+            title: "Insert declaration",
+            kind: "quickfix",
+            isPreferred: false,
+            edit: LSPWorkspaceEdit(changes: [target.absoluteString: [edit]])
+        )
+        let preferredFix = LSPCodeAction(
+            title: "Include <stdio.h>",
+            kind: "quickfix",
+            isPreferred: true,
+            edit: LSPWorkspaceEdit(changes: [target.absoluteString: [edit]])
+        )
+
+        let picked = LSPCodeAction.preferredQuickFix(
+            from: [refactor, foreignFix, disabledFix, secondaryFix, preferredFix],
+            targeting: target
+        )
+        #expect(picked == preferredFix)
+
+        let fallback = LSPCodeAction.preferredQuickFix(from: [refactor, secondaryFix], targeting: target)
+        #expect(fallback == secondaryFix)
+    }
 }
 
 @MainActor

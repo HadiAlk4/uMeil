@@ -56,6 +56,9 @@ extension MainWindowController {
         editor.intelligence.onDefinitionRequested = { [weak controller] url, text, position in
             await controller?.jumpToDefinition(in: url, text: text, position: position)
         }
+        editor.intelligence.onCodeActionsRequested = { [weak controller] url, text, range, diagnostics in
+            await controller?.codeActions(in: url, text: text, range: range, diagnostics: diagnostics) ?? []
+        }
     }
 
     /// Where the Code Intelligence on/off choice is remembered.
