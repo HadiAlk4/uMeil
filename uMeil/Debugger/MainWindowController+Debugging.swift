@@ -25,6 +25,7 @@ extension MainWindowController {
 
     /// Connects the debugger to the editor's gutter, status line, and debug panels.
     func setUpDebugging() {
+        installDebugBar()
         editor.onClickGutterLine = { [weak self] line in self?.toggleBreakpoint(atLine: line) }
         editor.onHoverIdentifier = { [weak self] name in await self?.debugger.evaluate(name) }
         debugger.onStateChange = { [weak self] state in self?.debugStateChanged(state) }
@@ -129,6 +130,7 @@ extension MainWindowController {
         }
         debugPanels.setEditable(debugger.isStopped)
         toolbar.showDebugControls(state != .idle)
+        updateDebugBar(for: state)
         debugTasks.cancelAll()
         switch state {
         case .idle:

@@ -12,14 +12,26 @@ final class DebugControlsItem: NSToolbarItem {
         var symbol: String
         var toolTip: String
         var action: Selector
+        /// The Debug menu's key for it, as Keil µVision has it.
+        var shortcut: String?
+
+        /// The tooltip with the key that does the same, as in "Run until a breakpoint (F5)".
+        var toolTipWithShortcut: String {
+            shortcut.map { "\(toolTip) (\($0))" } ?? toolTip
+        }
     }
 
     static let toggle = Command(
         title: "Debug",
         symbol: "ladybug",
         toolTip: "Start a debug session",
-        action: #selector(MainWindowController.toggleDebugging(_:))
+        action: #selector(MainWindowController.toggleDebugging(_:)),
+        shortcut: "⌃F5"
     )
+
+    static func command(for action: Selector) -> Command? {
+        ([toggle] + sessionCommands).first { $0.action == action }
+    }
 
     static let sessionCommands = [
         Command(
@@ -32,7 +44,8 @@ final class DebugControlsItem: NSToolbarItem {
             title: "Run",
             symbol: "play.fill",
             toolTip: "Run until a breakpoint",
-            action: #selector(MainWindowController.debugContinue(_:))
+            action: #selector(MainWindowController.debugContinue(_:)),
+            shortcut: "F5"
         ),
         Command(
             title: "Stop",
@@ -44,25 +57,29 @@ final class DebugControlsItem: NSToolbarItem {
             title: "Step",
             symbol: "arrow.down.right",
             toolTip: "Run one line, going into a function it calls",
-            action: #selector(MainWindowController.debugStepInto(_:))
+            action: #selector(MainWindowController.debugStepInto(_:)),
+            shortcut: "F11"
         ),
         Command(
             title: "Step Over",
             symbol: "arrow.turn.up.right",
             toolTip: "Run one line, including any function it calls",
-            action: #selector(MainWindowController.debugStepOver(_:))
+            action: #selector(MainWindowController.debugStepOver(_:)),
+            shortcut: "F10"
         ),
         Command(
             title: "Step Out",
             symbol: "arrow.up.left",
             toolTip: "Run until this function returns",
-            action: #selector(MainWindowController.debugStepOut(_:))
+            action: #selector(MainWindowController.debugStepOut(_:)),
+            shortcut: "⌃F11"
         ),
         Command(
             title: "Run to Cursor Line",
             symbol: "arrow.right.to.line",
             toolTip: "Run until the line the cursor is on",
-            action: #selector(MainWindowController.debugRunToCursor(_:))
+            action: #selector(MainWindowController.debugRunToCursor(_:)),
+            shortcut: "⌃F10"
         )
     ]
 
@@ -98,7 +115,7 @@ final class DebugControlsItem: NSToolbarItem {
             systemSymbolName: isActive ? "ladybug.slash" : Self.toggle.symbol,
             accessibilityDescription: Self.toggle.title
         )
-        toggleButton.toolTip = isActive ? "End the debug session" : Self.toggle.toolTip
+        toggleButton.toolTip = isActive ? "End the debug session (⌃F5)" : Self.toggle.toolTipWithShortcut
         validate()
     }
 
@@ -114,7 +131,7 @@ final class DebugControlsItem: NSToolbarItem {
         // No target: the action goes to the window controller through the responder chain.
         let button = NSButton(image: image, target: nil, action: command.action)
         button.bezelStyle = .toolbar
-        button.toolTip = command.toolTip
+        button.toolTip = command.toolTipWithShortcut
         button.setAccessibilityLabel(command.title)
         button.widthAnchor.constraint(greaterThanOrEqualToConstant: 32).isActive = true
         return button

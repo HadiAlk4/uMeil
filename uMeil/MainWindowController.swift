@@ -25,6 +25,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     /// Runs debug sessions and keeps the breakpoints.
     let debugger = DebugController()
     let debugPanels = DebugPanelsController()
+    /// Run and step buttons floating over the editor during a session.
+    let debugBar = DebugBarView()
     /// Floats "Build Succeeded" and "Flashed to Board" over the editor.
     let notice = NoticeView()
     /// File > Open Quickly: finds a project file by a few letters of its name.
