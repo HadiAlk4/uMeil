@@ -298,6 +298,9 @@ extension ClangdSession {
         arguments.append("--enable-config=false")
         // Keep completions pure so accepting a function does not insert headers unexpectedly.
         arguments.append("--header-insertion=never")
+        // One entry per function with its full parameter list, so the list
+        // shows what each argument is and snippets fill them all in.
+        arguments.append("--completion-style=detailed")
         // Bound background worker threads and keep PCHs in memory for responsiveness.
         arguments.append("-j=2")
         arguments.append("--pch-storage=memory")

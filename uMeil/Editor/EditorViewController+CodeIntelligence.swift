@@ -238,7 +238,12 @@ extension EditorViewController {
         intelligence.completionRequestVersion = requestVersion
         let position = lineIndex.lspPosition(atUTF16Offset: cursor)
 
+        // Ask which argument the cursor is in at the same time, so macros
+        // that fit it (GPIO_PIN_* for ui8Pins) can be listed first.
+        let onSignatureHelpRequested = intelligence.onSignatureHelpRequested
+        let signature = Task { await onSignatureHelpRequested?(url, text, position) }
         let items = await onCompletionRequested(url, text, position)
+        let hint = await signature.value.flatMap(ArgumentHint.init(signatureHelp:))
         guard !Task.isCancelled,
               intelligence.isEnabled,
               requestVersion == intelligence.completionRequestVersion,
@@ -256,6 +261,7 @@ extension EditorViewController {
         completionPanel.show(
             items: items,
             filter: liveFilter,
+            hint: hint,
             anchoredAt: screenRect,
             parentWindow: view.window
         )

@@ -6,6 +6,8 @@ final class CompletionPanelController: NSObject, NSTableViewDataSource, NSTableV
     private(set) var allItems: [LSPCompletionItem] = []
     private(set) var filteredItems: [LSPCompletionItem] = []
     var onAccept: ((LSPCompletionItem) -> Void)?
+    /// What fits the argument the list was opened in, kept while filtering.
+    private var hint: ArgumentHint?
 
     private let panel: NSPanel
     private let tableView = NSTableView()
@@ -87,26 +89,44 @@ final class CompletionPanelController: NSObject, NSTableViewDataSource, NSTableV
         tableView.doubleAction = #selector(rowDoubleClicked(_:))
     }
 
-    /// Filters and ranks `items` matching `prefix` (prefix matches first, then substring matches).
-    nonisolated static func filterAndRank(_ items: [LSPCompletionItem], prefix: String) -> [LSPCompletionItem] {
-        guard !prefix.isEmpty else { return items }
+    /// Filters and ranks `items` matching `prefix`: prefix matches first,
+    /// then substring matches. Within each, items that fit the argument
+    /// being typed (`hint`) come first, then `clangd`'s own order (`sortText`,
+    /// which already favors names of the expected type and nearby code).
+    nonisolated static func filterAndRank(
+        _ items: [LSPCompletionItem],
+        prefix: String,
+        hint: ArgumentHint? = nil
+    ) -> [LSPCompletionItem] {
         let lowered = prefix.lowercased()
-        var prefixMatches: [LSPCompletionItem] = []
-        var substringMatches: [LSPCompletionItem] = []
-        for item in items {
+        var ranked: [RankedItem] = []
+        for (index, item) in items.enumerated() {
             let candidate = item.filterKey.lowercased()
-            if candidate.hasPrefix(lowered) {
-                prefixMatches.append(item)
+            let group: Int
+            if lowered.isEmpty || candidate.hasPrefix(lowered) {
+                group = 0
             } else if candidate.contains(lowered) {
-                substringMatches.append(item)
+                group = 1
+            } else {
+                continue
             }
+            let tier = hint?.tier(for: item.filterKey) ?? 0
+            ranked.append(RankedItem(group: group, tier: tier, sortText: item.sortText ?? "", index: index, item: item))
         }
-        return prefixMatches + substringMatches
+        ranked.sort()
+        return ranked.map(\.item)
     }
 
-    func show(items: [LSPCompletionItem], filter: String, anchoredAt screenRect: NSRect, parentWindow: NSWindow?) {
+    func show(
+        items: [LSPCompletionItem],
+        filter: String,
+        hint: ArgumentHint? = nil,
+        anchoredAt screenRect: NSRect,
+        parentWindow: NSWindow?
+    ) {
         allItems = items
-        filteredItems = Self.filterAndRank(items, prefix: filter)
+        self.hint = hint
+        filteredItems = Self.filterAndRank(items, prefix: filter, hint: hint)
         guard !filteredItems.isEmpty else {
             dismiss()
             return
@@ -121,7 +141,7 @@ final class CompletionPanelController: NSObject, NSTableViewDataSource, NSTableV
 
     func updateFilter(_ prefix: String) {
         guard isVisible else { return }
-        filteredItems = Self.filterAndRank(allItems, prefix: prefix)
+        filteredItems = Self.filterAndRank(allItems, prefix: prefix, hint: hint)
         guard !filteredItems.isEmpty else {
             dismiss()
             return
@@ -228,6 +248,26 @@ final class CompletionPanelController: NSObject, NSTableViewDataSource, NSTableV
             ?? Self.makeCell(identifier: identifier)
         Self.populate(cell: cell, identifier: identifier, item: item)
         return cell
+    }
+}
+
+/// A completion with what decides its place in the list, most important first.
+private struct RankedItem: Comparable {
+    var group: Int
+    var tier: Int
+    var sortText: String
+    var index: Int
+    var item: LSPCompletionItem
+
+    static func < (lhs: RankedItem, rhs: RankedItem) -> Bool {
+        if lhs.group != rhs.group { return lhs.group < rhs.group }
+        if lhs.tier != rhs.tier { return lhs.tier < rhs.tier }
+        if lhs.sortText != rhs.sortText { return lhs.sortText < rhs.sortText }
+        return lhs.index < rhs.index
+    }
+
+    static func == (lhs: RankedItem, rhs: RankedItem) -> Bool {
+        lhs.group == rhs.group && lhs.tier == rhs.tier && lhs.sortText == rhs.sortText && lhs.index == rhs.index
     }
 }
 

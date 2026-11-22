@@ -108,4 +108,22 @@ struct ClangdFeaturesInEditorTests {
         #expect(!editor.hoverPanel.isVisible)
         controller.codeIntelligence?.stop()
     }
+
+    @Test(.timeLimit(TestTiming.minutes(1)))
+    func completionsThatFitTheArgumentComeFirst() async throws {
+        let temp = try TemporaryDirectory()
+        let controller = try makeBlinkyWindow(in: temp)
+        let editor = controller.editor
+        type("GPIOPinWrite(GPIO_PORTN_BASE, GPIO_P|", over: "GPIOPinWrite(GPIO_PORTN_BASE, GPIO_PIN_1, 0);", in: editor)
+
+        var first: [String] = []
+        let ranked = await retry {
+            await editor.performCompletionRequest()
+            first = editor.completionPanel.filteredItems.prefix(3).map(\.filterKey)
+            return !first.isEmpty && first.allSatisfy { $0.hasPrefix("GPIO_PIN_") }
+        }
+        #expect(ranked, "listed first: \(first)")
+        editor.completionPanel.dismiss()
+        controller.codeIntelligence?.stop()
+    }
 }
