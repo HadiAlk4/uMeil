@@ -38,21 +38,18 @@ extension EditorViewController {
         lineIndex.lineNumber(atOffset: textView.selectedRange().location)
     }
 
-    /// Marks `line` as the one the stopped program will run next, with an
-    /// arrow in the gutter and a green band behind the code, and scrolls to
+    /// Marks `line` as the one the stopped program will run next, with a green
+    /// pointer in the gutter and a matching band behind the code, and scrolls to
     /// it. `nil` removes the mark.
     func showExecutionLine(_ line: Int?) {
-        guard let layoutManager = textView.layoutManager else { return }
-        let everything = NSRange(location: 0, length: textView.textStorage?.length ?? 0)
-        layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: everything)
         ruler?.programCounterLine = line
+        let editorTextView = textView as? EditorTextView
 
-        guard let line, let range = lineIndex.range(ofLine: line) else { return }
-        layoutManager.addTemporaryAttribute(
-            .backgroundColor,
-            value: EditorTheme.executionLineColor,
-            forCharacterRange: range
-        )
+        guard let line, let range = lineIndex.range(ofLine: line) else {
+            editorTextView?.executionLineStart = nil
+            return
+        }
+        editorTextView?.executionLineStart = range.location
         textView.scrollRangeToVisible(range)
     }
 

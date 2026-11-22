@@ -32,4 +32,40 @@ struct EditorThemeTests {
         #expect(resolved(color, in: .aqua)?.redComponent == 1)
         #expect(resolved(color, in: .darkAqua)?.blueComponent == 1)
     }
+
+    @Test(arguments: [NSAppearance.Name.aqua, .darkAqua])
+    func executionLineAccentAndBackgroundShareTheSameGreenAccent(appearance: NSAppearance.Name) throws {
+        let accent = try #require(resolved(EditorTheme.executionLineAccentColor, in: appearance))
+        let background = try #require(resolved(EditorTheme.executionLineColor, in: appearance))
+
+        #expect(abs(accent.redComponent - background.redComponent) < 0.001)
+        #expect(abs(accent.greenComponent - background.greenComponent) < 0.001)
+        #expect(abs(accent.blueComponent - background.blueComponent) < 0.001)
+        #expect(accent.alphaComponent == 1)
+        #expect(background.alphaComponent > 0 && background.alphaComponent < 0.35)
+        #expect(accent.greenComponent > accent.redComponent)
+        #expect(accent.greenComponent > accent.blueComponent)
+    }
+
+    @Test func executionLineColorsAdaptToAppearance() {
+        let lightAccent = resolved(EditorTheme.executionLineAccentColor, in: .aqua)
+        let darkAccent = resolved(EditorTheme.executionLineAccentColor, in: .darkAqua)
+        let lightBackground = resolved(EditorTheme.executionLineColor, in: .aqua)
+        let darkBackground = resolved(EditorTheme.executionLineColor, in: .darkAqua)
+
+        #expect(lightAccent != darkAccent)
+        #expect(lightBackground != darkBackground)
+    }
+
+    @Test(arguments: [NSAppearance.Name.aqua, .darkAqua])
+    func executableLineTickColorIsSubtleAndAdapts(appearance: NSAppearance.Name) throws {
+        let tick = try #require(resolved(EditorTheme.executableLineTickColor, in: appearance))
+
+        #expect(tick.alphaComponent > 0 && tick.alphaComponent <= 0.25)
+        if appearance == .aqua {
+            #expect(tick.redComponent < 0.2 && tick.greenComponent < 0.2 && tick.blueComponent < 0.2)
+        } else {
+            #expect(tick.redComponent > 0.8 && tick.greenComponent > 0.8 && tick.blueComponent > 0.8)
+        }
+    }
 }

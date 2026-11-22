@@ -59,18 +59,27 @@ enum EditorTheme {
 
     /// A color that switches between two RGB values with the appearance.
     nonisolated static func adaptive(light: UInt32, dark: UInt32) -> NSColor {
+        adaptive(light: light, lightAlpha: 1, dark: dark, darkAlpha: 1)
+    }
+
+    nonisolated private static func adaptive(
+        light: UInt32,
+        lightAlpha: CGFloat,
+        dark: UInt32,
+        darkAlpha: CGFloat
+    ) -> NSColor {
         NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            return rgb(isDark ? dark : light)
+            return rgb(isDark ? dark : light, alpha: isDark ? darkAlpha : lightAlpha)
         }
     }
 
-    nonisolated private static func rgb(_ hex: UInt32) -> NSColor {
+    nonisolated private static func rgb(_ hex: UInt32, alpha: CGFloat = 1) -> NSColor {
         NSColor(
             srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
             green: CGFloat((hex >> 8) & 0xFF) / 255,
             blue: CGFloat(hex & 0xFF) / 255,
-            alpha: 1
+            alpha: alpha
         )
     }
 
@@ -78,8 +87,35 @@ enum EditorTheme {
     static let inlineErrorColor = NSColor.systemRed
     static let inlineWarningColor = NSColor.systemOrange
 
-    /// Behind the line the stopped program will run next.
-    static let executionLineColor = NSColor.systemGreen.withAlphaComponent(0.25)
+    /// Shared Xcode-style green accent used by both the program-counter gutter
+    /// pointer and the execution-line background highlight.
+    nonisolated private enum ExecutionAccent {
+        static let light: UInt32 = 0x249A3E
+        static let dark: UInt32 = 0x30D158
+    }
+
+    /// Solid accent color for the program-counter arrow in the editor gutter.
+    static let executionLineAccentColor = adaptive(
+        light: ExecutionAccent.light,
+        dark: ExecutionAccent.dark
+    )
+
+    /// Behind the line the stopped program will run next, matched to
+    /// `executionLineAccentColor`.
+    static let executionLineColor = adaptive(
+        light: ExecutionAccent.light,
+        lightAlpha: 0.18,
+        dark: ExecutionAccent.dark,
+        darkAlpha: 0.22
+    )
+
+    /// Faint tick shown in the gutter on executable lines while hovering.
+    static let executableLineTickColor = adaptive(
+        light: 0x000000,
+        lightAlpha: 0.18,
+        dark: 0xFFFFFF,
+        darkAlpha: 0.22
+    )
 
     /// The attributes plain (unhighlighted) code is drawn with.
     static var textAttributes: [NSAttributedString.Key: Any] {

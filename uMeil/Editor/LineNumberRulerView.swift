@@ -1,8 +1,9 @@
 import AppKit
 
-/// The gutter down the left side of the editor. It shows line numbers and,
-/// in a strip to their left, breakpoints and where the program has stopped.
-/// Clicking a line sets or removes a breakpoint on it.
+/// The gutter down the left side of the editor. It shows breakpoints on the
+/// left, line numbers in the middle, and a green pointer on the right edge
+/// for the line where the program has stopped. Clicking a line toggles a
+/// breakpoint on it.
 final class LineNumberRulerView: NSRulerView {
     /// Line positions for the text currently in the editor.
     var lineIndex = LineIndex("") {
@@ -27,23 +28,42 @@ final class LineNumberRulerView: NSRulerView {
         didSet { needsDisplay = true }
     }
 
-    /// Lines that have machine code, so a breakpoint can stop there. Drawn
-    /// as a gray block. Empty when no debug session is running.
+    /// Lines that have machine code, so a breakpoint can stop there. Shown as
+    /// faint ticks only while hovering over the gutter. Empty when no debug
+    /// session is running.
     var executableLines: Set<Int> = [] {
         didSet { needsDisplay = true }
     }
 
-    /// The line the stopped program will run next, drawn as a yellow arrow.
+    /// The line the stopped program will run next, marked with a green band
+    /// and a matching green pointer on the right edge of the gutter.
     var programCounterLine: Int? {
         didSet { needsDisplay = true }
+    }
+
+    /// Whether the pointer is currently inside the gutter's visible bounds.
+    private(set) var isMouseInsideGutter = false {
+        didSet {
+            if isMouseInsideGutter != oldValue {
+                needsDisplay = true
+            }
+        }
+    }
+
+    /// Executable-line ticks are revealed only while hovering over the gutter.
+    var showsExecutableLineTicks: Bool {
+        isMouseInsideGutter
     }
 
     /// Called with a line number when that line is clicked.
     var onClickLine: ((Int) -> Void)?
 
-    private static let padding: CGFloat = 8
-    /// The width of the strip for breakpoints and the program counter.
+    /// The width of the left strip for breakpoints and hover-only ticks.
     private static let markStripWidth: CGFloat = 14
+    /// Space to the right of line numbers, also holding the PC pointer.
+    private static let pointerStripWidth: CGFloat = 14
+
+    private var gutterTrackingArea: NSTrackingArea?
 
     private var numberAttributes: [NSAttributedString.Key: Any] {
         [.font: EditorTheme.lineNumberFont, .foregroundColor: NSColor.secondaryLabelColor]
@@ -69,14 +89,59 @@ final class LineNumberRulerView: NSRulerView {
         needsDisplay = true
     }
 
+    /// Whether a breakpoint-possible tick should be drawn for `line` right now.
+    func shouldDrawExecutableLineTick(forLine line: Int) -> Bool {
+        showsExecutableLineTicks
+            && executableLines.contains(line)
+            && !breakpointLines.contains(line)
+            && !disabledBreakpointLines.contains(line)
+    }
+
     /// Makes the gutter wide enough for the largest line number (at least three digits).
     private func updateThickness() {
         let digits = max(String(lineIndex.lineCount).count, 3)
         let sample = String(repeating: "8", count: digits) as NSString
-        let width = Self.markStripWidth + ceil(sample.size(withAttributes: numberAttributes).width) + Self.padding
+        let width = Self.markStripWidth
+            + ceil(sample.size(withAttributes: numberAttributes).width)
+            + Self.pointerStripWidth
         if abs(ruleThickness - width) > 0.5 {
             ruleThickness = width
         }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let gutterTrackingArea {
+            removeTrackingArea(gutterTrackingArea)
+        }
+        var options: NSTrackingArea.Options = [
+            .mouseEnteredAndExited,
+            .activeInKeyWindow,
+            .inVisibleRect
+        ]
+        if isMouseInsideGutter {
+            options.insert(.assumeInside)
+        }
+        let area = NSTrackingArea(rect: .zero, options: options, owner: self, userInfo: nil)
+        addTrackingArea(area)
+        gutterTrackingArea = area
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil {
+            isMouseInsideGutter = false
+        }
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        isMouseInsideGutter = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        isMouseInsideGutter = false
     }
 
     override func drawHashMarksAndLabels(in rect: NSRect) {
@@ -105,36 +170,61 @@ final class LineNumberRulerView: NSRulerView {
             }
             guard lineRect.height > 0 else { continue }
 
-            let label = String(line) as NSString
             let topInTextView = NSPoint(x: 0, y: lineRect.minY + textView.textContainerOrigin.y)
             let top = convert(topInTextView, from: textView).y
-
-            // A line with a build message gets a colored badge behind its number.
-            var attributes = numberAttributes
-            if let severity = lineMarkers[line] {
-                let badge = NSRect(
-                    x: Self.markStripWidth,
-                    y: top + 1,
-                    width: ruleThickness - Self.markStripWidth - 3,
-                    height: lineRect.height - 2
-                )
-                IssuesViewController.color(for: severity).setFill()
-                NSBezierPath(roundedRect: badge, xRadius: 3, yRadius: 3).fill()
-                attributes[.foregroundColor] = severity == .warning ? NSColor.black : NSColor.white
-            }
-            let size = label.size(withAttributes: attributes)
-            label.draw(
-                at: NSPoint(x: ruleThickness - Self.padding - size.width, y: top + (lineRect.height - size.height) / 2),
-                withAttributes: attributes
-            )
-            drawMarks(forLine: line, in: NSRect(x: 0, y: top, width: Self.markStripWidth, height: lineRect.height))
+            drawRow(forLine: line, top: top, height: lineRect.height)
         }
     }
 
-    /// Draws the breakpoint, executable-line, and program counter marks for
-    /// one line into its part of the strip.
+    private func drawRow(forLine line: Int, top: CGFloat, height: CGFloat) {
+        let isProgramCounter = line == programCounterLine
+        if isProgramCounter {
+            EditorTheme.executionLineColor.setFill()
+            NSRect(x: 0, y: top, width: max(ruleThickness - 1, 0), height: height).fill(using: .sourceOver)
+        }
+
+        // A line with a build message gets a colored badge behind its number.
+        var attributes = numberAttributes
+        if isProgramCounter {
+            attributes[.foregroundColor] = NSColor.labelColor
+        }
+        if let severity = lineMarkers[line] {
+            let badge = NSRect(
+                x: Self.markStripWidth,
+                y: top + 1,
+                width: ruleThickness - Self.markStripWidth - Self.pointerStripWidth + 2.5,
+                height: height - 2
+            )
+            IssuesViewController.color(for: severity).setFill()
+            NSBezierPath(roundedRect: badge, xRadius: 3, yRadius: 3).fill()
+            attributes[.foregroundColor] = severity == .warning ? NSColor.black : NSColor.white
+        }
+
+        let label = String(line) as NSString
+        let size = label.size(withAttributes: attributes)
+        label.draw(
+            at: NSPoint(
+                x: ruleThickness - Self.pointerStripWidth - size.width,
+                y: top + (height - size.height) / 2
+            ),
+            withAttributes: attributes
+        )
+        drawMarks(forLine: line, in: NSRect(x: 0, y: top, width: Self.markStripWidth, height: height))
+        if isProgramCounter {
+            let pointerStrip = NSRect(
+                x: ruleThickness - Self.pointerStripWidth + 3,
+                y: top,
+                width: Self.pointerStripWidth - 4.5,
+                height: height
+            )
+            drawProgramCounterPointer(in: pointerStrip)
+        }
+    }
+
+    /// Draws the breakpoint or hover-only executable-line tick for one line
+    /// into its part of the left strip.
     private func drawMarks(forLine line: Int, in strip: NSRect) {
-        let side = min(strip.height - 4, 10)
+        let side = min(strip.height - 5, 9)
         let mark = NSRect(x: strip.midX - side / 2, y: strip.midY - side / 2, width: side, height: side)
 
         if breakpointLines.contains(line) {
@@ -145,28 +235,60 @@ final class LineNumberRulerView: NSRulerView {
             ring.lineWidth = 1.5
             NSColor.systemRed.withAlphaComponent(0.6).setStroke()
             ring.stroke()
-        } else if executableLines.contains(line) {
-            NSColor.tertiaryLabelColor.setFill()
-            NSBezierPath(rect: mark.insetBy(dx: side / 2 - 1.5, dy: 0)).fill()
+        } else if shouldDrawExecutableLineTick(forLine: line) {
+            let tickWidth: CGFloat = 2.5
+            let tickHeight = max(side - 1.5, 4)
+            let tickRect = NSRect(
+                x: strip.midX - tickWidth / 2,
+                y: strip.midY - tickHeight / 2,
+                width: tickWidth,
+                height: tickHeight
+            )
+            EditorTheme.executableLineTickColor.setFill()
+            NSBezierPath(roundedRect: tickRect, xRadius: tickWidth / 2, yRadius: tickWidth / 2).fill()
         }
+    }
 
-        if line == programCounterLine {
-            // An arrow pointing at the code, over a breakpoint if there is one.
-            let arrow = NSBezierPath()
-            arrow.move(to: NSPoint(x: mark.minX, y: mark.minY + side * 0.3))
-            arrow.line(to: NSPoint(x: mark.midX, y: mark.minY + side * 0.3))
-            arrow.line(to: NSPoint(x: mark.midX, y: mark.minY))
-            arrow.line(to: NSPoint(x: mark.maxX + 2, y: mark.midY))
-            arrow.line(to: NSPoint(x: mark.midX, y: mark.maxY))
-            arrow.line(to: NSPoint(x: mark.midX, y: mark.maxY - side * 0.3))
-            arrow.line(to: NSPoint(x: mark.minX, y: mark.maxY - side * 0.3))
-            arrow.close()
-            NSColor.systemYellow.setFill()
-            arrow.fill()
-            NSColor.black.withAlphaComponent(0.45).setStroke()
-            arrow.lineWidth = 0.75
-            arrow.stroke()
-        }
+    /// Draws an Xcode-style green execution pointer on the right edge of the
+    /// gutter, pointing cleanly into the highlighted line of code.
+    private func drawProgramCounterPointer(in strip: NSRect) {
+        let pointer = Self.programCounterPointerPath(in: strip)
+        EditorTheme.executionLineAccentColor.setFill()
+        pointer.fill()
+    }
+
+    /// Crisp right-pointing pentagon/arrow path fitted inside `strip`.
+    static func programCounterPointerPath(in strip: NSRect) -> NSBezierPath {
+        let height = min(strip.height - 5, 9)
+        let width = min(strip.width, 9.5)
+        let box = NSRect(
+            x: strip.maxX - width,
+            y: strip.midY - height / 2,
+            width: width,
+            height: height
+        )
+        let radius: CGFloat = min(1.5, height * 0.2)
+        let shoulderX = box.maxX - height * 0.45
+
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: box.minX + radius, y: box.minY))
+        path.line(to: NSPoint(x: shoulderX, y: box.minY))
+        path.line(to: NSPoint(x: box.maxX, y: box.midY))
+        path.line(to: NSPoint(x: shoulderX, y: box.maxY))
+        path.line(to: NSPoint(x: box.minX + radius, y: box.maxY))
+        path.curve(
+            to: NSPoint(x: box.minX, y: box.maxY - radius),
+            controlPoint1: NSPoint(x: box.minX, y: box.maxY),
+            controlPoint2: NSPoint(x: box.minX, y: box.maxY)
+        )
+        path.line(to: NSPoint(x: box.minX, y: box.minY + radius))
+        path.curve(
+            to: NSPoint(x: box.minX + radius, y: box.minY),
+            controlPoint1: NSPoint(x: box.minX, y: box.minY),
+            controlPoint2: NSPoint(x: box.minX, y: box.minY)
+        )
+        path.close()
+        return path
     }
 
     // MARK: - Clicks
