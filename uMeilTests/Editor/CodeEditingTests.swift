@@ -181,3 +181,48 @@ struct AutoIndentTests {
         #expect(closeBrace("int main(void) {\n    /* ‸") == nil)
     }
 }
+
+// MARK: - Shifting lines
+
+struct ShiftLinesTests {
+    private func shift(
+        _ marked: String,
+        _ direction: CodeEditing.ShiftDirection,
+        style: IndentStyle = .fourSpaces
+    ) -> String? {
+        let start = MarkedText(marked)
+        return start.applying(
+            CodeEditing.shiftLines(
+                in: start.text as NSString,
+                selection: start.selection,
+                style: style,
+                direction: direction
+            )
+        )
+    }
+
+    @Test func shiftingRightIndentsEverySelectedLine() {
+        #expect(shift("«a\nb»\nc", .right) == "«    a\n    b»\nc")
+        #expect(shift("a\n«b\n»c", .right) == "a\n«    b\n»c")
+        #expect(shift("x‸ = 1;", .right) == "    x‸ = 1;")
+        #expect(shift("«a\nb»", .right, style: .tabs) == "«\ta\n\tb»")
+    }
+
+    @Test func shiftingRightLeavesEmptyLinesEmpty() {
+        #expect(shift("«a\n\nb»", .right) == "«    a\n\n    b»")
+    }
+
+    @Test func shiftingLeftRemovesOneLevel() {
+        #expect(shift("«        a\n    b»", .left) == "«    a\nb»")
+        #expect(shift("«\ta\n  b»", .left) == "«a\nb»")
+        #expect(shift("    x‸ = 1;", .left) == "x‸ = 1;")
+    }
+
+    @Test func shiftingLeftWithNothingToRemoveDoesNothing() {
+        #expect(shift("«a\nb»", .left) == nil)
+    }
+
+    @Test func aCursorInTheIndentationStaysAtTheLineStart() {
+        #expect(shift("  ‸  a", .left) == "‸a")
+    }
+}

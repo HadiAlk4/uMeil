@@ -91,3 +91,24 @@ struct AutoIndentTypingTests {
         #expect(fixture.textView.string == "}")
     }
 }
+
+// MARK: - Shifting lines
+
+@MainActor
+struct ShiftLinesTypingTests {
+    @Test func tabAndShiftTabShiftSelectedLines() throws {
+        let fixture = try TypingFixture("«a();\nb();»\n")
+        fixture.textView.insertTab(nil)
+        #expect(fixture.shown == "«    a();\n    b();»\n")
+        fixture.textView.insertBacktab(nil)
+        #expect(fixture.shown == "«a();\nb();»\n")
+    }
+
+    @Test func theMenuCommandsShiftTheCursorsLine() throws {
+        let fixture = try TypingFixture("a‸();\n")
+        fixture.textView.shiftRight(nil)
+        #expect(fixture.shown == "    a‸();\n")
+        fixture.textView.shiftLeft(nil)
+        #expect(fixture.shown == "a‸();\n")
+    }
+}

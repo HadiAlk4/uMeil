@@ -43,12 +43,29 @@ extension EditorTextView {
         return true
     }
 
+    /// Tab: indentation at the cursor, or with text selected, every
+    /// selected line moves one level right.
     func handleTab() -> Bool {
         guard canUseTypingAids else { return false }
         let selection = selectedRange()
-        guard selection.length == 0 else { return false }
-        apply(CodeEditing.tab(in: currentText, selection: selection, style: indentStyle))
+        if selection.length > 0 {
+            shiftSelectedLines(.right)
+        } else {
+            apply(CodeEditing.tab(in: currentText, selection: selection, style: indentStyle))
+        }
         return true
+    }
+
+    func shiftSelectedLines(_ direction: CodeEditing.ShiftDirection) {
+        guard isEditable,
+              let edit = CodeEditing.shiftLines(
+                in: currentText,
+                selection: selectedRange(),
+                style: indentStyle,
+                direction: direction
+              )
+        else { return }
+        apply(edit)
     }
 
     func handleDeleteBackward() -> Bool {

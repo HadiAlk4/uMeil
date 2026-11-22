@@ -229,6 +229,10 @@ enum MainMenu {
         menu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         menu.addItem(.separator())
 
+        menu.addItem(withTitle: "Shift Right", action: #selector(EditorTextView.shiftRight(_:)), keyEquivalent: "]")
+        menu.addItem(withTitle: "Shift Left", action: #selector(EditorTextView.shiftLeft(_:)), keyEquivalent: "[")
+        menu.addItem(.separator())
+
         let find = menu.addItem(withTitle: "Find", action: nil, keyEquivalent: "")
         find.submenu = findMenu()
 

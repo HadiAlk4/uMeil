@@ -87,6 +87,30 @@ final class EditorTextView: NSTextView {
         }
     }
 
+    /// Shift+Tab: every selected line, or the cursor's, moves a level left.
+    override func insertBacktab(_ sender: Any?) {
+        shiftSelectedLines(.left)
+    }
+
+    /// Editor > Shift Right (⌘]).
+    @objc func shiftRight(_ sender: Any?) {
+        shiftSelectedLines(.right)
+    }
+
+    /// Editor > Shift Left (⌘[).
+    @objc func shiftLeft(_ sender: Any?) {
+        shiftSelectedLines(.left)
+    }
+
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        switch item.action {
+        case #selector(shiftRight(_:)), #selector(shiftLeft(_:)):
+            return isEditable
+        default:
+            return super.validateUserInterfaceItem(item)
+        }
+    }
+
     override func deleteBackward(_ sender: Any?) {
         if !handleDeleteBackward() {
             super.deleteBackward(sender)
