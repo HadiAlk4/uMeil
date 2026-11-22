@@ -55,7 +55,14 @@ extension EditorViewController {
         showExecutionLine(nil)
         breakpointLines = []
         executableLines = []
-        textView.toolTip = nil
+        cancelHover()
+    }
+
+    /// Cancels any pending hover evaluation and clears the editor's hover tooltip.
+    func cancelHover() {
+        hoverTask?.cancel()
+        hoverTask = nil
+        clearHoverValue()
     }
 
     /// While a debug session runs the code must match what is on the chip,
@@ -86,6 +93,7 @@ extension EditorViewController {
     /// briefly. Values are only found while the debugger is stopped.
     func hoverMoved(toCharacterIndex characterIndex: Int?) {
         hoverTask?.cancel()
+        hoverTask = nil
         guard let characterIndex,
               let name = identifier(atCharacterIndex: characterIndex),
               onHoverIdentifier != nil
@@ -107,10 +115,21 @@ extension EditorViewController {
     /// in the editor's tooltip.
     @discardableResult
     func showHoverValue(atCharacterIndex characterIndex: Int) async -> String? {
-        guard let name = identifier(atCharacterIndex: characterIndex),
-              let value = await onHoverIdentifier?(name)
-        else {
+        guard let name = identifier(atCharacterIndex: characterIndex) else {
             clearHoverValue()
+            return nil
+        }
+        let startURL = document?.url
+        guard let value = await onHoverIdentifier?(name) else {
+            if !Task.isCancelled, document?.url == startURL {
+                clearHoverValue()
+            }
+            return nil
+        }
+        guard !Task.isCancelled,
+              document?.url == startURL,
+              identifier(atCharacterIndex: characterIndex) == name
+        else {
             return nil
         }
         let tip = "\(name) = \(value)"

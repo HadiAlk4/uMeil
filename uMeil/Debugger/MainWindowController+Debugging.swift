@@ -1,9 +1,27 @@
 import AppKit
 
+/// Tracks ad-hoc debug refresh tasks and deferred window-close state for `MainWindowController`.
+@MainActor
+struct DebugWindowTasks {
+    var peripheralRefreshTask: Task<Void, Never>?
+    var watchRefreshTask: Task<Void, Never>?
+    var memoryTask: Task<Void, Never>?
+    var executableLinesTask: Task<Void, Never>?
+    var isClosingAfterDebugStop = false
+    var stopTimeout: Duration = .milliseconds(2500)
+
+    mutating func cancelAll() {
+        for task in [peripheralRefreshTask, watchRefreshTask, memoryTask, executableLinesTask] {
+            task?.cancel()
+        }
+        (peripheralRefreshTask, watchRefreshTask, memoryTask, executableLinesTask) = (nil, nil, nil, nil)
+    }
+}
+
 /// Turns the debugger's state into the one-line status under the issues list.
 enum DebugSummary {
     /// For example "Stopped at main.c:21 in main" or "Running".
-    static func statusText(for state: DebugController.State) -> String {
+    static func statusText(for state: DebugController.State, reason: StopReason? = nil) -> String {
         switch state {
         case .idle:
             return "Debug session ended"
@@ -12,13 +30,28 @@ enum DebugSummary {
         case .running:
             return "Running"
         case .stopped(let frame):
-            guard let frame else { return "Stopped" }
+            let prefix = stopPrefix(for: reason)
+            guard let frame else { return prefix }
             let function = frame.function.map { " in \($0)" } ?? ""
             if let file = frame.file, let line = frame.line {
-                return "Stopped at \(file.lastPathComponent):\(line)\(function)"
+                return "\(prefix) at \(file.lastPathComponent):\(line)\(function)"
             }
             let address = frame.address.map { " at 0x" + String($0, radix: 16) } ?? ""
-            return "Stopped\(function)\(address), where there is no source code to show"
+            return "\(prefix)\(function)\(address), where there is no source code to show"
+        }
+    }
+
+    private static func stopPrefix(for reason: StopReason?) -> String {
+        switch reason {
+        case .signal(let name, let meaning):
+            // Pause (`-exec-interrupt`) always reports SIGINT, which is not a fault.
+            if name == "SIGINT" { return "Stopped" }
+            let label = !name.isEmpty ? name : (meaning ?? "signal")
+            return "Stopped (\(label))"
+        case .exited:
+            return "Stopped (exited)"
+        default:
+            return "Stopped"
         }
     }
 }
@@ -71,6 +104,7 @@ extension MainWindowController {
     func startDebugging() async -> Bool {
         guard !debugger.isActive, !isFlashing, let folder else { return false }
         guard let build = await build(), build.succeeded, let image = build.elf,
+              self.folder == folder, !debugger.isActive, !isFlashing,
               let projectFile = BuildSummary.projectFile(in: folder)
         else { return false }
 
@@ -88,6 +122,7 @@ extension MainWindowController {
             let plan = DebugPlan(gdb: gdb, openOCD: openOCD, image: image, chip: project.target.chip)
             // The code must match what is on the chip until the session ends.
             editor.isReadOnly = true
+            debugPanels.command.clear()
             try await debugger.start(plan)
             return true
         } catch {
@@ -97,16 +132,35 @@ extension MainWindowController {
         }
     }
 
+    /// Stops GDB cleanly with a bounded timeout before closing `window` so
+    /// closing the last window does not terminate the app with GDB still alive.
+    func stopDebuggerAndClose(_ window: NSWindow) {
+        guard !debugTasks.isClosingAfterDebugStop else { return }
+        debugTasks.isClosingAfterDebugStop = true
+        let timeout = debugTasks.stopTimeout
+        Task { [weak self, weak window] in
+            guard let self else { return }
+            await debugger.stop(timeout: timeout)
+            debugTasks.isClosingAfterDebugStop = false
+            window?.close()
+        }
+    }
+
     private func debugStateChanged(_ state: DebugController.State) {
+        editor.cancelHover()
         if let mainSplit = window?.contentViewController as? NSSplitViewController {
             debugPanels.setLayoutVisible(state != .idle, mainSplit: mainSplit, editorSplit: editorSplit)
         }
         // A failed start shows its own message; do not replace it.
         if state != .idle || editor.isReadOnly {
-            issues.showDebugging(DebugSummary.statusText(for: state), isBusy: state == .starting)
+            issues.showDebugging(
+                DebugSummary.statusText(for: state, reason: debugger.lastStopReason),
+                isBusy: state == .starting
+            )
         }
         debugPanels.setEditable(debugger.isStopped)
         toolbar.showDebugControls(state != .idle)
+        debugTasks.cancelAll()
         switch state {
         case .idle:
             editor.isReadOnly = false
@@ -131,9 +185,18 @@ extension MainWindowController {
             editor.showExecutionLine(nil)
             return
         }
-        if !isShowing(file), !openFile(file) {
-            // Do not mark a line of whichever file stayed open.
-            editor.showExecutionLine(nil)
+        if !isShowing(file) {
+            guard openFile(file) else {
+                // Do not mark a line of whichever file stayed open.
+                editor.showExecutionLine(nil)
+                return
+            }
+            // `openFile` already called `refreshDebugMarks()`, which ran
+            // `showExecutableLines()` and marked the top frame's line if it
+            // matched; only mark `line` when showing a caller frame.
+            if editor.executionLine != line {
+                editor.showExecutionLine(line)
+            }
             return
         }
         editor.showExecutionLine(line)
@@ -161,11 +224,13 @@ extension MainWindowController {
 
     /// Marks the lines of the open file that have code. Only known during a session.
     private func showExecutableLines() {
+        debugTasks.executableLinesTask?.cancel()
+        debugTasks.executableLinesTask = nil
         guard debugger.isActive, let file = editor.document?.url else { return }
-        Task {
-            let lines = await debugger.executableLines(in: file)
-            if editor.document?.url == file, debugger.isActive {
-                editor.executableLines = lines
+        replaceTask(\.executableLinesTask) {
+            let lines = await $0.debugger.executableLines(in: file)
+            if !Task.isCancelled, $0.editor.document?.url == file, $0.debugger.isActive {
+                $0.editor.executableLines = lines
             }
         }
     }
@@ -229,8 +294,10 @@ extension MainWindowController {
     /// Runs a debugger action and shows the reason if GDB refuses it, such
     /// as stepping out of `main`.
     private func perform(_ action: @escaping @MainActor (DebugController) async throws -> Void) {
+        debugTasks.cancelAll()
         debugPanels.cancelRefresh()
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 try await action(debugger)
             } catch {
@@ -239,46 +306,70 @@ extension MainWindowController {
         }
     }
 
+    private func replaceTask(
+        _ keyPath: WritableKeyPath<DebugWindowTasks, Task<Void, Never>?>,
+        _ work: @escaping @MainActor (MainWindowController) async -> Void
+    ) {
+        debugTasks[keyPath: keyPath]?.cancel()
+        debugTasks[keyPath: keyPath] = Task { [weak self] in
+            guard let self else { return }
+            await work(self)
+        }
+    }
+
     private func refreshWatchedExpressions() {
-        Task { await debugPanels.refreshWatches(using: debugger) }
+        replaceTask(\.watchRefreshTask) { await $0.debugPanels.refreshWatches(using: $0.debugger) }
     }
 
     private func inspectMemory(_ query: String) {
-        Task { await debugPanels.inspectMemory(query: query, using: debugger) }
+        replaceTask(\.memoryTask) { await $0.debugPanels.inspectMemory(query: query, using: $0.debugger) }
     }
 
     private func refreshMemoryView() {
-        Task { await debugPanels.refreshMemory(using: debugger) }
+        replaceTask(\.memoryTask) { await $0.debugPanels.refreshMemory(using: $0.debugger) }
     }
 
     private func writeMemory(_ bytes: [UInt8], at address: UInt64) {
-        Task {
-            if let failure = await debugPanels.writeMemory(at: address, bytes: bytes, using: debugger) {
-                issues.showDebugging(failure)
+        replaceTask(\.memoryTask) {
+            if let failure = await $0.debugPanels.writeMemory(at: address, bytes: bytes, using: $0.debugger) {
+                $0.issues.showDebugging(failure)
+            } else if !Task.isCancelled, case .stopped(let frame) = $0.debugger.state {
+                $0.editor.cancelHover()
+                $0.debugPanels.scheduleRefresh(using: $0.debugger, at: frame, sourceText: $0.editor.textView.string)
             }
         }
     }
 
     private func refreshPeripheralView() {
-        Task { await debugPanels.refreshPeripheral(using: debugger) }
+        replaceTask(\.peripheralRefreshTask) { await $0.debugPanels.refreshPeripheral(using: $0.debugger) }
     }
 
     private func writePeripheral(_ peripheral: SVDPeripheral, register: SVDRegister, field: SVDField?, text: String) {
         guard debugger.isStopped else { return }
-        Task {
-            await debugPanels.writePeripheral(peripheral, register: register, field: field, text: text, using: debugger)
+        replaceTask(\.peripheralRefreshTask) {
+            await $0.debugPanels.writePeripheral(
+                peripheral, register: register, field: field, text: text, using: $0.debugger
+            )
         }
     }
 
     private func readPeripheralRegister(_ register: SVDRegister, of peripheral: SVDPeripheral) {
         guard debugger.isStopped else { return }
-        Task { await debugPanels.readPeripheralRegister(register, of: peripheral, using: debugger) }
+        replaceTask(\.peripheralRefreshTask) {
+            await $0.debugPanels.readPeripheralRegister(register, of: peripheral, using: $0.debugger)
+        }
     }
 
     private func sendConsoleCommand(_ command: String) {
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
+            let wasStopped = debugger.isStopped
             do {
                 try await debugger.sendConsoleCommand(command)
+                if wasStopped, case .stopped(let frame) = debugger.state {
+                    editor.cancelHover()
+                    debugPanels.scheduleRefresh(using: debugger, at: frame, sourceText: editor.textView.string)
+                }
             } catch {
                 debugPanels.command.appendOutput("Error: \(error.localizedDescription)\n")
             }

@@ -8,14 +8,14 @@ import Testing
 @MainActor
 @Suite(.enabled(if: BuildTestEnvironment.canBuild))
 struct DebugInEditorTests {
-    private struct Window {
+    struct Window {
         var controller: MainWindowController
         var gdb: FakeDebugger
         var mainC: URL
     }
 
     /// A window showing a new Blinky project, where debugging talks to `gdb`.
-    private func makeBlinkyWindow(
+    func makeBlinkyWindow(
         in folder: TemporaryFolder,
         gdb: FakeDebugger = FakeBlinky.debugger()
     ) throws -> Window {
@@ -41,7 +41,7 @@ struct DebugInEditorTests {
     }
 
     /// Starts a session and stops it at the first line of `main`.
-    private func startAtMain(_ window: Window) async {
+    func startAtMain(_ window: Window) async {
         #expect(await window.controller.startDebugging())
         window.gdb.print(FakeBlinky.stop(atLine: 21, of: window.mainC, reason: "breakpoint-hit"))
         await waitUntil("the program stops at main") { window.controller.debugger.isStopped }
@@ -116,10 +116,8 @@ struct DebugInEditorTests {
         let window = try makeBlinkyWindow(in: folder)
         let controller = window.controller
         let textView = controller.editor.textView
-        textView.insertText("int main(void) { return missing; }\n", replacementRange: NSRange(
-            location: 0,
-            length: (textView.string as NSString).length
-        ))
+        let full = NSRange(location: 0, length: (textView.string as NSString).length)
+        textView.insertText("int main(void) { return missing; }\n", replacementRange: full)
 
         #expect(await !controller.startDebugging())
 
@@ -312,12 +310,9 @@ extension DebugInEditorTests {
         let window = try makeBlinkyWindow(in: folder)
         let controller = window.controller
         let whileStopped = [
-            #selector(MainWindowController.debugContinue(_:)),
-            #selector(MainWindowController.debugStepInto(_:)),
-            #selector(MainWindowController.debugStepOver(_:)),
-            #selector(MainWindowController.debugStepOut(_:)),
-            #selector(MainWindowController.debugRunToCursor(_:)),
-            #selector(MainWindowController.debugReset(_:))
+            #selector(MainWindowController.debugContinue(_:)), #selector(MainWindowController.debugStepInto(_:)),
+            #selector(MainWindowController.debugStepOver(_:)), #selector(MainWindowController.debugStepOut(_:)),
+            #selector(MainWindowController.debugRunToCursor(_:)), #selector(MainWindowController.debugReset(_:))
         ]
         let pause = #selector(MainWindowController.debugPause(_:))
         let toggle = #selector(MainWindowController.toggleDebugging(_:))

@@ -2,12 +2,19 @@ import AppKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var mainWindowController: MainWindowController?
+    var mainWindowController: MainWindowController?
     private lazy var toolchainWindowController = ToolchainWindowController()
     private lazy var serialMonitorWindowController = SerialMonitorWindowController()
     private var softwareUpdater: SoftwareUpdater?
     /// What the app was launched to open, instead of the last folder.
     private var launchItem: URL?
+    private var isTerminating = false
+    /// How long quitting waits for GDB to resume and exit before forcing termination.
+    var terminateTimeout: Duration = .milliseconds(2500)
+    /// Completes a deferred `.terminateLater` reply. Replaceable in tests.
+    var replyToTerminate: (Bool) -> Void = { shouldTerminate in
+        NSApp.reply(toApplicationShouldTerminate: shouldTerminate)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let updater = SoftwareUpdater()
@@ -54,15 +61,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        mainWindowController?.confirmDiscardingChanges() == false ? .terminateCancel : .terminateNow
+        guard mainWindowController?.confirmDiscardingChanges() != false else {
+            return .terminateCancel
+        }
+        guard let controller = mainWindowController, controller.debugger.isActive else {
+            return .terminateNow
+        }
+        guard !isTerminating else { return .terminateLater }
+        isTerminating = true
+        let timeout = terminateTimeout
+        Task { [weak self] in
+            await controller.debugger.stop(timeout: timeout)
+            guard let self else { return }
+            self.isTerminating = false
+            self.replyToTerminate(true)
+        }
+        return .terminateLater
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         mainWindowController?.terminal.terminate()
+        if mainWindowController?.debugger.isActive == true {
+            mainWindowController?.debugger.terminateImmediately()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        !Self.isTestHost
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
