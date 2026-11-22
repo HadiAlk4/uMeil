@@ -243,38 +243,11 @@ h2::after {
   margin-top: auto;
   width: 100%;
   /* Sized to the window's height so the rider shows without scrolling. */
-  --h: clamp(200px, 38vh, 460px);
-  /* How big one pixel of landscape.jpg (1671 × 411) is once it covers the box. */
-  --s: max(calc(100vw / 1671), calc(var(--h) / 411));
-  height: var(--h);
-  overflow: hidden;
+  height: clamp(200px, 38vh, 460px);
   background: url("landscape.jpg") center top / cover no-repeat;
   /* Fade the illustration's sky into the page. */
   -webkit-mask-image: linear-gradient(to bottom, transparent, #000 22%);
   mask-image: linear-gradient(to bottom, transparent, #000 22%);
-}
-
-/* The rider, cut out of the illustration, walks across the plain. It
-   starts where the artist drew it: 176px down, 135.5px left of centre. */
-.rider {
-  position: absolute;
-  top: calc(var(--s) * 176);
-  left: calc(50% - var(--s) * 135.5);
-  width: calc(var(--s) * 129);
-  height: auto;
-  animation:
-    ride 60s linear -28s infinite,
-    trot 0.8s ease-in-out infinite alternate;
-}
-
-@keyframes ride {
-  from { left: calc(var(--s) * -129); }
-  to { left: 100%; }
-}
-
-@keyframes trot {
-  from { transform: translateY(0); }
-  to { transform: translateY(calc(var(--s) * -1.5)); }
 }
 
 .dust {
@@ -289,10 +262,6 @@ h2::after {
   .copied.show {
     animation: none;
     opacity: 1;
-  }
-
-  .rider {
-    animation: none;
   }
 
   .download:hover .seal,
