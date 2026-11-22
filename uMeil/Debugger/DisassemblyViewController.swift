@@ -48,21 +48,46 @@ final class DisassemblyViewController: NSViewController, NSTableViewDataSource, 
     }
 
     /// Updates the disassembly table and highlights the instruction at `programCounter`.
+    /// When `inst.file` is set, source lines are interleaved only when `sourceFile` is
+    /// provided and resolves to the same file path.
     func update(
         instructions: [DisassembledInstruction],
         programCounter: UInt64?,
-        sourceLines: [Int: String] = [:]
+        sourceLines: [Int: String] = [:],
+        sourceFile: URL? = nil
     ) {
         loadViewIfNeeded()
         self.programCounter = programCounter
+        let normalizedSource = sourceFile?.resolvingSymlinksInPath().standardizedFileURL
+        var resolvedFiles: [URL: URL] = [:]
         var built: [Row] = []
         var lastLine: Int?
         var pcRowIndex: Int?
 
         for inst in instructions {
-            if let line = inst.line, line != lastLine, let sourceText = sourceLines[line] {
+            let fileMatches: Bool
+            if let instFile = inst.file {
+                if let normalizedSource {
+                    let resolved: URL
+                    if let cached = resolvedFiles[instFile] {
+                        resolved = cached
+                    } else {
+                        resolved = instFile.resolvingSymlinksInPath().standardizedFileURL
+                        resolvedFiles[instFile] = resolved
+                    }
+                    fileMatches = resolved == normalizedSource
+                } else {
+                    fileMatches = false
+                }
+            } else {
+                fileMatches = true
+            }
+
+            if fileMatches, let line = inst.line, line != lastLine, let sourceText = sourceLines[line] {
                 built.append(.source(line: line, text: sourceText))
                 lastLine = line
+            } else if !fileMatches {
+                lastLine = nil
             }
             let isPC = programCounter != nil && inst.address == programCounter
             if isPC {
@@ -124,25 +149,36 @@ final class DisassemblyViewController: NSViewController, NSTableViewDataSource, 
             }
         }
 
-        let label = NSTextField(labelWithString: text)
+        let (cell, label) = dequeueCell(in: tableView, identifier: identifier)
+        label.stringValue = text
         label.font = DebugTableStyle.font
         label.textColor = textColor
         label.lineBreakMode = .byTruncatingTail
+        cell.wantsLayer = true
+        cell.layer?.backgroundColor = isPC ? EditorTheme.executionLineColor.cgColor : nil
+        return cell
+    }
 
+    private func dequeueCell(
+        in tableView: NSTableView,
+        identifier: NSUserInterfaceItemIdentifier
+    ) -> (NSTableCellView, NSTextField) {
+        if let reused = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView,
+           let existingLabel = reused.textField {
+            return (reused, existingLabel)
+        }
+        let label = NSTextField(labelWithString: "")
+        label.lineBreakMode = .byTruncatingTail
+        label.translatesAutoresizingMaskIntoConstraints = false
         let cell = NSTableCellView()
         cell.identifier = identifier
         cell.textField = label
-        if isPC {
-            cell.wantsLayer = true
-            cell.layer?.backgroundColor = EditorTheme.executionLineColor.cgColor
-        }
-        label.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(label)
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
             label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -2),
             label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
         ])
-        return cell
+        return (cell, label)
     }
 }

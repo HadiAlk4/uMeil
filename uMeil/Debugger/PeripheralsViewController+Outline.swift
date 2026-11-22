@@ -26,49 +26,75 @@ extension PeripheralsViewController: NSOutlineViewDataSource, NSOutlineViewDeleg
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let node = item as? Node, let identifier = tableColumn?.identifier else { return nil }
-        let label: NSTextField
-        switch identifier.rawValue {
-        case "name":
-            label = NSTextField(labelWithString: node.name)
-            label.font = DebugTableStyle.font
-            label.toolTip = node.field?.description ?? node.register.description
-        case "value":
-            label = NSTextField(labelWithString: valueText(for: node))
-            label.font = DebugTableStyle.font
-            if case .unreadable(let reason) = readings[node.register.name] {
-                label.toolTip = reason
-                label.textColor = .secondaryLabelColor
-            } else if readings[node.register.name] == .notRead {
-                label.textColor = .secondaryLabelColor
-                label.toolTip = node.register.readHasSideEffects
-                    ? "Reading this register changes the chip. Choose Read Now from the menu to read it."
-                    : nil
-            }
-            if changedRegisters.contains(node.register.name) {
-                DebugTableStyle.markChanged(label, flash: DebugTableStyle.shouldFlash(since: updatedAt))
-            }
-            if isEditable, isWritable(node) {
-                label.isEditable = true
-                label.delegate = self
-            }
-        default:
-            label = NSTextField(labelWithString: locationText(for: node))
-            label.font = DebugTableStyle.font
-            label.textColor = .secondaryLabelColor
-        }
+        let (cell, label) = dequeueCell(in: outlineView, identifier: identifier)
+
+        // Reset all recycled cell state before applying column-specific properties.
+        label.stringValue = ""
+        label.font = DebugTableStyle.font
+        label.textColor = .labelColor
+        label.layer?.removeAnimation(forKey: "changedFlash")
+        label.layer?.backgroundColor = NSColor.clear.cgColor
+        label.drawsBackground = false
+        label.backgroundColor = .clear
+        label.toolTip = nil
+        label.isEditable = false
+        label.delegate = nil
         label.lineBreakMode = .byTruncatingTail
 
+        switch identifier.rawValue {
+        case "name":
+            label.stringValue = node.name
+            label.toolTip = node.field?.description ?? node.register.description
+        case "value":
+            configureValueLabel(label, for: node)
+        default:
+            label.stringValue = locationText(for: node)
+            label.textColor = .secondaryLabelColor
+        }
+        return cell
+    }
+
+    private func configureValueLabel(_ label: NSTextField, for node: Node) {
+        label.stringValue = valueText(for: node)
+        if case .unreadable(let reason) = readings[node.register.name] {
+            label.toolTip = reason
+            label.textColor = .secondaryLabelColor
+        } else if readings[node.register.name] == .notRead {
+            label.textColor = .secondaryLabelColor
+            label.toolTip = node.register.readHasSideEffects
+                ? "Reading this register changes the chip. Choose Read Now from the menu to read it."
+                : nil
+        }
+        if isChanged(node) {
+            DebugTableStyle.markChanged(label, flash: DebugTableStyle.shouldFlash(since: updatedAt))
+        }
+        if isEditable, isWritable(node) {
+            label.isEditable = true
+            label.delegate = self
+        }
+    }
+
+    private func dequeueCell(
+        in outlineView: NSOutlineView,
+        identifier: NSUserInterfaceItemIdentifier
+    ) -> (NSTableCellView, NSTextField) {
+        if let reused = outlineView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView,
+           let existingLabel = reused.textField {
+            return (reused, existingLabel)
+        }
+        let label = NSTextField(labelWithString: "")
+        label.lineBreakMode = .byTruncatingTail
+        label.translatesAutoresizingMaskIntoConstraints = false
         let cell = NSTableCellView()
         cell.identifier = identifier
         cell.textField = label
-        label.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(label)
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
             label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -2),
             label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
         ])
-        return cell
+        return (cell, label)
     }
 
     // MARK: - Typing a value
@@ -79,8 +105,12 @@ extension PeripheralsViewController: NSOutlineViewDataSource, NSOutlineViewDeleg
               let node = outlineView.item(atRow: outlineView.row(for: field)) as? Node
         else { return }
         let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Leaving the value as shown is not a write.
-        guard !text.isEmpty, text != valueText(for: node) else { return }
+        let current = valueText(for: node)
+        // Leaving the value blank or unchanged is not a write; restore canonical display.
+        guard !text.isEmpty, text != current else {
+            field.stringValue = current
+            return
+        }
         onWrite?(peripheral, node.register, node.field, text)
     }
 

@@ -33,6 +33,9 @@ final class PeripheralsViewController: NSViewController {
     private(set) var changedRegisters: Set<String> = []
     /// When the values last changed, so their cells flash only then.
     var updatedAt: Date?
+    /// Previous numeric values of registers in `changedRegisters`, used to
+    /// highlight only the individual bit fields whose bits changed.
+    private var previousNumericValues: [String: UInt64] = [:]
     /// Values can be typed only while the program is stopped.
     var isEditable = false {
         didSet {
@@ -49,7 +52,10 @@ final class PeripheralsViewController: NSViewController {
 
     static let selectionKey = "PeripheralsSelection"
 
-    init() {
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         super.init(nibName: nil, bundle: nil)
         title = "Peripherals"
     }
@@ -110,11 +116,12 @@ final class PeripheralsViewController: NSViewController {
     /// (the LaunchPad's LED port the first time).
     func setDevice(_ device: SVDDevice) {
         self.device = device
-        let remembered = UserDefaults.standard.string(forKey: Self.selectionKey) ?? "GPIO_PORTN"
+        let remembered = defaults.string(forKey: Self.selectionKey) ?? "GPIO_PORTN"
         selectedPeripheral = device.peripheral(named: remembered) ?? device.peripherals.first
         nodes = selectedPeripheral.map { $0.registers.map { Node(register: $0) } } ?? []
         readings = [:]
         changedRegisters = []
+        previousNumericValues = [:]
         if isViewLoaded {
             rebuildMenu()
             outlineView.reloadData()
@@ -135,10 +142,11 @@ final class PeripheralsViewController: NSViewController {
 
     private func select(_ peripheral: SVDPeripheral) {
         selectedPeripheral = peripheral
-        UserDefaults.standard.set(peripheral.name, forKey: Self.selectionKey)
+        defaults.set(peripheral.name, forKey: Self.selectionKey)
         nodes = peripheral.registers.map { Node(register: $0) }
         readings = [:]
         changedRegisters = []
+        previousNumericValues = [:]
         showMessage("")
         if isViewLoaded {
             peripheralPopUp.selectItem(withTitle: peripheral.name)
@@ -149,11 +157,14 @@ final class PeripheralsViewController: NSViewController {
 
     private func rebuildMenu() {
         let menu = NSMenu()
-        var group: String?
+        var lastGroup: String?
+        var emittedHeader = false
         for peripheral in device?.peripherals.sorted(by: Self.menuOrder) ?? [] {
-            if peripheral.groupName != group {
-                group = peripheral.groupName
-                menu.addItem(NSMenuItem.sectionHeader(title: group ?? "Other"))
+            if !emittedHeader || peripheral.groupName != lastGroup {
+                emittedHeader = true
+                lastGroup = peripheral.groupName
+                let title = lastGroup.flatMap { $0.isEmpty ? nil : $0 } ?? "Other"
+                menu.addItem(NSMenuItem.sectionHeader(title: title))
             }
             let item = NSMenuItem(title: peripheral.name, action: nil, keyEquivalent: "")
             item.toolTip = peripheral.description
@@ -181,23 +192,39 @@ final class PeripheralsViewController: NSViewController {
 
     /// Shows values just read for `peripheral`, marking the ones that
     /// changed since the previous read of the same peripheral.
-    func update(readings newReadings: [String: RegisterReading], for peripheral: SVDPeripheral) {
+    func update(
+        readings newReadings: [String: RegisterReading],
+        for peripheral: SVDPeripheral,
+        preservingChanged: Set<String> = []
+    ) {
         guard peripheral.name == selectedPeripheral?.name else { return }
         loadViewIfNeeded()
         var changed: Set<String> = []
+        var nextPreviousValues: [String: UInt64] = [:]
         for (name, reading) in newReadings {
-            if case .value = readings[name], readings[name] != reading,
-               case .value = reading {
+            if case .value(let oldValue) = readings[name],
+               case .value(let newValue) = reading,
+               oldValue != newValue {
                 changed.insert(name)
+                nextPreviousValues[name] = oldValue
             }
         }
         // A register read on request keeps its value until it is read again.
         var merged = newReadings
         for (name, reading) in readings where newReadings[name] == .notRead {
-            if case .value = reading { merged[name] = reading }
+            if case .value = reading {
+                merged[name] = reading
+                if preservingChanged.contains(name), changedRegisters.contains(name) {
+                    changed.insert(name)
+                    if let oldValue = previousNumericValues[name] {
+                        nextPreviousValues[name] = oldValue
+                    }
+                }
+            }
         }
         readings = merged
         changedRegisters = changed
+        previousNumericValues = nextPreviousValues
         updatedAt = Date()
         let unreadable = newReadings.values.contains { if case .unreadable = $0 { true } else { false } }
         showMessage(unreadable ? "Some registers could not be read. Is the peripheral's clock on?" : "")
@@ -208,17 +235,43 @@ final class PeripheralsViewController: NSViewController {
     func update(reading: RegisterReading, for register: SVDRegister, of peripheral: SVDPeripheral) {
         guard peripheral.name == selectedPeripheral?.name else { return }
         loadViewIfNeeded()
-        if case .value = readings[register.name], readings[register.name] != reading {
+        if case .value(let oldValue) = readings[register.name],
+           case .value(let newValue) = reading,
+           oldValue != newValue {
             changedRegisters.insert(register.name)
+            previousNumericValues[register.name] = oldValue
+        } else {
+            changedRegisters.remove(register.name)
+            previousNumericValues.removeValue(forKey: register.name)
         }
         readings[register.name] = reading
+        updatedAt = Date()
         outlineView.reloadData()
+    }
+
+    /// Whether `node` (a register or one of its bit fields) changed on the most
+    /// recent read or write.
+    func isChanged(_ node: Node) -> Bool {
+        guard changedRegisters.contains(node.register.name) else { return false }
+        guard let field = node.field else { return true }
+        guard case .value(let newValue) = readings[node.register.name],
+              let oldValue = previousNumericValues[node.register.name]
+        else { return false }
+        return field.value(in: oldValue) != field.value(in: newValue)
+    }
+
+    /// Reverts any uncommitted text typed into cells back to `readings`.
+    func revertEdits() {
+        if isViewLoaded {
+            outlineView.reloadData()
+        }
     }
 
     /// Forgets the values; the device and selection stay.
     func clear() {
         readings = [:]
         changedRegisters = []
+        previousNumericValues = [:]
         isEditable = false
         if isViewLoaded {
             showMessage("")
