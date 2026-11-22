@@ -5,44 +5,85 @@ import Foundation
 enum DebugValueFormatter {
     // MARK: - Numbers and variables
 
-    /// Formats a GDB value string in hexadecimal (32-bit two's complement for
-    /// negative integers) or decimal according to its C type.
+    /// Formats a GDB value string in hexadecimal (two's complement for negative
+    /// integers, 64-bit for 64-bit types/values and 32-bit otherwise) or decimal
+    /// according to its C type.
     static func format(_ rawValue: String?, type: String? = nil, hexadecimal: Bool) -> String {
         guard let rawValue = rawValue?.trimmingCharacters(in: .whitespaces), !rawValue.isEmpty else {
             return "<complex>"
         }
-        let isPointer = type?.contains("*") == true
-        if isPointer {
-            return normalizeHex(rawValue)
+        if type?.contains("*") == true {
+            return normalizeHex(rawValue, is64Bit: false)
         }
-        if hexadecimal {
-            if rawValue.hasPrefix("0x") || rawValue.hasPrefix("0X") {
-                return normalizeHex(rawValue)
+        let is64 = is64BitIntegerType(type)
+        return hexadecimal
+            ? formatHexadecimal(rawValue, is64Bit: is64)
+            : formatDecimal(rawValue, type: type, is64Bit: is64)
+    }
+
+    private static func formatHexadecimal(_ rawValue: String, is64Bit: Bool) -> String {
+        if rawValue.hasPrefix("0x") || rawValue.hasPrefix("0X") {
+            return normalizeHex(rawValue, is64Bit: is64Bit)
+        }
+        if let signed = Int64(rawValue) {
+            if is64Bit || signed < Int64(Int32.min) || signed > Int64(UInt32.max) {
+                return String(format: "0x%016llX", UInt64(bitPattern: signed))
             }
-            if let signed = Int64(rawValue) {
-                let bits = UInt32(bitPattern: Int32(truncatingIfNeeded: signed))
-                return String(format: "0x%08X", bits)
-            }
-            if let unsigned = UInt64(rawValue) {
-                return String(format: "0x%08X", UInt32(truncatingIfNeeded: unsigned))
-            }
-            return rawValue
-        } else {
-            if rawValue.hasPrefix("0x") || rawValue.hasPrefix("0X"),
-               let bits = UInt32(rawValue.dropFirst(2), radix: 16) {
-                let isUnsigned = type?.contains("unsigned") == true || type?.contains("uint") == true
-                return isUnsigned ? String(bits) : String(Int32(bitPattern: bits))
-            }
-            return rawValue
+            let bits = signed < 0 ? UInt32(bitPattern: Int32(signed)) : UInt32(signed)
+            return String(format: "0x%08X", bits)
+        }
+        if let unsigned = UInt64(rawValue) {
+            return String(format: "0x%016llX", unsigned)
+        }
+        return rawValue
+    }
+
+    private static func formatDecimal(_ rawValue: String, type: String?, is64Bit: Bool) -> String {
+        guard rawValue.hasPrefix("0x") || rawValue.hasPrefix("0X") else { return rawValue }
+        let hexDigits = rawValue.dropFirst(2)
+        guard let bits = UInt64(hexDigits, radix: 16) else { return rawValue }
+        if isUnsignedIntegerType(type) {
+            return String(bits)
+        }
+        if is64Bit || bits > UInt64(UInt32.max) || hexDigits.count > 8 {
+            return String(Int64(bitPattern: bits))
+        }
+        return String(Int32(bitPattern: UInt32(bits)))
+    }
+
+    private static func typeTokens(_ type: String?) -> [Substring] {
+        guard let type else { return [] }
+        return type.lowercased().split { !($0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_")) }
+    }
+
+    private static func is64BitIntegerType(_ type: String?) -> Bool {
+        let tokens = typeTokens(type)
+        if tokens.contains(where: {
+            $0.hasPrefix("int64") || $0.hasPrefix("uint64") || $0 == "__int64" || $0 == "__uint64"
+        }) {
+            return true
+        }
+        for index in 0..<max(0, tokens.count - 1) where tokens[index] == "long" && tokens[index + 1] == "long" {
+            return true
+        }
+        return false
+    }
+
+    private static func isUnsignedIntegerType(_ type: String?) -> Bool {
+        let tokens = typeTokens(type)
+        return tokens.contains {
+            $0 == "unsigned" || $0.hasPrefix("uint") || $0 == "size_t" || $0 == "uintptr_t"
         }
     }
 
-    private static func normalizeHex(_ text: String) -> String {
+    private static func normalizeHex(_ text: String, is64Bit: Bool) -> String {
         guard text.hasPrefix("0x") || text.hasPrefix("0X") else { return text }
         let digits = text.dropFirst(2).prefix { $0.isHexDigit }
+        guard !digits.isEmpty else { return text }
         let suffix = text.dropFirst(2 + digits.count)
         guard let number = UInt64(digits, radix: 16) else { return text }
-        return String(format: "0x%08llX", number) + suffix
+        let width = (is64Bit || number > UInt64(UInt32.max)) ? 16 : 8
+        return String(format: "0x%0\(width)llX", number) + suffix
     }
 
     /// Formats a 32-bit register or address as `0x0000020A`.
@@ -59,19 +100,32 @@ enum DebugValueFormatter {
         return "\(prefix) \(type)"
     }
 
-    /// Whether `variable` is a pointer that can be expanded to show `*name`.
+    private static let typeQualifiers: Set<Substring> = [
+        "const", "volatile", "restrict", "__restrict", "__restrict__"
+    ]
+
+    /// Whether `variable` is a dereferenceable pointer that can be expanded to
+    /// show `*name`. Excludes `void *`, function pointers (`(*`), and arrays of
+    /// pointers (`[`).
     static func isPointer(_ variable: DebugVariable) -> Bool {
-        guard let type = variable.type else { return false }
-        return type.contains("*")
+        guard let type = variable.type?.trimmingCharacters(in: .whitespaces),
+              type.contains("*"),
+              !type.contains("(*"),
+              !type.contains("( *"),
+              !type.contains("[")
+        else { return false }
+        let target = dereferencedType(type)
+        let significant = target.split(whereSeparator: \.isWhitespace).filter { !typeQualifiers.contains($0) }
+        return significant != ["void"]
     }
 
-    /// The target type of a pointer type, removing one level of `*`.
+    /// The target type of a pointer type, removing the last `*` and any pointer
+    /// qualifiers that follow it (such as `const` in `"const int * const"`).
     static func dereferencedType(_ type: String?) -> String {
-        guard var trimmed = type?.trimmingCharacters(in: .whitespaces),
+        guard let trimmed = type?.trimmingCharacters(in: .whitespaces),
               let star = trimmed.lastIndex(of: "*")
         else { return "int" }
-        trimmed.remove(at: star)
-        let result = trimmed.trimmingCharacters(in: .whitespaces)
+        let result = trimmed[..<star].trimmingCharacters(in: .whitespaces)
         return result.isEmpty ? "void" : result
     }
 
@@ -179,5 +233,12 @@ enum DebugValueFormatter {
             return UInt64(trimmed.dropFirst(2), radix: 16)
         }
         return UInt64(trimmed)
+    }
+
+    /// Parses an address returned by GDB's `-data-evaluate-expression`, including
+    /// uppercase `0X`, optional symbol suffixes (`0x20a <main>`), type-cast
+    /// prefixes such as `"(int (*)[4]) 0x20000258"`, or decimal integers.
+    static func parseEvaluatedAddress(_ text: String) -> UInt64? {
+        MIValue.address(text) ?? parseAddress(text)
     }
 }

@@ -131,14 +131,64 @@ struct MIParserTests {
 
     @Test func addressesIgnoreTheSymbolGDBAddsAfterThem() {
         #expect(MIValue.address("0x0000020a") == 0x20a)
+        #expect(MIValue.address("0X0000020A") == 0x20a)
         #expect(MIValue.address("0x40c <GPIOPinWrite>") == 0x40c)
+        #expect(MIValue.address("0x20000258 \"hello\"") == 0x2000_0258)
+        #expect(MIValue.address("(int (*)[4]) 0x20000258") == 0x2000_0258)
+        #expect(MIValue.address("(int *) 0X20000258") == 0x2000_0258)
+        #expect(MIValue.address("{int (void)} 0x20a <main>") == 0x20a)
         #expect(MIValue.address("main") == nil)
+        #expect(MIValue.address("0x") == nil)
+        #expect(MIValue.address("0x20g") == nil)
+        #expect(MIValue.address("(unclosed 0x2000") == nil)
+        #expect(MIValue.address("{a = 0x1, b = 0x2}") == nil)
+        #expect(MIValue.address("foo 0x2000") == nil)
+    }
+
+    @Test func disassemblyParseListHandlesMode5GroupsAndFlatItems() throws {
+        let line = #"^done,asm_insns=["#
+            + #"src_and_asm_line={line="21",file="src/main.c",fullname="/tmp/Blinky/src/main.c","#
+            + #"line_asm_insn=[{address="0x0000020a",func-name="main",offset="0","#
+            + #"opcodes="00 22",inst="movs\tr2, #0"}]},"#
+            + #"src_and_asm_line={line="0",file="crt.s",fullname="","#
+            + #"line_asm_insn=[{address="0x0000020c",opcodes="00 bf",inst="nop"}]},"#
+            + #"{address="0x0000020e",func-name="SysCtlDelay",offset="0",opcodes="70 47",inst="bx\tlr"}]"#
+        let record = try MIParser.parse(line)
+        guard case .result(_, .done, let values) = record,
+              let items = values["asm_insns"]?.list
+        else {
+            Issue.record("Expected asm_insns list")
+            return
+        }
+
+        let instructions = DisassembledInstruction.parseList(items)
+        #expect(instructions.count == 3)
+        #expect(instructions[0].address == 0x20a)
+        #expect(instructions[0].file == URL(filePath: "/tmp/Blinky/src/main.c"))
+        #expect(instructions[0].line == 21)
+        #expect(instructions[0].opcodes == "00 22")
+        #expect(instructions[0].instruction == "movs r2, #0")
+        #expect(instructions[1].address == 0x20c)
+        #expect(instructions[1].file == nil)
+        #expect(instructions[1].line == nil)
+        #expect(instructions[2].address == 0x20e)
+        #expect(instructions[2].function == "SysCtlDelay")
+        #expect(instructions[2].file == nil)
+        #expect(instructions[2].line == nil)
     }
 
     @Test(arguments: [
         "",
         "halted: PC: 0x00000224",
         "Info : clock speed 1 kHz",
+        "* WARNING: openocd notice",
+        "*stopped: not an mi record",
+        "+ Info: downloading",
+        "+status with spaces",
+        "=== OpenOCD Banner ===",
+        "=notify: unexpected colon",
+        "999999999999999999999999999999^done",
+        "999999999999999999999999999999~\"overflow\"",
         "^done,value=\"unterminated",
         "^done,value=",
         "^done,{",

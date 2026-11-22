@@ -41,11 +41,38 @@ enum MIValue: Equatable, Sendable {
         text(name).flatMap(MIValue.address)
     }
 
-    /// Reads `0x0000020a`. GDB sometimes follows an address with a symbol,
-    /// as in `0x20a <main+2>`, which is ignored.
+    /// Reads `0x0000020a` or `0X0000020A`. Accepts an optional GDB type-cast
+    /// prefix such as `(int (*)[4]) 0x20000258` or `{int (void)} 0x20a <main>`,
+    /// and ignores any symbol or string GDB prints after whitespace.
     static func address(_ text: String) -> UInt64? {
-        guard text.hasPrefix("0x") else { return nil }
-        return UInt64(text.dropFirst(2).prefix { $0.isHexDigit }, radix: 16)
+        var rest = Substring(text).drop(while: \.isWhitespace)
+        if let opener = rest.first, opener == "(" || opener == "{" {
+            let closer: Character = opener == "(" ? ")" : "}"
+            var depth = 0
+            var index = rest.startIndex
+            while index < rest.endIndex {
+                let character = rest[index]
+                if character == opener {
+                    depth += 1
+                } else if character == closer {
+                    depth -= 1
+                    if depth == 0 {
+                        rest = rest[rest.index(after: index)...].drop(while: \.isWhitespace)
+                        break
+                    }
+                }
+                index = rest.index(after: index)
+            }
+            guard depth == 0 else { return nil }
+        }
+        guard rest.hasPrefix("0x") || rest.hasPrefix("0X") else { return nil }
+        let hex = rest.dropFirst(2).prefix { $0.isHexDigit }
+        guard !hex.isEmpty else { return nil }
+        let trailing = rest.dropFirst(2 + hex.count)
+        if let next = trailing.first, !next.isWhitespace {
+            return nil
+        }
+        return UInt64(hex, radix: 16)
     }
 }
 
@@ -137,7 +164,7 @@ enum MIParser {
                 return .prompt
             }
 
-            let token = number()
+            guard let token = number() else { return nil }
             guard let marker = next.map({ Character(UnicodeScalar($0)) }) else { return nil }
             position += 1
 
@@ -157,21 +184,31 @@ enum MIParser {
         }
 
         /// The digits at the start of a line: the token of the command a
-        /// result answers.
-        private mutating func number() -> Int? {
+        /// result answers. Returns `.some(nil)` when no digits are present,
+        /// `.some(value)` for a valid token, and `nil` on integer overflow.
+        private mutating func number() -> Int?? {
             let start = position
             while let byte = next, byte >= UInt8(ascii: "0"), byte <= UInt8(ascii: "9") {
                 position += 1
             }
-            return Int(text(from: start))
+            guard position > start else { return .some(nil) }
+            guard let value = Int(text(from: start)) else { return nil }
+            return .some(value)
+        }
+
+        private static func isWordByte(_ byte: UInt8) -> Bool {
+            (byte >= UInt8(ascii: "a") && byte <= UInt8(ascii: "z"))
+                || (byte >= UInt8(ascii: "A") && byte <= UInt8(ascii: "Z"))
+                || (byte >= UInt8(ascii: "0") && byte <= UInt8(ascii: "9"))
+                || byte == UInt8(ascii: "_")
+                || byte == UInt8(ascii: "-")
         }
 
         /// A name: a result class such as `done`, or a field name such as
-        /// `thread-groups`.
+        /// `thread-groups`. Restricted to valid MI identifier characters.
         private mutating func word() -> String {
             let start = position
-            while let byte = next, byte != UInt8(ascii: "="), byte != UInt8(ascii: ","),
-                  byte != UInt8(ascii: "]"), byte != UInt8(ascii: "}") {
+            while let byte = next, Self.isWordByte(byte) {
                 position += 1
             }
             return text(from: start)

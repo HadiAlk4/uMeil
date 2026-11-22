@@ -72,9 +72,12 @@ struct StopEvent: Equatable, Sendable {
     var reason: StopReason
     /// Where it stopped. `nil` when the program is gone.
     var frame: StackFrame?
+    /// The thread that stopped, from GDB's `thread-id="..."`.
+    var threadId: String?
 
     init(_ values: MIValue) {
         frame = values["frame"].flatMap(StackFrame.init)
+        threadId = values.text("thread-id")
         switch values.text("reason") {
         case "breakpoint-hit":
             reason = .breakpoint(number: values.text("bkptno") ?? "")
@@ -155,8 +158,11 @@ struct DisassembledInstruction: Equatable, Sendable {
         var result: [DisassembledInstruction] = []
         for item in items {
             if let nested = item["line_asm_insn"]?.list {
-                let file = item.text("fullname").map { URL(filePath: $0, directoryHint: .notDirectory) }
-                let line = item.integer("line")
+                let file = item.text("fullname").flatMap {
+                    $0.isEmpty ? nil : URL(filePath: $0, directoryHint: .notDirectory)
+                }
+                // GDB reports line="0" for instructions with no associated source line.
+                let line = item.integer("line").flatMap { $0 > 0 ? $0 : nil }
                 result.append(contentsOf: nested.compactMap { DisassembledInstruction($0, file: file, line: line) })
             } else if let single = DisassembledInstruction(item) {
                 result.append(single)

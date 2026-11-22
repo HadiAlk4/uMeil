@@ -42,7 +42,7 @@ enum PeripheralClock {
         for (prefix, register) in readyRegisters where name.hasPrefix(prefix) {
             let number = name.dropFirst(prefix.count)
             if number.isEmpty { return Gate(readyRegister: register, bit: 0) }
-            guard let bit = Int(number) else { continue }
+            guard let bit = Int(number), 0..<64 ~= bit else { continue }
             return Gate(readyRegister: register, bit: bit)
         }
         return nil
@@ -53,6 +53,7 @@ enum PeripheralClock {
     @MainActor
     static func isOn(_ peripheral: SVDPeripheral, in device: SVDDevice, memory: some TargetMemory) async -> Bool? {
         guard let gate = gate(for: peripheral),
+              0..<64 ~= gate.bit,
               let sysctl = device.peripheral(named: "SYSCTL"),
               let ready = sysctl.register(named: gate.readyRegister),
               case .value(let value) = await PeripheralAccess.read(ready, of: sysctl, from: memory)

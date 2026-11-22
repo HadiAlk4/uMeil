@@ -48,10 +48,18 @@ extension DebugController {
         try await session.writeMemory(at: address, bytes: bytes)
     }
 
-    /// Evaluates a C expression in the current frame, returning `nil` if GDB refuses it.
-    func evaluate(_ expression: String) async -> String? {
+    /// Evaluates a C expression in the current frame (or frame `level` when
+    /// given), returning `nil` if GDB refuses it.
+    func evaluate(_ expression: String, inFrame level: Int? = nil) async -> String? {
         guard isStopped, let session else { return nil }
-        return try? await session.evaluate(expression)
+        return try? await session.evaluate(expression, inFrame: level)
+    }
+
+    /// Selects stack frame `level` in GDB so subsequent inspections run in that
+    /// frame. No-op unless stopped.
+    func selectFrame(_ level: Int) async {
+        guard isStopped, let session else { return }
+        try? await session.selectFrame(level)
     }
 
     /// Sends a console command to GDB.

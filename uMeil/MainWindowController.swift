@@ -38,6 +38,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     var isFlashing = false
     /// The Build and Flash in progress, kept so it can be stopped.
     var flashTask: Task<Void, Never>?
+    /// Ad-hoc debug refresh tasks and close-deferral state.
+    var debugTasks = DebugWindowTasks()
     var codeIntelligence: CodeIntelligenceController?
     let bottomPanelItem: NSSplitViewItem
     let editorSplit = NSSplitViewController()
@@ -116,8 +118,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
 
     /// Shows `url` in the navigator and closes whatever file was open.
     func openFolder(_ url: URL) {
-        // A session belongs to the project it was started from.
-        Task { await debugger.stop() }
+        // A session and its breakpoints belong to the project they came from.
+        if debugger.isActive { Task { await debugger.stop() } }
+        debugger.clearBreakpoints()
         folder = url
         lastBuild = nil
         codeIntelligence?.folderOpened(url)
@@ -139,7 +142,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     /// File > Close Folder: back to the welcome screen.
     @objc func closeFolder(_ sender: Any?) {
         guard folder != nil, confirmDiscardingChanges() else { return }
-        Task { await debugger.stop() }
+        if debugger.isActive { Task { await debugger.stop() } }
+        debugger.clearBreakpoints()
         folder = nil
         lastBuild = nil
         codeIntelligence?.folderClosed()
@@ -310,7 +314,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         // GCC counts columns in bytes (`-fdiagnostics-column-unit=byte`).
         navigate(to: file, line: diagnostic.line, column: diagnostic.column, columnUnit: .utf8)
     }
-
 }
 
 // Kept out of the class body to keep it short. Same file, so the private
@@ -371,7 +374,10 @@ extension MainWindowController {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard confirmDiscardingChanges() else { return false }
         terminal.terminate()
-        Task { await debugger.stop() }
+        if debugger.isActive {
+            stopDebuggerAndClose(sender)
+            return false
+        }
         return true
     }
 

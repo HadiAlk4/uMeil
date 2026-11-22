@@ -3,11 +3,14 @@ import AppKit
 /// The `Command` panel: logs debugger, OpenOCD, build, and flash output, and
 /// lets the user enter text commands for GDB.
 final class CommandViewController: NSViewController {
-    /// The most text the command console keeps. Older lines are dropped first.
+    /// The most text the command console keeps by default. Older lines are dropped first.
     static let maximumLength = 500_000
 
     let textView = NSTextView()
     let commandField = NSTextField()
+
+    /// Maximum retained console log length in UTF-16 code units.
+    var maxLength = CommandViewController.maximumLength
 
     /// Called when the user submits a command in the bottom text field.
     var onSendCommand: ((String) -> Void)?
@@ -53,30 +56,40 @@ final class CommandViewController: NSViewController {
         view = PanelLayout.view(bar: inputBar, content: scrollView, barAt: .bottom)
     }
 
-    /// Appends `text` to the console log and scrolls to the bottom.
+    private static var outputAttributes: [NSAttributedString.Key: Any] {
+        [
+            .font: EditorTheme.font,
+            .foregroundColor: NSColor.labelColor
+        ]
+    }
+
+    /// Appends `text` to the console log, trims the oldest lines or characters
+    /// past `maxLength`, and scrolls to the bottom.
     func appendOutput(_ text: String) {
         loadViewIfNeeded()
-        guard !text.isEmpty else { return }
-        if let storage = textView.textStorage {
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: EditorTheme.font,
-                .foregroundColor: NSColor.labelColor
-            ]
-            storage.append(NSAttributedString(string: text, attributes: attributes))
-
-            let excess = storage.length - Self.maximumLength
-            if excess > 0 {
-                let line = (storage.string as NSString).lineRange(for: NSRange(location: excess - 1, length: 0))
-                let end = NSMaxRange(line)
-                storage.deleteCharacters(in: NSRange(location: 0, length: end < storage.length ? end : excess))
+        guard !text.isEmpty, let storage = textView.textStorage else { return }
+        let attributed = NSAttributedString(string: text, attributes: Self.outputAttributes)
+        storage.beginEditing()
+        storage.append(attributed)
+        let excess = storage.length - maxLength
+        if excess > 0 {
+            let cutLength: Int
+            if excess >= storage.length {
+                cutLength = storage.length
+            } else {
+                let raw = storage.string as NSString
+                let lineEnd = NSMaxRange(raw.lineRange(for: NSRange(location: excess - 1, length: 0)))
+                if lineEnd < storage.length {
+                    cutLength = lineEnd
+                } else {
+                    let sequence = raw.rangeOfComposedCharacterSequence(at: excess)
+                    cutLength = sequence.location == excess ? excess : NSMaxRange(sequence)
+                }
             }
-            textView.scrollRangeToVisible(NSRange(location: storage.length, length: 0))
-        } else {
-            let end = NSRange(location: (textView.string as NSString).length, length: 0)
-            textView.replaceCharacters(in: end, with: text)
-            textView.font = EditorTheme.font
-            textView.scrollRangeToVisible(NSRange(location: (textView.string as NSString).length, length: 0))
+            storage.deleteCharacters(in: NSRange(location: 0, length: cutLength))
         }
+        storage.endEditing()
+        textView.scrollRangeToVisible(NSRange(location: storage.length, length: 0))
     }
 
     func clear() {

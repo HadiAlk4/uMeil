@@ -7,6 +7,7 @@ import AppKit
 final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
     let addressField = NSTextField()
     let lengthPopUp = NSPopUpButton()
+    let messageLabel = NSTextField(labelWithString: "")
     let tableView = NSTableView()
 
     /// How many bytes the view can show at once.
@@ -19,6 +20,8 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
     private var previousBytes: [UInt64: UInt8] = [:]
     /// When the bytes last changed, so their cells flash only then.
     private var updatedAt: Date?
+    /// Failure message from the most recent address resolution or read, if any.
+    private(set) var statusMessage = ""
     /// How many bytes to read from `currentAddress`.
     private(set) var byteCount = 64
     /// Bytes can be typed only while the program is stopped.
@@ -64,6 +67,23 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
         topBar.spacing = 6
         topBar.edgeInsets = NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
 
+        messageLabel.textColor = .secondaryLabelColor
+        messageLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        messageLabel.lineBreakMode = .byTruncatingTail
+        messageLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        messageLabel.isHidden = true
+
+        let headerBar = NSStackView(views: [topBar, messageLabel])
+        headerBar.orientation = .vertical
+        headerBar.alignment = .leading
+        headerBar.spacing = 2
+        headerBar.detachesHiddenViews = true
+        topBar.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            topBar.leadingAnchor.constraint(equalTo: headerBar.leadingAnchor),
+            topBar.trailingAnchor.constraint(equalTo: headerBar.trailingAnchor)
+        ])
+
         addColumn(identifier: "address", title: "Address", width: 95)
         addColumn(identifier: "hex", title: "Data (Hex)", width: 340)
         addColumn(identifier: "ascii", title: "ASCII", width: 130)
@@ -77,7 +97,7 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
         scrollView.hasVerticalScroller = true
         scrollView.borderType = .noBorder
 
-        view = PanelLayout.view(bar: topBar, content: scrollView)
+        view = PanelLayout.view(bar: headerBar, content: scrollView)
     }
 
     private func addColumn(identifier: String, title: String, width: CGFloat) {
@@ -91,6 +111,10 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
     func showMemory(at address: UInt64, bytes: [UInt8]) {
         loadViewIfNeeded()
         currentAddress = address
+        statusMessage = ""
+        messageLabel.stringValue = ""
+        messageLabel.toolTip = nil
+        messageLabel.isHidden = true
         if addressField.stringValue.trimmingCharacters(in: .whitespaces).isEmpty {
             addressField.stringValue = DebugValueFormatter.hex32(address)
         }
@@ -115,13 +139,41 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
         return Set(rows[row].bytes.indices.filter { changedAddresses.contains(start + UInt64($0)) })
     }
 
+    /// Clears stale rows and displays a failure message when inspecting an
+    /// address or reading memory fails.
+    func showError(_ message: String) {
+        loadViewIfNeeded()
+        currentAddress = nil
+        rows = []
+        changedAddresses = []
+        previousBytes = [:]
+        updatedAt = nil
+        statusMessage = message
+        messageLabel.stringValue = message
+        messageLabel.toolTip = message
+        messageLabel.isHidden = message.isEmpty
+        tableView.reloadData()
+    }
+
+    /// Reverts any uncommitted text typed into table cells back to `rows`.
+    func revertEdits() {
+        if isViewLoaded {
+            tableView.reloadData()
+        }
+    }
+
     func clear() {
         currentAddress = nil
         rows = []
         changedAddresses = []
         previousBytes = [:]
         isEditable = false
+        statusMessage = ""
+        addressField.stringValue = ""
         if isViewLoaded {
+            messageLabel.stringValue = ""
+            messageLabel.toolTip = nil
+            messageLabel.isHidden = true
             tableView.reloadData()
         }
     }
@@ -149,11 +201,12 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
     }
 
     /// Writes what was typed over row `row`'s bytes: the run from the first
-    /// changed byte to the last. Returns false, writing nothing, if the text
-    /// is not exactly the row's number of hex bytes.
+    /// changed byte to the last. Returns false, writing nothing, when the panel
+    /// is not editable or the text is not exactly the row's number of hex bytes.
     @discardableResult
     func commitEdit(_ text: String, inRow row: Int) -> Bool {
-        guard rows.indices.contains(row),
+        guard isEditable,
+              rows.indices.contains(row),
               let typed = DebugValueFormatter.parseHexBytes(text),
               typed.count == rows[row].bytes.count
         else { return false }
@@ -180,9 +233,35 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
         default: item.asciiText
         }
 
-        let label = NSTextField(labelWithString: text)
+        let cell: NSTableCellView
+        let label: NSTextField
+        if let reused = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView,
+           let existingLabel = reused.textField {
+            cell = reused
+            label = existingLabel
+        } else {
+            let createdLabel = NSTextField(labelWithString: "")
+            createdLabel.lineBreakMode = .byTruncatingTail
+            createdLabel.translatesAutoresizingMaskIntoConstraints = false
+            let createdCell = NSTableCellView()
+            createdCell.identifier = identifier
+            createdCell.textField = createdLabel
+            createdCell.addSubview(createdLabel)
+            NSLayoutConstraint.activate([
+                createdLabel.leadingAnchor.constraint(equalTo: createdCell.leadingAnchor, constant: 2),
+                createdLabel.trailingAnchor.constraint(equalTo: createdCell.trailingAnchor, constant: -2),
+                createdLabel.centerYAnchor.constraint(equalTo: createdCell.centerYAnchor)
+            ])
+            cell = createdCell
+            label = createdLabel
+        }
+
+        label.layer?.removeAnimation(forKey: "changedFlash")
+        label.layer?.backgroundColor = NSColor.clear.cgColor
+        label.textColor = .labelColor
         label.font = DebugTableStyle.font
         label.lineBreakMode = .byTruncatingTail
+        label.stringValue = text
         if identifier.rawValue == "hex" {
             let changed = changedOffsets(inRow: row)
             if !changed.isEmpty {
@@ -192,22 +271,10 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
                     DebugTableStyle.flash(label)
                 }
             }
-            if isEditable {
-                label.isEditable = true
-                label.delegate = self
-            }
         }
-
-        let cell = NSTableCellView()
-        cell.identifier = identifier
-        cell.textField = label
-        label.translatesAutoresizingMaskIntoConstraints = false
-        cell.addSubview(label)
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
-            label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -2),
-            label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-        ])
+        let editable = identifier.rawValue == "hex" && isEditable
+        label.isEditable = editable
+        label.delegate = editable ? self : nil
         return cell
     }
 

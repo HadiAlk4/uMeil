@@ -69,6 +69,8 @@ enum PipeLineReader {
             if pending.count >= pendingLimit {
                 onLine(PipeLineReader.text(from: pending))
                 pending.removeAll(keepingCapacity: false)
+            } else if pending.isEmpty {
+                pending = Data()
             }
         }
 
@@ -77,7 +79,10 @@ enum PipeLineReader {
                 onLine(PipeLineReader.text(from: pending))
                 pending.removeAll()
             }
-            return collectAll ? PipeLineReader.text(from: all) : ""
+            guard collectAll else { return "" }
+            let output = PipeLineReader.text(from: all)
+            all.removeAll()
+            return output
         }
     }
 }

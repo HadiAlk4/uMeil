@@ -33,24 +33,30 @@ enum PeripheralAccess {
 
     /// The registers to read, in runs of neighbours. A run never covers a
     /// gap: the TM4C129 can fault on reserved addresses, and a fault fails
-    /// the whole read. Registers that must not be read are left out.
+    /// the whole read. Overlapping/alternate registers share the same span
+    /// so every alias is decoded from one read. Registers that must not be
+    /// read are left out.
     static func spans(for peripheral: SVDPeripheral, maximumBytes: Int = 256) -> [Span] {
         var spans: [Span] = []
+        let limit = UInt64(max(maximumBytes, 0))
         let readable = peripheral.registers
             .filter { $0.access.isReadable && !$0.readHasSideEffects }
             .sorted { $0.addressOffset < $1.addressOffset }
         for register in readable {
-            if var last = spans.last,
-               last.offset + UInt64(last.byteCount) == register.addressOffset,
-               last.byteCount + register.byteCount <= maximumBytes {
-                last.byteCount += register.byteCount
-                last.registers.append(register)
-                spans[spans.count - 1] = last
-            } else if spans.last.map({ $0.offset + UInt64($0.byteCount) > register.addressOffset }) == true {
-                continue // Overlaps the previous register, as SVD alternates do.
-            } else {
-                spans.append(Span(offset: register.addressOffset, byteCount: register.byteCount, registers: [register]))
+            let registerEnd = register.addressOffset + UInt64(register.byteCount)
+            if var last = spans.last {
+                let lastEnd = last.offset + UInt64(last.byteCount)
+                if register.addressOffset <= lastEnd {
+                    let combinedBytes = max(lastEnd, registerEnd) - last.offset
+                    if combinedBytes == UInt64(last.byteCount) || combinedBytes <= limit {
+                        last.byteCount = Int(combinedBytes)
+                        last.registers.append(register)
+                        spans[spans.count - 1] = last
+                        continue
+                    }
+                }
             }
+            spans.append(Span(offset: register.addressOffset, byteCount: register.byteCount, registers: [register]))
         }
         return spans
     }
@@ -65,6 +71,7 @@ enum PeripheralAccess {
             readings[register.name] = .notRead
         }
         for span in spans(for: peripheral) {
+            guard !Task.isCancelled else { return readings }
             let address = peripheral.baseAddress + span.offset
             if let bytes = try? await memory.readMemoryOrThrow(at: address, count: span.byteCount),
                bytes.count == span.byteCount {
@@ -75,6 +82,7 @@ enum PeripheralAccess {
                 continue
             }
             for register in span.registers {
+                guard !Task.isCancelled else { return readings }
                 readings[register.name] = await read(register, of: peripheral, from: memory)
             }
         }

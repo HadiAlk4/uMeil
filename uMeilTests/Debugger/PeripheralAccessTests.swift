@@ -38,11 +38,11 @@ final class FakeTargetMemory: TargetMemory {
 @MainActor
 struct PeripheralAccessTests {
     private func register(
-        _ name: String, _ offset: UInt64, access: SVDAccess = .readWrite, sideEffects: Bool = false,
+        _ name: String, _ offset: UInt64, size: Int = 32, access: SVDAccess = .readWrite, sideEffects: Bool = false,
         fields: [SVDField] = []
     ) -> SVDRegister {
         SVDRegister(
-            name: name, description: nil, addressOffset: offset, size: 32, access: access,
+            name: name, description: nil, addressOffset: offset, size: size, access: access,
             resetValue: nil, readHasSideEffects: sideEffects, fields: fields
         )
     }
@@ -218,5 +218,117 @@ struct PeripheralAccessTests {
             name: "P1", description: nil, bitOffset: 1, bitWidth: 1, access: .readWrite, enumeratedValues: []
         )
         #expect(PeripheralAccess.fieldText(pin, registerValue: 0x2) == "1")
+    }
+
+    // MARK: - Overlapping registers, cancellation, and clock gates
+
+    @Test func overlappingAlternateRegistersAreDecodedFromTheSameSpan() async {
+        let peripheral = SVDPeripheral(
+            name: "ALT", description: nil, groupName: nil, baseAddress: 0x4000_0000,
+            registers: [
+                register("RSR", 0x04),
+                register("ECR", 0x04),
+                register("LOW16", 0x10, size: 16),
+                register("FULL32", 0x10, size: 32),
+                register("HIGH16", 0x12, size: 16)
+            ]
+        )
+
+        let spans = PeripheralAccess.spans(for: peripheral)
+        #expect(spans.count == 2)
+        #expect(spans[0].offset == 0x04)
+        #expect(spans[0].byteCount == 4)
+        #expect(spans[0].registers.map(\.name) == ["RSR", "ECR"])
+        #expect(spans[1].offset == 0x10)
+        #expect(spans[1].byteCount == 4)
+        #expect(spans[1].registers.map(\.name) == ["LOW16", "FULL32", "HIGH16"])
+
+        // When extending an overlapping register would exceed maximumBytes, start a new span.
+        let split = PeripheralAccess.spans(for: peripheral, maximumBytes: 2)
+        #expect(split.map(\.offset) == [0x04, 0x10, 0x10])
+        #expect(split[0].registers.map(\.name) == ["RSR", "ECR"])
+        #expect(split[1].registers.map(\.name) == ["LOW16"])
+        #expect(split[2].registers.map(\.name) == ["FULL32", "HIGH16"])
+
+        let memory = FakeTargetMemory()
+        memory.store(0x0000_000F, at: 0x4000_0004)
+        memory.store(0x1234_5678, at: 0x4000_0010)
+        let readings = await PeripheralAccess.read(peripheral, from: memory)
+        #expect(readings["RSR"] == .value(0x0000_000F))
+        #expect(readings["ECR"] == .value(0x0000_000F))
+        #expect(readings["LOW16"] == .value(0x5678))
+        #expect(readings["FULL32"] == .value(0x1234_5678))
+        #expect(readings["HIGH16"] == .value(0x1234))
+        #expect(memory.reads.count == 2)
+    }
+
+    @Test func shippedSVDAlternateRegistersInUART0AndEPI0AreAllRead() async throws {
+        let device = try SVDParser.parse(contentsOf: SVDDevice.bundledFile())
+        let memory = FakeTargetMemory()
+
+        let uart0 = try #require(device.peripheral(named: "UART0"))
+        memory.store(0x0000_0005, at: uart0.baseAddress + 0x04)
+        let uartReadings = await PeripheralAccess.read(uart0, from: memory)
+        #expect(uartReadings["RSR"] == .value(5))
+        #expect(uartReadings["ECR"] == .value(5))
+
+        let epi0 = try #require(device.peripheral(named: "EPI0"))
+        memory.store(0xABCD_1234, at: epi0.baseAddress + 0x10)
+        let epiReadings = await PeripheralAccess.read(epi0, from: memory)
+        for name in ["HB16CFG", "GPCFG", "SDRAMCFG", "HB8CFG"] {
+            #expect(epiReadings[name] == .value(0xABCD_1234), "Expected \(name) to be read")
+        }
+    }
+
+    @Test func readStopsImmediatelyWhenCancelled() async {
+        @MainActor
+        final class CancellingMemory: TargetMemory {
+            var readCount = 0
+            var onRead: (() -> Void)?
+
+            func readMemoryOrThrow(at address: UInt64, count: Int) async throws -> [UInt8] {
+                readCount += 1
+                onRead?()
+                throw DebugError.refused("fault")
+            }
+
+            func writeMemory(at address: UInt64, bytes: [UInt8]) async throws {}
+        }
+
+        let peripheral = SVDPeripheral(
+            name: "BIG", description: nil, groupName: nil, baseAddress: 0x4000_0000,
+            registers: [
+                register("R0", 0x00),
+                register("R1", 0x04),
+                register("R2", 0x08),
+                register("R3", 0x20),
+                register("R4", 0x40)
+            ]
+        )
+        let memory = CancellingMemory()
+        var task: Task<[String: RegisterReading], Never>?
+        memory.onRead = { task?.cancel() }
+        task = Task { await PeripheralAccess.read(peripheral, from: memory) }
+        _ = await task?.value
+
+        // Cancelled during the first span read: must not fire fallback or later span reads.
+        #expect(memory.readCount == 1)
+    }
+
+    @Test func clockGateRejectsNegativeAndOutOfRangeBitNumbers() {
+        func peripheral(named name: String) -> SVDPeripheral {
+            SVDPeripheral(name: name, description: nil, groupName: nil, baseAddress: 0, registers: [])
+        }
+        #expect(
+            PeripheralClock.gate(for: peripheral(named: "UART0"))
+                == PeripheralClock.Gate(readyRegister: "PRUART", bit: 0)
+        )
+        #expect(
+            PeripheralClock.gate(for: peripheral(named: "UART63"))
+                == PeripheralClock.Gate(readyRegister: "PRUART", bit: 63)
+        )
+        #expect(PeripheralClock.gate(for: peripheral(named: "UART-1")) == nil)
+        #expect(PeripheralClock.gate(for: peripheral(named: "UART64")) == nil)
+        #expect(PeripheralClock.gate(for: peripheral(named: "UART100")) == nil)
     }
 }

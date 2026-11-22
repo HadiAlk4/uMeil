@@ -91,11 +91,16 @@ final class WatchViewController: NSViewController, NSTableViewDataSource, NSTabl
         onExpressionsChanged?(expressions)
     }
 
-    /// Updates the displayed values for the watched expressions.
-    func updateValues(_ valuesByExpression: [String: String]) {
+    /// Updates the displayed values for the watched expressions. When `evaluated`
+    /// is provided, expressions not in `evaluated` (and absent from
+    /// `valuesByExpression`) keep their current placeholder until evaluated.
+    func updateValues(_ valuesByExpression: [String: String], evaluated: Set<String>? = nil) {
         loadViewIfNeeded()
         for idx in entries.indices {
             let expr = entries[idx].expression
+            if let evaluated, !evaluated.contains(expr), valuesByExpression[expr] == nil {
+                continue
+            }
             let newValue = valuesByExpression[expr] ?? "<unavailable>"
             let oldValue = previousValues[expr]
             entries[idx].value = newValue
@@ -104,6 +109,19 @@ final class WatchViewController: NSViewController, NSTableViewDataSource, NSTabl
         }
         updatedAt = Date()
         tableView.reloadData()
+    }
+
+    /// Clears stale displayed values and change history while keeping the
+    /// user's watched expressions.
+    func clearValues() {
+        previousValues = [:]
+        for idx in entries.indices {
+            entries[idx].value = "—"
+            entries[idx].isChanged = false
+        }
+        if isViewLoaded {
+            tableView.reloadData()
+        }
     }
 
     @objc private func addSubmitted(_ sender: Any?) {
@@ -131,22 +149,41 @@ final class WatchViewController: NSViewController, NSTableViewDataSource, NSTabl
         guard entries.indices.contains(row), let identifier = tableColumn?.identifier else { return nil }
         let entry = entries[row]
         let isValue = identifier.rawValue == "value"
-        let label = NSTextField(labelWithString: isValue ? entry.value : entry.expression)
+        let cell: NSTableCellView
+        let label: NSTextField
+        if let reused = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView,
+           let existingLabel = reused.textField {
+            cell = reused
+            label = existingLabel
+        } else {
+            let createdLabel = NSTextField(labelWithString: "")
+            createdLabel.lineBreakMode = .byTruncatingTail
+            createdLabel.translatesAutoresizingMaskIntoConstraints = false
+            let createdCell = NSTableCellView()
+            createdCell.identifier = identifier
+            createdCell.textField = createdLabel
+            createdCell.addSubview(createdLabel)
+            NSLayoutConstraint.activate([
+                createdLabel.leadingAnchor.constraint(equalTo: createdCell.leadingAnchor, constant: 2),
+                createdLabel.trailingAnchor.constraint(equalTo: createdCell.trailingAnchor, constant: -2),
+                createdLabel.centerYAnchor.constraint(equalTo: createdCell.centerYAnchor)
+            ])
+            cell = createdCell
+            label = createdLabel
+        }
+
+        label.stringValue = isValue ? entry.value : entry.expression
         label.font = DebugTableStyle.font
         label.lineBreakMode = .byTruncatingTail
+        label.layer?.removeAnimation(forKey: "changedFlash")
+        label.layer?.backgroundColor = NSColor.clear.cgColor
+        label.drawsBackground = false
+        label.backgroundColor = .clear
         if isValue && entry.isChanged {
             DebugTableStyle.markChanged(label, flash: DebugTableStyle.shouldFlash(since: updatedAt))
+        } else {
+            label.textColor = .labelColor
         }
-        let cell = NSTableCellView()
-        cell.identifier = identifier
-        cell.textField = label
-        label.translatesAutoresizingMaskIntoConstraints = false
-        cell.addSubview(label)
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
-            label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -2),
-            label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-        ])
         return cell
     }
 }

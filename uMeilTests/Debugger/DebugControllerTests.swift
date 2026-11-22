@@ -70,16 +70,16 @@ func waitUntil(
 
 @MainActor
 struct DebugControllerTests {
-    private let mainC = URL(filePath: "/tmp/Blinky/src/main.c")
+    let mainC = URL(filePath: "/tmp/Blinky/src/main.c")
 
-    private func makeController(_ gdb: FakeDebugger) -> DebugController {
+    func makeController(_ gdb: any DebuggerConnection) -> DebugController {
         let controller = DebugController()
         controller.connect = { _ in gdb }
         return controller
     }
 
     /// A session that has started and stopped at `main`.
-    private func startedAtMain(_ gdb: FakeDebugger) async throws -> DebugController {
+    func startedAtMain(_ gdb: FakeDebugger) async throws -> DebugController {
         let controller = makeController(gdb)
         try await controller.start(FakeBlinky.plan)
         gdb.print(FakeBlinky.stop(atLine: 21, of: mainC, reason: "breakpoint-hit"))

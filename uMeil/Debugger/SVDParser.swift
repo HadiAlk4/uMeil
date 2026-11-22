@@ -231,7 +231,8 @@ enum SVDParser {
         if let range = element.childText("bitRange") {
             // "[msb:lsb]"
             let parts = range.trimmingCharacters(in: CharacterSet(charactersIn: "[] "))
-                .split(separator: ":").compactMap { Int($0) }
+                .split(separator: ":")
+                .compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
             if parts.count == 2,
                (0..<64).contains(parts[0]),
                (0..<64).contains(parts[1]),
@@ -268,40 +269,46 @@ extension SVDParser {
         }
     }
 
-    /// `dimIndex` is a list (`A,B,C`), a range (`0-7`), or absent (counting from 0).
+    /// `dimIndex` is a list (`A,B,C`), a range (`0-7` or `A-C`), a single
+    /// token when `count == 1`, or absent (counting from 0). Always returns
+    /// exactly `count` indices (capped at `maximumDimCount`).
     private static func dimIndices(_ text: String?, count: Int) -> [String] {
         let cappedCount = min(max(count, 0), maximumDimCount)
+        guard cappedCount > 0 else { return [] }
         guard let text = text?.trimmingCharacters(in: .whitespaces), !text.isEmpty else {
             return (0..<cappedCount).map(String.init)
         }
         if text.contains(",") {
-            return text.split(separator: ",", maxSplits: maximumDimCount)
-                .prefix(maximumDimCount)
+            let items = text.split(separator: ",", maxSplits: cappedCount)
                 .map { $0.trimmingCharacters(in: .whitespaces) }
+            return items.count >= cappedCount
+                ? Array(items.prefix(cappedCount))
+                : (0..<cappedCount).map(String.init)
         }
-        let bounds = text.split(separator: "-")
-        if bounds.count == 2, let first = Int(bounds[0]), let last = Int(bounds[1]), last >= first {
-            var result: [String] = []
-            var current = first
-            while result.count < maximumDimCount {
-                result.append(String(current))
-                if current == last { break }
-                current += 1
+        let bounds = text.split(separator: "-", omittingEmptySubsequences: false)
+        if bounds.count == 2 {
+            let start = bounds[0].trimmingCharacters(in: .whitespaces)
+            let end = bounds[1].trimmingCharacters(in: .whitespaces)
+            if let first = Int(start), let last = Int(end), first >= 0, last >= first {
+                let available = UInt64(last - first)
+                return available >= UInt64(cappedCount - 1)
+                    ? (0..<cappedCount).map { String(first + $0) }
+                    : (0..<cappedCount).map(String.init)
             }
-            return result
-        }
-        if bounds.count == 2, let first = bounds[0].unicodeScalars.first, let last = bounds[1].unicodeScalars.first,
-           bounds[0].count == 1, bounds[1].count == 1, last.value >= first.value {
-            var result: [String] = []
-            var current = first.value
-            while result.count < maximumDimCount {
-                if let scalar = Unicode.Scalar(current) {
-                    result.append(String(Character(scalar)))
+            if start.unicodeScalars.count == 1, end.unicodeScalars.count == 1,
+               let first = start.unicodeScalars.first, let last = end.unicodeScalars.first,
+               last.value >= first.value {
+                if UInt64(last.value - first.value) >= UInt64(cappedCount - 1) {
+                    let scalars = (0..<cappedCount).compactMap { Unicode.Scalar(first.value + UInt32($0)) }
+                    if scalars.count == cappedCount {
+                        return scalars.map { String(Character($0)) }
+                    }
                 }
-                if current == last.value { break }
-                current += 1
+                return (0..<cappedCount).map(String.init)
             }
-            return result
+        }
+        if cappedCount == 1 {
+            return [text]
         }
         return (0..<cappedCount).map(String.init)
     }

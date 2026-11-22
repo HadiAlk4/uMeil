@@ -216,6 +216,7 @@ struct SVDParserTests {
     }
 }
 
+// swiftlint:disable file_length
 extension SVDParserTests {
     // MARK: - Hardening
 
@@ -343,5 +344,88 @@ extension SVDParserTests {
         #expect(wideTop.mask == 0xF000_0000_0000_0000)
         #expect(wideTop.value(in: 0xA000_0000_0000_0000) == 0xA)
         #expect(wideTop.inserting(0xB, into: 0x1234) == 0xB000_0000_0000_1234)
+    }
+
+    // MARK: - Edge cases
+
+    @Test func rejectsNegativeBitRangeWithoutTrapping() throws {
+        let xml = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <device schemaVersion="1.1">
+          <name>BADBITS</name>
+          <peripherals>
+            <peripheral>
+              <name>P</name>
+              <baseAddress>0x40000000</baseAddress>
+              <registers>
+                <register>
+                  <name>CTRL</name>
+                  <addressOffset>0x0</addressOffset>
+                  <fields>
+                    <field><name>NEG</name><bitRange>[3:-1]</bitRange></field>
+                    <field><name>BOTHNEG</name><bitRange>[-1:-2]</bitRange></field>
+                    <field><name>OK</name><bitRange>[7:4]</bitRange></field>
+                  </fields>
+                </register>
+              </registers>
+            </peripheral>
+          </peripherals>
+        </device>
+        """
+        let device = try SVDParser.parse(Data(xml.utf8))
+        let ctrl = try #require(device.peripheral(named: "P")?.register(named: "CTRL"))
+        #expect(ctrl.fields.map(\.name) == ["OK"])
+        #expect(ctrl.fields.first?.mask == 0xF0)
+    }
+
+    @Test func dimIndexPreservesSingleLabelAndAlwaysMatchesDimCount() throws {
+        let xml = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <device schemaVersion="1.1">
+          <name>DIMS</name>
+          <peripherals>
+            <peripheral>
+              <name>P</name>
+              <baseAddress>0x40000000</baseAddress>
+              <registers>
+                <register>
+                  <name>SINGLE_%s</name>
+                  <addressOffset>0x0</addressOffset>
+                  <dim>1</dim><dimIncrement>4</dimIncrement><dimIndex>A</dimIndex>
+                </register>
+                <register>
+                  <name>LONG_%s</name>
+                  <addressOffset>0x10</addressOffset>
+                  <dim>2</dim><dimIncrement>4</dimIncrement><dimIndex>A,B,C,D</dimIndex>
+                </register>
+                <register>
+                  <name>SHORT_%s</name>
+                  <addressOffset>0x20</addressOffset>
+                  <dim>3</dim><dimIncrement>4</dimIncrement><dimIndex>X,Y</dimIndex>
+                </register>
+                <register>
+                  <name>RANGE_%s</name>
+                  <addressOffset>0x30</addressOffset>
+                  <dim>2</dim><dimIncrement>4</dimIncrement><dimIndex>1-5</dimIndex>
+                </register>
+                <register>
+                  <name>MISMATCH_%s</name>
+                  <addressOffset>0x40</addressOffset>
+                  <dim>2</dim><dimIncrement>4</dimIncrement><dimIndex>A</dimIndex>
+                </register>
+              </registers>
+            </peripheral>
+          </peripherals>
+        </device>
+        """
+        let device = try SVDParser.parse(Data(xml.utf8))
+        let names = try #require(device.peripheral(named: "P")).registers.map(\.name)
+        #expect(names == [
+            "SINGLE_A",
+            "LONG_A", "LONG_B",
+            "SHORT_0", "SHORT_1", "SHORT_2",
+            "RANGE_1", "RANGE_2",
+            "MISMATCH_0", "MISMATCH_1"
+        ])
     }
 }
