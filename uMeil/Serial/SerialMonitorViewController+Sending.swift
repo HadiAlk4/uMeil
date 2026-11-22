@@ -26,9 +26,16 @@ extension SerialMonitorViewController {
     /// Returns false, after showing why, if it could not be sent.
     @discardableResult
     func send(_ line: String) -> Bool {
+        write(Data((line + lineEnding.text).utf8))
+    }
+
+    /// Sends `data` to the board as it is. Returns false, after showing
+    /// why, if it could not be sent.
+    @discardableResult
+    func write(_ data: Data) -> Bool {
         guard let port else { return false }
         do {
-            try port.write(Data((line + lineEnding.text).utf8))
+            try port.write(data)
             return true
         } catch {
             show(status: error.localizedDescription, isError: true)
