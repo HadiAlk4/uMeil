@@ -36,6 +36,8 @@ enum MainMenu {
             menu.addItem(checkForUpdates)
         }
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Settings…", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Hide \(appName)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
 
         let hideOthers = menu.addItem(
@@ -127,6 +129,11 @@ enum MainMenu {
             keyEquivalent: "["
         )
         previousTab.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(.separator())
+        // For projecting in class. The terminal and the debugger follow along.
+        menu.addItem(withTitle: "Bigger Font", action: #selector(AppDelegate.makeFontBigger(_:)), keyEquivalent: "+")
+        menu.addItem(withTitle: "Smaller Font", action: #selector(AppDelegate.makeFontSmaller(_:)), keyEquivalent: "-")
+        menu.addItem(withTitle: "Actual Size", action: #selector(AppDelegate.resetFontSize(_:)), keyEquivalent: "0")
         return menu
     }
 

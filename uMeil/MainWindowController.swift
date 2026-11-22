@@ -108,6 +108,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         window.toolbarStyle = .unified
         startWatchingForBoard()
         setUpDebugging()
+        observeAppearanceSettings()
         updateTitle()
     }
 

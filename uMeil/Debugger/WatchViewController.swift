@@ -3,6 +3,9 @@ import AppKit
 /// The `Watch 1` panel: lets users add and remove C expressions to monitor
 /// across stops, highlighting values that changed.
 final class WatchViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
+    /// Row height at the standard font size.
+    static let baseRowHeight: CGFloat = 19
+
     struct Entry: Equatable {
         var expression: String
         var value: String
@@ -60,7 +63,7 @@ final class WatchViewController: NSViewController, NSTableViewDataSource, NSTabl
         tableView.dataSource = self
         tableView.delegate = self
         tableView.usesAlternatingRowBackgroundColors = true
-        tableView.rowHeight = 19
+        tableView.rowHeight = DebugTableStyle.rowHeight(base: Self.baseRowHeight)
 
         let scrollView = NSScrollView()
         scrollView.documentView = tableView

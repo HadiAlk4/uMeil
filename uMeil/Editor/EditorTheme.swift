@@ -1,21 +1,32 @@
 import AppKit
 
-/// Fonts and spacing for the code editor.
+/// Fonts and spacing for the code editor. The font is the one picked in
+/// Settings, at the size ⌘+ and ⌘− last left it.
 @MainActor
 enum EditorTheme {
-    static let font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-    static let lineNumberFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+    static var font: NSFont { AppearanceSettings.shared.font }
+
+    /// Two points smaller than the code, so the gutter stays narrow.
+    static var lineNumberFont: NSFont {
+        .monospacedDigitSystemFont(ofSize: max(font.pointSize - 2, 8), weight: .regular)
+    }
 
     /// How many spaces wide a tab character is drawn.
     static let tabWidth = 4
 
-    static let paragraphStyle: NSParagraphStyle = {
+    /// Tab stops a fixed number of spaces apart in the current font.
+    static var paragraphStyle: NSParagraphStyle {
+        let current = font
+        if let cached = paragraphStyleCache, cached.font == current { return cached.style }
         let style = NSMutableParagraphStyle()
-        let spaceWidth = (" " as NSString).size(withAttributes: [.font: font]).width
+        let spaceWidth = (" " as NSString).size(withAttributes: [.font: current]).width
         style.tabStops = []
         style.defaultTabInterval = spaceWidth * CGFloat(tabWidth)
+        paragraphStyleCache = (current, style)
         return style
-    }()
+    }
+
+    private static var paragraphStyleCache: (font: NSFont, style: NSParagraphStyle)?
 
     /// The color for each kind of highlighted code. Each color has a light
     /// and a dark version, picked to stay readable and calm on the editor's

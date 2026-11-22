@@ -57,6 +57,13 @@ final class LineNumberRulerView: NSRulerView {
         fatalError("LineNumberRulerView is created in code, not from a nib")
     }
 
+    /// Redraws the numbers in the current font, widening or narrowing the
+    /// gutter to fit them.
+    func fontDidChange() {
+        updateThickness()
+        needsDisplay = true
+    }
+
     /// Makes the gutter wide enough for the largest line number (at least three digits).
     private func updateThickness() {
         let digits = max(String(lineIndex.lineCount).count, 3)

@@ -8,6 +8,7 @@ final class CommandViewController: NSViewController {
 
     let textView = NSTextView()
     let commandField = NSTextField()
+    private let prompt = NSTextField(labelWithString: "(gdb)")
     /// Shown over the log until the first line of output arrives.
     let emptyState = EmptyStateView()
 
@@ -41,7 +42,6 @@ final class CommandViewController: NSViewController {
         scrollView.hasVerticalScroller = true
         scrollView.borderType = .noBorder
 
-        let prompt = NSTextField(labelWithString: "(gdb)")
         prompt.font = EditorTheme.font
         prompt.textColor = .secondaryLabelColor
 
@@ -106,6 +106,19 @@ final class CommandViewController: NSViewController {
         storage.endEditing()
         updateEmptyState()
         textView.scrollRangeToVisible(NSRange(location: storage.length, length: 0))
+    }
+
+    /// Redraws the log, the prompt and the command field in the editor's
+    /// current font.
+    func applyFont() {
+        loadViewIfNeeded()
+        let font = EditorTheme.font
+        textView.font = font
+        if let storage = textView.textStorage, storage.length > 0 {
+            storage.addAttribute(.font, value: font, range: NSRange(location: 0, length: storage.length))
+        }
+        prompt.font = font
+        commandField.font = font
     }
 
     func clear() {

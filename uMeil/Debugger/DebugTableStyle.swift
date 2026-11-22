@@ -7,7 +7,23 @@ import QuartzCore
 @MainActor
 enum DebugTableStyle {
     /// One monospaced font for names and values alike, so columns line up.
-    static let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    /// The editor's font, a point smaller.
+    static var font: NSFont {
+        let settings = AppearanceSettings.shared
+        return settings.font(ofSize: max(settings.fontSize - 1, 8))
+    }
+
+    /// `base` is a table's row height at the standard size; rows grow and
+    /// shrink with the font from there.
+    static func rowHeight(base: CGFloat) -> CGFloat {
+        max(base + AppearanceSettings.shared.fontSize - AppearanceSettings.defaultSize, 14)
+    }
+
+    /// Redraws `tableView` in the current font, with rows to fit it.
+    static func applyFont(to tableView: NSTableView, base: CGFloat) {
+        tableView.rowHeight = rowHeight(base: base)
+        tableView.reloadData()
+    }
 
     /// Values that changed since the last stop are red, as Keil shows them.
     static let changedColor = NSColor.systemRed

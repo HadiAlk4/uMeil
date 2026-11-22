@@ -5,6 +5,9 @@ import AppKit
 /// little-endian byte ordering and ASCII decoding. While the program is
 /// stopped, typing over a row's bytes writes them to the chip.
 final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
+    /// Row height at the standard font size.
+    static let baseRowHeight: CGFloat = 19
+
     let addressField = NSTextField()
     let lengthPopUp = NSPopUpButton()
     let messageLabel = NSTextField(labelWithString: "")
@@ -90,7 +93,7 @@ final class MemoryViewController: NSViewController, NSTableViewDataSource, NSTab
         tableView.dataSource = self
         tableView.delegate = self
         tableView.usesAlternatingRowBackgroundColors = true
-        tableView.rowHeight = 19
+        tableView.rowHeight = DebugTableStyle.rowHeight(base: Self.baseRowHeight)
 
         let scrollView = NSScrollView()
         scrollView.documentView = tableView
