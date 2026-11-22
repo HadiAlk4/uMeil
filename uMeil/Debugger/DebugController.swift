@@ -70,8 +70,6 @@ final class DebugController {
     /// Lines with code, by file, for the program being debugged.
     private var executableLines: [URL: Set<Int>] = [:]
     private(set) var session: GDBSession?
-    /// Underlying connection for the active session, kept for synchronous termination on quit.
-    private var connection: (any DebuggerConnection)?
     /// Consumes events for the active session until `.ended`.
     private var eventTask: Task<Void, Never>?
     /// Coalesces concurrent `stop()` calls so GDB is only resumed and exited once.
@@ -85,7 +83,7 @@ final class DebugController {
     var isActive: Bool { state != .idle }
 
     var isStopped: Bool {
-        if case .stopped = state { true } else { false }
+        if case .stopped = state, stopTask == nil { true } else { false }
     }
 
     // MARK: - Starting and stopping
@@ -109,7 +107,6 @@ final class DebugController {
             throw error
         }
         let session = GDBSession(connection: connection)
-        self.connection = connection
         self.session = session
         let task = Task { [weak self] in
             for await event in session.events {
@@ -130,10 +127,12 @@ final class DebugController {
         } catch {
             await session.end()
             await task.value
+            let sessionLog = await session.log
+            let combinedLog = log.isEmpty ? sessionLog : (sessionLog.isEmpty ? log : log + "\n" + sessionLog)
             if self.session === session {
                 cleanupSession()
             }
-            throw Self.startFailure(error, log: log)
+            throw Self.startFailure(error, log: combinedLog)
         }
         if self.session === session, state == .starting {
             lastStopReason = nil
@@ -148,10 +147,10 @@ final class DebugController {
             return
         }
         guard let session else { return }
+        let wasStopped = isStopped
         let taskToDrain = eventTask
-        let task = Task { [weak self] in
-            guard let self else { return }
-            if self.isStopped {
+        let task = Task {
+            if wasStopped {
                 // GDB lets go of a running chip without stopping it.
                 try? await session.resume()
             }
@@ -188,15 +187,14 @@ final class DebugController {
     /// Synchronously kills the underlying debugger process/connection and resets
     /// state to idle, used on app termination when an async stop cannot run or times out.
     func terminateImmediately() {
-        let activeConnection = connection
+        let activeSession = session
         eventTask?.cancel()
         cleanupSession()
-        activeConnection?.terminate()
+        activeSession?.terminateImmediately()
     }
 
     private func cleanupSession() {
         session = nil
-        connection = nil
         eventTask = nil
         inserted = [:]
         executableLines = [:]
@@ -240,28 +238,23 @@ final class DebugController {
         logCharacterCount += text.count
 
         if logCharacterCount > Self.maximumLogLength {
-            let actualCount = log.count
-            let actualExcess = actualCount - Self.maximumLogLength
+            let actualExcess = log.count - Self.maximumLogLength
             if actualExcess > 0 {
-                let targetIndex = log.index(log.startIndex, offsetBy: actualExcess - 1)
-                let cutIndex: String.Index
-                if let newline = log[targetIndex...].firstIndex(where: \.isNewline) {
-                    let lineEnd = log.index(after: newline)
-                    cutIndex = lineEnd < log.endIndex ? lineEnd : log.index(after: targetIndex)
+                let target = log.index(log.startIndex, offsetBy: actualExcess - 1)
+                let cut: String.Index
+                if let newline = log[target...].firstIndex(where: \.isNewline),
+                   log.index(after: newline) < log.endIndex {
+                    cut = log.index(after: newline)
                 } else {
-                    cutIndex = log.index(after: targetIndex)
+                    cut = log.index(after: target)
                 }
-                log.removeSubrange(..<cutIndex)
+                log.removeSubrange(..<cut)
             }
             logCharacterCount = log.count
         }
-
         if log.utf8.count > Self.maxLogBytes {
-            let excess = log.utf8.count - Self.maxLogBytes
-            var cut = log.utf8.index(log.utf8.startIndex, offsetBy: excess)
-            while cut < log.endIndex, cut.samePosition(in: log) == nil {
-                cut = log.utf8.index(after: cut)
-            }
+            var cut = log.utf8.index(log.utf8.startIndex, offsetBy: log.utf8.count - Self.maxLogBytes)
+            while cut < log.endIndex, cut.samePosition(in: log) == nil { cut = log.utf8.index(after: cut) }
             log.removeSubrange(..<cut)
             logCharacterCount = log.count
         }
@@ -277,10 +270,7 @@ extension DebugController {
     func stepOver() async throws { try await session?.stepOver() }
     func stepInto() async throws { try await session?.stepInto() }
     func stepOut() async throws { try await session?.stepOut() }
-
-    func run(to location: SourceLine) async throws {
-        try await session?.run(toLine: location.line, of: location.file)
-    }
+    func run(to location: SourceLine) async throws { try await session?.run(toLine: location.line, of: location.file) }
 
     /// Resets the chip and leaves it stopped at its first instruction.
     func reset() async throws {
@@ -304,52 +294,37 @@ extension DebugController {
         let hadBreakpoints = !breakpoints.isEmpty
         breakpoints.removeAll()
         inserted.removeAll()
-        if hadBreakpoints {
-            onBreakpointsChange?()
-        }
+        if hadBreakpoints { onBreakpointsChange?() }
     }
 
     /// Adds a breakpoint at `location`, or removes the one that is there.
     ///
     /// During a session GDB may put a new breakpoint on a later line, the
-    /// next one that has code. Returns false, changing nothing, while the
-    /// program is running: GDB cannot change breakpoints then.
+    /// next one that has code. Returns false, changing nothing, while running.
     @discardableResult
     func toggleBreakpoint(at location: SourceLine) async -> Bool {
-        if session == nil, breakpointQueueTail == nil {
-            return toggleBreakpointOffline(at: location)
-        }
+        if session == nil, breakpointQueueTail == nil { return toggleBreakpointOffline(at: location) }
         let previous = breakpointQueueTail
         let operation = Task { [weak self] () -> Bool in
             await previous?.value
-            guard let self else { return false }
-            return await self.performToggleBreakpoint(at: location)
+            return await self?.performToggleBreakpoint(at: location) ?? false
         }
-        let marker = Task<Void, Never> {
-            _ = await operation.value
-        }
+        let marker = Task<Void, Never> { _ = await operation.value }
         breakpointQueueTail = marker
         let result = await operation.value
-        if breakpointQueueTail == marker {
-            breakpointQueueTail = nil
-        }
+        if breakpointQueueTail == marker { breakpointQueueTail = nil }
         return result
     }
 
     private func toggleBreakpointOffline(at location: SourceLine) -> Bool {
-        if breakpoints.remove(location) == nil {
-            breakpoints.insert(location)
-        }
+        if breakpoints.remove(location) == nil { breakpoints.insert(location) }
         onBreakpointsChange?()
         return true
     }
 
     private func performToggleBreakpoint(at location: SourceLine) async -> Bool {
-        guard let session else {
-            return toggleBreakpointOffline(at: location)
-        }
+        guard let session else { return toggleBreakpointOffline(at: location) }
         guard isStopped else { return false }
-
         if breakpoints.remove(location) != nil {
             if let breakpoint = inserted.removeValue(forKey: location) {
                 try? await session.deleteBreakpoint(breakpoint)
@@ -369,9 +344,7 @@ extension DebugController {
             guard self.session === session, breakpointEpoch == startEpoch else { return }
             await insert(location, into: session)
         }
-        if self.session === session, breakpointEpoch == startEpoch {
-            onBreakpointsChange?()
-        }
+        if self.session === session, breakpointEpoch == startEpoch { onBreakpointsChange?() }
     }
 
     /// Sets one breakpoint in GDB and records it where GDB put it. A place
@@ -380,9 +353,7 @@ extension DebugController {
     private func insert(_ location: SourceLine, into session: GDBSession) async {
         let startEpoch = breakpointEpoch
         guard let breakpoint = try? await session.insertBreakpoint(line: location.line, of: location.file) else {
-            if self.session === session, breakpointEpoch == startEpoch {
-                breakpoints.insert(location)
-            }
+            if self.session === session, breakpointEpoch == startEpoch { breakpoints.insert(location) }
             return
         }
         guard self.session === session, breakpointEpoch == startEpoch else { return }
@@ -403,21 +374,15 @@ extension DebugController {
     func executableLines(in file: URL) async -> Set<Int> {
         let file = SourceLine(file: file, line: 0).file
         if let known = executableLines[file] { return known }
-        guard let session, let lines = try? await session.executableLines(of: file) else { return [] }
-        if self.session === session {
-            executableLines[file] = lines
-            return lines
-        }
-        return []
+        guard let session, let lines = try? await session.executableLines(of: file), self.session === session
+        else { return [] }
+        executableLines[file] = lines
+        return lines
     }
 }
 
 @MainActor
 private final class StopCompletion {
     private var hasRun = false
-    func run(_ body: () -> Void) {
-        guard !hasRun else { return }
-        hasRun = true
-        body()
-    }
+    func run(_ body: () -> Void) { guard !hasRun else { return }; hasRun = true; body() }
 }

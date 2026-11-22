@@ -236,36 +236,9 @@ enum DebugValueFormatter {
     }
 
     /// Parses an address returned by GDB's `-data-evaluate-expression`, including
-    /// uppercase `0X`, optional symbol suffixes (`0x20a <main>`), and type-cast
-    /// prefixes such as `"(int (*)[4]) 0x20000258"` or `"{int (void)} 0x20a <main>"`.
+    /// uppercase `0X`, optional symbol suffixes (`0x20a <main>`), type-cast
+    /// prefixes such as `"(int (*)[4]) 0x20000258"`, or decimal integers.
     static func parseEvaluatedAddress(_ text: String) -> UInt64? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)[...]
-        guard !trimmed.isEmpty, let rest = stripCastPrefix(trimmed), !rest.isEmpty else { return nil }
-        if rest.hasPrefix("0x") || rest.hasPrefix("0X") {
-            let afterPrefix = rest.dropFirst(2)
-            let digits = afterPrefix.prefix { $0.isHexDigit }
-            guard !digits.isEmpty else { return nil }
-            let trailing = afterPrefix.dropFirst(digits.count)
-            guard trailing.isEmpty || trailing.first?.isWhitespace == true else { return nil }
-            return UInt64(digits, radix: 16)
-        }
-        return UInt64(rest)
-    }
-
-    private static func stripCastPrefix(_ text: Substring) -> Substring? {
-        guard let open = text.first, open == "(" || open == "{" else { return text }
-        let close: Character = open == "(" ? ")" : "}"
-        var depth = 0
-        for idx in text.indices {
-            if text[idx] == open {
-                depth += 1
-            } else if text[idx] == close {
-                depth -= 1
-                if depth == 0 {
-                    return text[text.index(after: idx)...].drop(while: \.isWhitespace)
-                }
-            }
-        }
-        return nil
+        MIValue.address(text) ?? parseAddress(text)
     }
 }

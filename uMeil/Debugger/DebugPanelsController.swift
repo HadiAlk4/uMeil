@@ -192,11 +192,10 @@ final class DebugPanelsController {
         if let pcValue, debugger.isStopped, !Task.isCancelled {
             let instructions = await debugger.disassemble(from: pcValue, count: 64)
             guard debugger.isStopped, !Task.isCancelled else { return }
-            let linesMap = Self.sourceLinesMap(from: sourceText)
-            disassembly.update(
+            updateDisassembly(
                 instructions: instructions,
                 programCounter: pcValue,
-                sourceLines: linesMap,
+                sourceText: sourceText,
                 sourceFile: sourceFile
             )
         }
@@ -204,6 +203,23 @@ final class DebugPanelsController {
         await refreshWatches(using: debugger)
         await refreshMemory(using: debugger)
         await refreshPeripheral(using: debugger)
+    }
+
+    /// Updates the `Disassembly` panel with `instructions` and interleaved
+    /// source lines from `sourceText` when `inst.file` matches `sourceFile`.
+    func updateDisassembly(
+        instructions: [DisassembledInstruction],
+        programCounter: UInt64?,
+        sourceText: String?,
+        sourceFile: URL? = nil
+    ) {
+        let linesMap = Self.sourceLinesMap(from: sourceText)
+        disassembly.update(
+            instructions: instructions,
+            programCounter: programCounter,
+            sourceLines: linesMap,
+            sourceFile: sourceFile
+        )
     }
 
     private static func sourceLinesMap(from text: String?) -> [Int: String] {
@@ -349,7 +365,7 @@ extension DebugPanelsController {
         if address == nil {
             if let evaluated = await debugger.evaluate(query) {
                 guard debugger.isStopped, !Task.isCancelled else { return }
-                address = MIValue.address(evaluated) ?? DebugValueFormatter.parseEvaluatedAddress(evaluated)
+                address = MIValue.address(evaluated) ?? DebugValueFormatter.parseAddress(evaluated)
             } else {
                 guard debugger.isStopped, !Task.isCancelled else { return }
             }

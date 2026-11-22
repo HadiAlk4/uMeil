@@ -19,6 +19,7 @@ actor GDBSession {
     private var nextToken = 1
     private var waiting: [Int: CheckedContinuation<MIValue, any Error>] = [:]
     private var hasEnded = false
+    private var isEnding = false
     /// The thread reported by the most recent `*stopped` event.
     private(set) var currentThreadId = "1"
     /// Bounded session output (GDB streams + OpenOCD log), updated synchronously
@@ -66,7 +67,7 @@ actor GDBSession {
         }) else {
             throw DebugError.refused("Invalid debugger command.")
         }
-        guard !hasEnded else { throw DebugError.sessionEnded }
+        guard !hasEnded, !isEnding else { throw DebugError.sessionEnded }
         let token = nextToken
         nextToken += 1
         return try await withCheckedThrowingContinuation { continuation in
@@ -78,7 +79,10 @@ actor GDBSession {
     /// Asks GDB to quit, which also stops OpenOCD, and makes sure it does.
     func end() async {
         guard !hasEnded else { return }
-        connection.send("-gdb-exit")
+        if !isEnding {
+            isEnding = true
+            connection.send("-gdb-exit")
+        }
         // Usually GDB is gone long before this; the wait only matters if it hangs.
         for _ in 0..<20 where !hasEnded {
             try? await Task.sleep(for: .milliseconds(100))

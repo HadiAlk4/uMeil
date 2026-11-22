@@ -113,7 +113,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     /// Shows `url` in the navigator and closes whatever file was open.
     func openFolder(_ url: URL) {
         // A session and its breakpoints belong to the project they came from.
-        Task { await debugger.stop() }
+        if debugger.isActive { Task { await debugger.stop() } }
         debugger.clearBreakpoints()
         folder = url
         lastBuild = nil
@@ -136,7 +136,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
     /// File > Close Folder: back to the welcome screen.
     @objc func closeFolder(_ sender: Any?) {
         guard folder != nil, confirmDiscardingChanges() else { return }
-        Task { await debugger.stop() }
+        if debugger.isActive { Task { await debugger.stop() } }
         debugger.clearBreakpoints()
         folder = nil
         lastBuild = nil
@@ -310,7 +310,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuIt
         // GCC counts columns in bytes (`-fdiagnostics-column-unit=byte`).
         navigate(to: file, line: diagnostic.line, column: diagnostic.column, columnUnit: .utf8)
     }
-
 }
 
 // Kept out of the class body to keep it short. Same file, so the private
