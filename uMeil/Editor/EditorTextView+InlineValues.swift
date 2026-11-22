@@ -20,11 +20,11 @@ extension EditorTextView {
         let glyph = layoutManager.glyphIndexForCharacter(at: lineStart)
         // Lines do not wrap, so a line is one line fragment.
         let used = layoutManager.lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: nil)
-        var x = textContainerOrigin.x + used.maxX + Self.inlineMessageGap
+        var left = textContainerOrigin.x + used.maxX + Self.inlineMessageGap
         if let message = inlineMessages.first(where: { $0.lineStart == lineStart })?.message {
-            x += Self.capsuleWidth(for: message) + Self.inlineMessageGap
+            left += Self.capsuleWidth(for: message) + Self.inlineMessageGap
         }
-        return NSPoint(x: x, y: textContainerOrigin.y + used.minY)
+        return NSPoint(x: left, y: textContainerOrigin.y + used.minY)
     }
 
     func drawInlineAnnotations(in dirtyRect: NSRect) {

@@ -125,6 +125,24 @@ struct InlineValuesTests {
         #expect(editor.inlineValues.isEmpty)
     }
 
+    @Test func aValueGoesAfterTheLinesBuildMessageRatherThanOverIt() throws {
+        let folder = try TemporaryFolder()
+        let file = folder.url.appending(path: "main.c")
+        try source.write(to: file, atomically: true, encoding: .utf8)
+        let editor = EditorViewController()
+        editor.view.frame = NSRect(x: 0, y: 0, width: 1200, height: 600)
+        try editor.open(file)
+        let textView = try #require(editor.textView as? EditorTextView)
+        let start = try #require(editor.lineIndex.offset(ofLine: 10))
+        let alone = try #require(textView.inlineAnnotationOrigin(forLineStart: start))
+
+        let warning = BuildSummary.LineMessage(severity: .warning, text: "unused variable 'count'")
+        textView.inlineMessages = [EditorTextView.InlineMessage(lineStart: start, message: warning)]
+        let afterMessage = try #require(textView.inlineAnnotationOrigin(forLineStart: start))
+
+        #expect(afterMessage.x >= alone.x + EditorTextView.capsuleWidth(for: warning))
+    }
+
     @Test func theWindowPrintsTheStoppedFramesValuesInTheCode() async throws {
         let folder = try TemporaryFolder()
         let file = folder.url.appending(path: "main.c")
