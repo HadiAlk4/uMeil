@@ -11,6 +11,7 @@ final class SerialMonitorViewController: NSViewController {
         static let parity = "SerialMonitorParity"
         static let stopBits = "SerialMonitorStopBits"
         static let lineEnding = "SerialMonitorLineEnding"
+        static let sendsEachKey = "SerialMonitorSendsEachKey"
     }
 
     /// The most text the console keeps. Older text is dropped a line at a time.
@@ -34,10 +35,16 @@ final class SerialMonitorViewController: NSViewController {
     let lineEndingPopUp = NSPopUpButton()
     let statusLabel = NSTextField(labelWithString: "Not connected")
     let inputField = NSTextField()
-    let textView = NSTextView()
+    let textView = SerialConsoleTextView()
+    let keyModeHint = NSTextField(labelWithString: "")
     private let scrollView = NSScrollView()
     private(set) lazy var connectButton = NSButton(title: "Connect", target: self, action: #selector(toggle(_:)))
     private(set) lazy var sendButton = NSButton(title: "Send", target: self, action: #selector(sendInput(_:)))
+    private(set) lazy var sendEachKeyCheckbox = NSButton(
+        checkboxWithTitle: "Send Each Key",
+        target: self,
+        action: #selector(sendEachKeyToggled(_:))
+    )
     private lazy var clearButton = NSButton(title: "Clear", target: self, action: #selector(clear(_:)))
 
     var isConnected: Bool { port != nil }
@@ -90,7 +97,7 @@ final class SerialMonitorViewController: NSViewController {
             portPopUp, baudPopUp, dataBitsPopUp, parityPopUp, stopBitsPopUp,
             connectButton, statusLabel, NSView(), clearButton
         ])
-        let bottomBar = NSStackView(views: [inputField, lineEndingPopUp, sendButton])
+        let bottomBar = NSStackView(views: [sendEachKeyCheckbox, inputField, keyModeHint, lineEndingPopUp, sendButton])
         for bar in [topBar, bottomBar] {
             bar.orientation = .horizontal
             bar.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
@@ -101,6 +108,7 @@ final class SerialMonitorViewController: NSViewController {
         stack.spacing = 0
         view = stack
 
+        setUpKeyMode()
         refreshPorts()
         updateControls()
     }
@@ -223,7 +231,7 @@ final class SerialMonitorViewController: NSViewController {
         remember(framing)
         show(status: "Connected at \(baudRate) baud, \(framing.summary)")
         updateControls()
-        view.window?.makeFirstResponder(inputField)
+        focusInput()
     }
 
     /// Closes the port, if one is open.
@@ -255,6 +263,7 @@ final class SerialMonitorViewController: NSViewController {
         }
         inputField.isEnabled = isConnected
         sendButton.isEnabled = isConnected
+        updateKeyMode()
     }
 
     func show(status: String, isError: Bool = false) {
