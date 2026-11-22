@@ -55,7 +55,10 @@ final class WelcomeView: NSView {
     }
 
     private static func makeHeader() -> NSView {
-        let icon = NSImageView(image: NSApp.applicationIconImage ?? NSImage())
+        // Read the icon from our own asset catalog: applicationIconImage goes
+        // through the system icon cache, which can hand back the blank
+        // placeholder when several builds share the bundle ID.
+        let icon = NSImageView(image: NSImage(named: "AppIcon") ?? NSApp.applicationIconImage ?? NSImage())
         icon.imageScaling = .scaleProportionallyUpOrDown
         icon.widthAnchor.constraint(equalToConstant: 112).isActive = true
         icon.heightAnchor.constraint(equalToConstant: 112).isActive = true
