@@ -216,7 +216,6 @@ struct SVDParserTests {
     }
 }
 
-// swiftlint:disable file_length
 extension SVDParserTests {
     // MARK: - Hardening
 

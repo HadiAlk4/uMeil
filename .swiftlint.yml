@@ -10,3 +10,6 @@ line_length:
 identifier_name:
   excluded:
     - c # SourceLanguage.c, the C language
+
+file_length:
+  warning: 500
