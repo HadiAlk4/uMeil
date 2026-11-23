@@ -32,6 +32,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return front ?? windowControllers.last
     }
 
+    /// False in builds without Sparkle's key, which never check for updates.
+    var canCheckForUpdates: Bool { softwareUpdater?.isAvailable ?? false }
+
+    /// The welcome screen's update button, which has no target and so
+    /// reaches the app delegate through the responder chain.
+    @objc func checkForUpdates(_ sender: Any?) {
+        softwareUpdater?.checkForUpdates(sender)
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         let updater = SoftwareUpdater()
         softwareUpdater = updater
