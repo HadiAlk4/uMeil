@@ -127,4 +127,16 @@ extension WelcomeTests {
         controller.closeFolder(nil)
         #expect(isSidebarCollapsed(controller) == true)
     }
+
+    @Test func theUpdateButtonReachesTheAppDelegateAndHidesWithoutUpdates() throws {
+        let controller = MainWindowController(defaults: try makeDefaults())
+        let button = controller.editor.welcomeView.updateButton
+        let action = try #require(button.action)
+
+        #expect(NSApp.target(forAction: action, to: nil, from: button) is AppDelegate)
+        // Test builds have no Sparkle key, so they never check for updates.
+        let delegate = try #require(NSApp.delegate as? AppDelegate)
+        #expect(!delegate.canCheckForUpdates)
+        #expect(button.isHidden)
+    }
 }

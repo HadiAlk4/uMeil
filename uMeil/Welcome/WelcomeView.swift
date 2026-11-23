@@ -1,10 +1,11 @@
 import AppKit
 
 /// Shown in place of the editor when no folder is open: the app's icon and
-/// name, buttons to start a project, and the projects opened recently.
+/// name, buttons to start a project, the projects opened recently, and
+/// a Check for Updates… icon in the bottom left corner.
 ///
-/// The buttons send their actions up the responder chain to the window
-/// controller, like the menu items they match.
+/// The buttons send their actions up the responder chain (to the window
+/// controller, or the app delegate for updates), like the menu items they match.
 final class WelcomeView: NSView {
     /// Called with a folder chosen from the recent projects.
     var onOpenRecent: ((URL) -> Void)?
@@ -12,6 +13,15 @@ final class WelcomeView: NSView {
     private let recentStack = NSStackView()
     private let recentHeading = NSTextField(labelWithString: "Recent Projects")
     private(set) var recentFolders: [URL] = []
+    /// An icon in the bottom left, shown only in builds that can check for updates.
+    let updateButton = NSButton(
+        image: NSImage(
+            systemSymbolName: "arrow.triangle.2.circlepath",
+            accessibilityDescription: "Check for Updates…"
+        ) ?? NSImage(),
+        target: nil,
+        action: #selector(AppDelegate.checkForUpdates(_:))
+    )
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -52,6 +62,26 @@ final class WelcomeView: NSView {
             column.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -20)
         ])
         showRecent([])
+        addUpdateButton()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateButton.isHidden = !((NSApp.delegate as? AppDelegate)?.canCheckForUpdates ?? false)
+    }
+
+    private func addUpdateButton() {
+        updateButton.toolTip = "Check for Updates…"
+        updateButton.isBordered = false
+        updateButton.symbolConfiguration = .init(pointSize: 14, weight: .regular)
+        updateButton.contentTintColor = .secondaryLabelColor
+        updateButton.isHidden = true
+        updateButton.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(updateButton)
+        NSLayoutConstraint.activate([
+            updateButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            updateButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -14)
+        ])
     }
 
     private static func makeHeader() -> NSView {
