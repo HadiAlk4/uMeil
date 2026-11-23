@@ -5,5 +5,15 @@
     <link>https://hadialk4.github.io/uMeil/appcast.xml</link>
     <description>Updates to uMeil, newest first. Written by Scripts/update-release-files.py.</description>
     <language>en</language>
+    <item>
+      <title>Version 0.9.2</title>
+      <pubDate>Mon, 23 Nov 2026 00:50:36 +0000</pubDate>
+      <link>https://github.com/HadiAlk4/uMeil/releases/tag/v0.9.2</link>
+      <sparkle:version>261</sparkle:version>
+      <sparkle:shortVersionString>0.9.2</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://github.com/HadiAlk4/uMeil/releases/tag/v0.9.2</sparkle:releaseNotesLink>
+      <enclosure url="https://github.com/HadiAlk4/uMeil/releases/download/v0.9.2/uMeil-0.9.2.dmg" length="4216891" type="application/octet-stream" sparkle:edSignature="wEYFp+dEakGewTVM5FMQOUTgCOLr7LWH4pfMJDvSYzgl6sWRFPwn7b1Aqb12vRO7umkck0d+yvMUrguz1ttABQ=="/>
+    </item>
   </channel>
 </rss>
