@@ -39,6 +39,18 @@
   // The wax seal on the Download button shows the newest version from
   // the update feed. Until there is a release it keeps its monogram.
   const seal = document.querySelector(".seal-text");
+  // Shrinks a version longer than the monogram until it fits inside the
+  // seal's rim, whatever its length. Measured once the web font has loaded.
+  const fitSeal = () =>
+    document.fonts.ready.then(() => {
+      seal.style.fontSize = "";
+      const room = seal.parentElement.clientWidth - 14;
+      const width = seal.offsetWidth; // Not scaled by the stamp animation.
+      if (width > room) {
+        const size = parseFloat(getComputedStyle(seal).fontSize);
+        seal.style.fontSize = `${Math.floor((size * room) / width)}px`;
+      }
+    });
   if (seal) {
     fetch("appcast.xml")
       .then((response) => (response.ok ? response.text() : ""))
@@ -47,6 +59,7 @@
         const version = feed.getElementsByTagName("sparkle:shortVersionString")[0];
         if (version && version.textContent.trim()) {
           seal.textContent = `v${version.textContent.trim()}`;
+          fitSeal();
         }
       })
       .catch(() => {});

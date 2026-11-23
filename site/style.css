@@ -137,6 +137,7 @@ h2::after {
   font-size: 15px;
   font-weight: 500;
   font-style: italic;
+  white-space: nowrap;
   opacity: 0;
   transform: rotate(-14deg) scale(1.7);
   pointer-events: none;
@@ -153,7 +154,7 @@ h2::after {
   100% { opacity: 1; transform: rotate(-14deg) scale(1); }
 }
 
-.download span:first-child {
+.download > span:first-child {
   flex: 1;
   padding: 10px 20px;
 }
