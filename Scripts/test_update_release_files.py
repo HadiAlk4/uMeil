@@ -4,6 +4,7 @@
 """
 
 import importlib.util
+import re
 import shutil
 import tempfile
 import unittest
@@ -41,10 +42,35 @@ class UpdateReleaseFilesTests(unittest.TestCase):
         self.appcast = self.folder / "site/appcast.xml"
         self.cask = self.folder / "Casks/umeil.rb"
         self.site = self.folder / "site/index.html"
+        self.shipped_appcast = root / "site/appcast.xml"
+        self.shipped_cask = root / "Casks/umeil.rb"
+        self._undo_past_releases()
 
-    def test_the_shipped_appcast_is_valid_and_empty(self):
-        channel = ET.parse(self.appcast).getroot().find("channel")
-        self.assertEqual(channel.findall("item"), [])
+    def _undo_past_releases(self):
+        """Puts the copies back as they were before the first release.
+
+        Each release adds to the shipped feed and writes its checksum into the
+        cask, so the tests start from a clean slate rather than whatever was
+        released last.
+        """
+        appcast = re.sub(r"\s*<item>.*?</item>", "", self.appcast.read_text(), flags=re.S)
+        self.appcast.write_text(appcast)
+        cask = re.sub(r'^  version ".*"$', '  version "0.1.0"', self.cask.read_text(), count=1, flags=re.M)
+        cask = re.sub(r"^  sha256 .*$", "  sha256 :no_check", cask, count=1, flags=re.M)
+        self.cask.write_text(cask)
+
+    def test_the_shipped_appcast_is_valid_and_offers_only_signed_releases(self):
+        channel = ET.parse(self.shipped_appcast).getroot().find("channel")
+        self.assertIsNotNone(channel)
+        for item in channel.findall("item"):
+            self.assertTrue(item.find("enclosure").get(f"{SPARKLE}edSignature"))
+
+    def test_the_shipped_cask_has_a_real_checksum_or_none_yet(self):
+        sha256 = re.search(r"^  sha256 (.*)$", self.shipped_cask.read_text(), flags=re.M).group(1)
+        self.assertRegex(sha256, r'^(:no_check|"[0-9a-f]{64}")$')
+
+    def test_a_cleared_appcast_has_no_releases(self):
+        self.assertEqual(ET.parse(self.appcast).getroot().find("channel").findall("item"), [])
 
     def test_a_signed_release_is_added_to_the_feed_newest_first_once(self):
         self.assertTrue(release_files.update_appcast(self.appcast, RELEASE, PUBLISHED))
@@ -70,7 +96,7 @@ class UpdateReleaseFilesTests(unittest.TestCase):
         self.assertEqual(ET.parse(self.appcast).getroot().find("channel").findall("item"), [])
 
     def test_the_cask_gets_the_version_and_checksum(self):
-        # The shipped Casks/umeil.rb uses :no_check while v0.1.0 is unreleased (never a fake digest),
+        # Before the first release the cask uses :no_check (never a fake digest),
         # and update_cask must always replace it with a validated 64-hex SHA-256.
         self.assertIn("  sha256 :no_check", self.cask.read_text())
         self.assertTrue(release_files.update_cask(self.cask, RELEASE))
