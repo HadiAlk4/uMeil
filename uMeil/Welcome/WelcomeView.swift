@@ -2,7 +2,7 @@ import AppKit
 
 /// Shown in place of the editor when no folder is open: the app's icon and
 /// name, buttons to start a project, the projects opened recently, and
-/// Check for Updates… in the bottom left corner.
+/// a Check for Updates… icon in the bottom left corner.
 ///
 /// The buttons send their actions up the responder chain (to the window
 /// controller, or the app delegate for updates), like the menu items they match.
@@ -13,9 +13,12 @@ final class WelcomeView: NSView {
     private let recentStack = NSStackView()
     private let recentHeading = NSTextField(labelWithString: "Recent Projects")
     private(set) var recentFolders: [URL] = []
-    /// Bottom left, shown only in builds that can check for updates.
+    /// An icon in the bottom left, shown only in builds that can check for updates.
     let updateButton = NSButton(
-        title: "Check for Updates…",
+        image: NSImage(
+            systemSymbolName: "arrow.triangle.2.circlepath",
+            accessibilityDescription: "Check for Updates…"
+        ) ?? NSImage(),
         target: nil,
         action: #selector(AppDelegate.checkForUpdates(_:))
     )
@@ -68,14 +71,9 @@ final class WelcomeView: NSView {
     }
 
     private func addUpdateButton() {
-        updateButton.image = NSImage(
-            systemSymbolName: "arrow.triangle.2.circlepath",
-            accessibilityDescription: nil
-        )
-        updateButton.imagePosition = .imageLeading
+        updateButton.toolTip = "Check for Updates…"
         updateButton.isBordered = false
-        updateButton.controlSize = .small
-        updateButton.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        updateButton.symbolConfiguration = .init(pointSize: 14, weight: .regular)
         updateButton.contentTintColor = .secondaryLabelColor
         updateButton.isHidden = true
         updateButton.translatesAutoresizingMaskIntoConstraints = false
