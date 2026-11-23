@@ -32,13 +32,13 @@ On first launch uMeil finds the Arm toolchain and OpenOCD if you already have th
 
 You need an Apple Silicon Mac with Xcode 16 or later.
 
-Open `uMeil.xcodeproj` in Xcode and press Run, or build and test from the terminal:
+Open `uMeil.xcodeproj` in Xcode and press Run, or build from the terminal:
 
 ```sh
-xcodebuild test -project uMeil.xcodeproj -scheme uMeil -destination 'platform=macOS,arch=arm64'
+xcodebuild build -project uMeil.xcodeproj -scheme uMeil -destination 'platform=macOS,arch=arm64'
 ```
 
-Code style is checked with [SwiftLint](https://github.com/realm/SwiftLint) (`brew install swiftlint`, then `swiftlint lint --strict`). CI runs the tests and the linter on every push and pull request.
+Code style is checked with [SwiftLint](https://github.com/realm/SwiftLint) (`brew install swiftlint`, then `swiftlint lint --strict`).
 
 To make a release, see [`docs/releasing.md`](docs/releasing.md).
 
@@ -58,14 +58,6 @@ To make a release, see [`docs/releasing.md`](docs/releasing.md).
 | Serial monitor | POSIX `termios` and IOKit |
 | Terminal | [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) |
 | Updates and distribution | [Sparkle](https://sparkle-project.org/), a DMG on GitHub Releases, a Homebrew cask, and a website on GitHub Pages |
-
-## Testing
-
-| Level | Tool | Runs where |
-|---|---|---|
-| Unit and integration tests (including the real toolchain, `clangd` and GDB) | Swift Testing / XCTest | Every push and pull request, GitHub Actions |
-| Serial port tests | A pseudo-terminal (`openpty`) in place of a board | Every push and pull request |
-| Hardware-in-the-loop | An EK-TM4C1294XL on a self-hosted Mac runner, flashed and read over UART | Pushes, when the runner is set up |
 
 ## License
 
