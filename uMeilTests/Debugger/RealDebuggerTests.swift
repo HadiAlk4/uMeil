@@ -152,9 +152,7 @@ struct RealDebuggerTests {
     @Test(.enabled(if: hasBoard), .timeLimit(TestTiming.minutes(2)))
     func theEditorWindowStartsOnTheBoardStepsHitsABreakpointAndStops() async throws {
         let folder = try TemporaryFolder()
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
 
         let controller = MainWindowController(defaults: defaults, boardMonitor: FakeBoardMonitor())
         controller.window?.setFrame(NSRect(x: 0, y: 0, width: 900, height: 600), display: false)
@@ -205,9 +203,7 @@ struct RealDebuggerTests {
     func onTheBoardThePeripheralsPanelDrivesLEDD1AndMemory1WritesRAM() async throws {
         UserDefaults.standard.removeObject(forKey: PeripheralsViewController.selectionKey)
         let folder = try TemporaryFolder()
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
 
         let controller = MainWindowController(defaults: defaults, boardMonitor: FakeBoardMonitor())
         controller.window?.setFrame(NSRect(x: 0, y: 0, width: 900, height: 600), display: false)

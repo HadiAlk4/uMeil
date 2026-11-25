@@ -70,8 +70,7 @@ struct MemoryUsageBarTests {
 struct MemoryUsageAfterBuildTests {
     @Test func buildingBlinkyShowsHowFullFlashAndRAMAre() async throws {
         let folder = try TemporaryFolder()
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let controller = MainWindowController(defaults: try #require(UserDefaults(suiteName: suite)))
+        let controller = MainWindowController(defaults: TestDefaults())
         try controller.createProject(named: "Blinky", in: folder.url)
 
         let result = try #require(await controller.build())

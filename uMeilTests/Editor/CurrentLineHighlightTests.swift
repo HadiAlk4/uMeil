@@ -168,9 +168,7 @@ struct CurrentLineHighlightTests {
         let file = temp.url.appending(path: "main.c")
         try Data("line 1\nline 2\nline 3\n".utf8).write(to: file)
 
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
         let controller = MainWindowController(defaults: defaults)
         controller.openFolder(temp.url)
         try controller.editor.open(file)

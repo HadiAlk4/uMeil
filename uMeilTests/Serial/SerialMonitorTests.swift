@@ -10,9 +10,7 @@ struct SerialMonitorTests {
     let monitor: SerialMonitorViewController
 
     init() throws {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        defaults = TestDefaults()
         let terminal = try PseudoTerminal()
         self.terminal = terminal
         monitor = SerialMonitorViewController(listPorts: { [info = terminal.info] in [info] }, defaults: defaults)

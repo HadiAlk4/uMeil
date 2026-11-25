@@ -7,9 +7,7 @@ struct StatusBarTests {
     // MARK: - In the window
 
     private func makeWindow(in folder: TemporaryFolder) throws -> (MainWindowController, FakeBoardMonitor) {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
         let board = FakeBoardMonitor()
         let controller = MainWindowController(defaults: defaults, boardMonitor: board)
         try controller.createProject(named: "Blinky", in: folder.url)

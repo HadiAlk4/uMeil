@@ -141,9 +141,7 @@ struct KeilImporterTests {
     @Test func importingFromTheWindowOpensTheFolderAndFirstSource() throws {
         let folder = try TemporaryFolder()
         let keilFile = try KeilFixture.make(in: folder.url)
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
         let controller = MainWindowController(defaults: defaults, boardMonitor: FakeBoardMonitor())
 
         let imported = try controller.importKeilProject(at: keilFile)

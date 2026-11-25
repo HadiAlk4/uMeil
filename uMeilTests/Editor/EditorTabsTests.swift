@@ -83,9 +83,7 @@ struct EditorTabsInWindowTests {
     }
 
     private func makeController(folder: URL) throws -> MainWindowController {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
         let controller = MainWindowController(defaults: defaults, boardMonitor: FakeBoardMonitor())
         controller.answerSavePrompt = { _ in
             Issue.record("Nothing should ask to save")

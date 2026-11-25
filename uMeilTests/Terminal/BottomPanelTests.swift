@@ -88,7 +88,7 @@ struct BottomPanelTests {
 
     @Test func theWindowPutsTheDebuggerConsoleInTheDebugTab() {
         let controller = MainWindowController(
-            defaults: UserDefaults(suiteName: "BottomPanelTests")!,
+            defaults: TestDefaults(),
             makeTerminalSession: { SilentSession() }
         )
 

@@ -248,10 +248,7 @@ extension MemoryAndPeripheralPanelTests {
     // MARK: - Regression tests: Peripherals
 
     @Test func peripheralsUsesInjectedUserDefaultsAndEmitsOtherSectionHeaderFirst() throws {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let customDefaults = try #require(UserDefaults(suiteName: suite))
-        customDefaults.removePersistentDomain(forName: suite)
-        defer { customDefaults.removePersistentDomain(forName: suite) }
+        let customDefaults = TestDefaults()
 
         let ungroupedNil = SVDPeripheral(
             name: "SYSCTL", description: nil, groupName: nil, baseAddress: 0x400F_E000, registers: []

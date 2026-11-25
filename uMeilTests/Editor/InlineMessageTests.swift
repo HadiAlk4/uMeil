@@ -117,8 +117,7 @@ struct InlineMessagesInEditorTests {
 struct InlineMessagesAfterBuildTests {
     @Test func aFailedBuildWritesItsMessagesBesideTheCode() async throws {
         let folder = try TemporaryFolder()
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let defaults = TestDefaults()
         let controller = MainWindowController(defaults: defaults)
         try controller.createProject(named: "Blinky", in: folder.url)
         let textView = controller.editor.textView

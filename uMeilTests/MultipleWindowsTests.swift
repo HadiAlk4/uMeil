@@ -6,9 +6,7 @@ import Testing
 @MainActor
 struct MultipleWindowsTests {
     private func makeDelegate() throws -> AppDelegate {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
         let delegate = AppDelegate()
         delegate.makeController = { MainWindowController(defaults: defaults, boardMonitor: FakeBoardMonitor()) }
         return delegate

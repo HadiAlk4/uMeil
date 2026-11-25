@@ -5,9 +5,7 @@ import Testing
 @MainActor
 struct WelcomeTests {
     func makeDefaults() throws -> UserDefaults {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
         return defaults
     }
 

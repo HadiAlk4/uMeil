@@ -153,9 +153,7 @@ struct EditorHighlightingTests {
         let url = temp.url.appending(path: name)
         try Data(text.utf8).write(to: url)
 
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
         let controller = MainWindowController(defaults: defaults)
         controller.window?.setFrame(NSRect(x: 0, y: 0, width: 800, height: 500), display: false)
         controller.openFolder(temp.url)

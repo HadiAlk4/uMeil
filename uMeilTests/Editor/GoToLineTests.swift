@@ -6,9 +6,7 @@ import Testing
 @MainActor
 struct GoToLineTests {
     private func makeWindowController(lines: Int = 80) throws -> (MainWindowController, TemporaryDirectory) {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
 
         let temp = try TemporaryDirectory()
         let file = temp.url.appending(path: "main.c")
@@ -83,9 +81,7 @@ struct GoToLineTests {
     }
 
     @Test func menuValidationRequiresAnOpenDocument() throws {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
         let temp = try TemporaryDirectory()
         let file = temp.url.appending(path: "main.c")
         try Data("int main(void) { return 0; }\n".utf8).write(to: file)

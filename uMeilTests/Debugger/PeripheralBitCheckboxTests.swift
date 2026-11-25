@@ -20,9 +20,7 @@ struct PeripheralBitCheckboxTests {
     )
 
     private func makePanel(value: UInt64) throws -> PeripheralsViewController {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
         let panel = PeripheralsViewController(defaults: defaults)
         panel.loadViewIfNeeded()
         panel.view.frame = NSRect(x: 0, y: 0, width: 400, height: 300)
