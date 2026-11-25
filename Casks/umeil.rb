@@ -5,8 +5,8 @@
 #
 # Scripts/update-release-files.py sets the version and checksum for each release.
 cask "umeil" do
-  version "0.9.2"
-  sha256 "98c6bc3868b69aa252b7b8757a05695a5047c183e2225fe2bed0c66b768b4242"
+  version "0.9.2.1"
+  sha256 "cf5216f6bc34b40319e48924a98ab1e2cfa689cc1b18359dbf765151933db3a5"
 
   url "https://github.com/HadiAlk4/uMeil/releases/download/v#{version}/uMeil-#{version}.dmg"
   name "uMeil"
