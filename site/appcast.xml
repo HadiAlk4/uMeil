@@ -6,6 +6,16 @@
     <description>Updates to uMeil, newest first. Written by Scripts/update-release-files.py.</description>
     <language>en</language>
     <item>
+      <title>Version 0.9.2.1</title>
+      <pubDate>Wed, 25 Nov 2026 08:46:20 +0000</pubDate>
+      <link>https://github.com/HadiAlk4/uMeil/releases/tag/v0.9.2.1</link>
+      <sparkle:version>274</sparkle:version>
+      <sparkle:shortVersionString>0.9.2.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://github.com/HadiAlk4/uMeil/releases/tag/v0.9.2.1</sparkle:releaseNotesLink>
+      <enclosure url="https://github.com/HadiAlk4/uMeil/releases/download/v0.9.2.1/uMeil-0.9.2.1.dmg" length="4217270" type="application/octet-stream" sparkle:edSignature="ksusMO0RiDC94HRfwmGegqTwqBFvZpJw/6BqyxC9tEd3gmP0b5izlPpwEhJ9oFiBlJ8MOlEc3bc+yZQKneJMAg=="/>
+    </item>
+    <item>
       <title>Version 0.9.2</title>
       <pubDate>Mon, 23 Nov 2026 00:50:36 +0000</pubDate>
       <link>https://github.com/HadiAlk4/uMeil/releases/tag/v0.9.2</link>
