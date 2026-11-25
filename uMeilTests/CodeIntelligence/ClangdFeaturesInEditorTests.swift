@@ -38,11 +38,27 @@ struct ClangdFeaturesInEditorTests {
         return false
     }
 
+    /// Waits until clangd has parsed main.c together with its TivaWare
+    /// headers. Until then clangd answers completions with plain words from
+    /// the file, and repeating the request does not make the headers parse
+    /// any sooner. A hover waits for the parse, so on a busy machine it is
+    /// the way to wait. Call it before editing the call to GPIOPinWrite.
+    private func waitForHeaders(in editor: EditorViewController) async -> Bool {
+        let pin = (editor.textView.string as NSString).range(of: "GPIO_PIN_1);").location + 3
+        let parsed = await retry {
+            editor.intelligence.hoverRange = nil
+            return await editor.showCodeHover(atCharacterIndex: pin)?.contains("0x00000002") == true
+        }
+        editor.dismissCodeHover()
+        return parsed
+    }
+
     @Test(.timeLimit(TestTiming.minutes(1)))
     func completingADriverLibFunctionInsertsItsArguments() async throws {
         let temp = try TemporaryDirectory()
         let controller = try makeBlinkyWindow(in: temp)
         let editor = controller.editor
+        #expect(await waitForHeaders(in: editor))
         type("GPIOPinWr|", over: "GPIOPinWrite(GPIO_PORTN_BASE, GPIO_PIN_1, 0);", in: editor)
 
         // Until its headers are parsed, clangd offers only words from the
@@ -112,6 +128,7 @@ struct ClangdFeaturesInEditorTests {
         let temp = try TemporaryDirectory()
         let controller = try makeBlinkyWindow(in: temp)
         let editor = controller.editor
+        #expect(await waitForHeaders(in: editor))
         type("GPIOPinWrite(GPIO_PORTN_BASE, GPIO_P|", over: "GPIOPinWrite(GPIO_PORTN_BASE, GPIO_PIN_1, 0);", in: editor)
 
         var first: [String] = []
