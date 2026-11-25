@@ -5,9 +5,7 @@ import Testing
 @MainActor
 struct DebugBarTests {
     private func makeWindow() throws -> (MainWindowController, FakeDebugger) {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
         let controller = MainWindowController(defaults: defaults, boardMonitor: FakeBoardMonitor())
         controller.window?.setFrame(NSRect(x: 0, y: 0, width: 900, height: 600), display: false)
         let gdb = FakeBlinky.debugger()

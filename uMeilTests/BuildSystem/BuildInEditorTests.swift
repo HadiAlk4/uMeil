@@ -8,9 +8,7 @@ import Testing
 struct BuildInEditorTests {
     /// A window showing a new Blinky project, with its main.c open.
     private func makeBlinkyWindow(in folder: TemporaryFolder) throws -> MainWindowController {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
 
         let controller = MainWindowController(defaults: defaults)
         controller.window?.setFrame(NSRect(x: 0, y: 0, width: 900, height: 600), display: false)
@@ -174,8 +172,7 @@ struct BuildInEditorTests {
     }
 
     @Test func buildIsOnlyOfferedWhenAFolderIsOpen() throws {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let defaults = TestDefaults()
         let controller = MainWindowController(defaults: defaults)
         let build = NSMenuItem(
             title: "Build",
@@ -188,6 +185,5 @@ struct BuildInEditorTests {
         let folder = try TemporaryFolder()
         controller.openFolder(folder.url)
         #expect(controller.validateMenuItem(build))
-        defaults.removePersistentDomain(forName: suite)
     }
 }

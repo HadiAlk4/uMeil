@@ -35,9 +35,7 @@ struct WebsiteScreenshotTests {
         let output = try #require(Self.output)
         UserDefaults.standard.removeObject(forKey: PeripheralsViewController.selectionKey)
         let folder = try TemporaryFolder()
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
 
         let monitor = FakeBoardMonitor()
         let controller = MainWindowController(defaults: defaults, boardMonitor: monitor)

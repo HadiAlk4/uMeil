@@ -91,9 +91,7 @@ struct BreakpointsListTests {
     // MARK: - In the window
 
     private func makeWindow(in folder: TemporaryFolder) throws -> MainWindowController {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
         let controller = MainWindowController(defaults: defaults, boardMonitor: FakeBoardMonitor())
         try controller.createProject(named: "Blinky", in: folder.url)
         return controller

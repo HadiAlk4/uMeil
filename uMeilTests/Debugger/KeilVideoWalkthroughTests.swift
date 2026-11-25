@@ -62,9 +62,7 @@ struct KeilVideoWalkthroughTests {
     func theDebuggerDoesWhatTheKeilVideoShows() async throws {
         FileManager.default.createFile(atPath: Self.logFile.path(percentEncoded: false), contents: nil)
         let folder = try TemporaryFolder()
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
 
         let controller = MainWindowController(defaults: defaults, boardMonitor: FakeBoardMonitor())
         controller.window?.setFrame(NSRect(x: 0, y: 0, width: 1400, height: 900), display: false)

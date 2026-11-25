@@ -64,9 +64,7 @@ struct SerialHardwareTests {
         let flash = await Flasher().flash(plan) { _ in }
         try #require(flash.succeeded, "Flash failed:\n\(flash.log)")
 
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = TestDefaults()
 
         let monitor = SerialMonitorViewController(defaults: defaults)
         monitor.loadViewIfNeeded()

@@ -5,9 +5,7 @@ import Testing
 @MainActor
 struct AppearanceSettingsTests {
     private func makeSettings() throws -> AppearanceSettings {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
         return AppearanceSettings(defaults: defaults)
     }
 
@@ -116,9 +114,7 @@ struct AppearanceSettingsTests {
 
     @Test func anOpenFileTheConsoleAndTheTablesTakeTheNewSize() throws {
         let folder = try TemporaryFolder()
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
         let controller = MainWindowController(defaults: defaults, boardMonitor: FakeBoardMonitor())
         try controller.createProject(named: "Blinky", in: folder.url)
         controller.debugPanels.command.appendOutput("Open On-Chip Debugger\n")

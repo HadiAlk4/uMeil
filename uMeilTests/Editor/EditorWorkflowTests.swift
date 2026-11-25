@@ -8,9 +8,7 @@ struct EditorWorkflowTests {
     /// A window controller whose "last folder" setting goes to a throwaway
     /// store, so tests never touch the real app's preferences.
     private func makeWindowController() throws -> (MainWindowController, UserDefaults) {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
         return (MainWindowController(defaults: defaults), defaults)
     }
 

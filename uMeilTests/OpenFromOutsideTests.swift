@@ -7,9 +7,7 @@ import Testing
 @MainActor
 struct OpenFromOutsideTests {
     private func makeWindow() throws -> MainWindowController {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
         return MainWindowController(defaults: defaults, boardMonitor: FakeBoardMonitor())
     }
 

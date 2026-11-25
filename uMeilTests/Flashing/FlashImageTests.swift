@@ -98,9 +98,7 @@ struct FlashImageTests {
 
     @MainActor
     private func makeWindow(in folder: TemporaryFolder, openOCD: FakeOpenOCD) throws -> MainWindowController {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
         let controller = MainWindowController(defaults: defaults, boardMonitor: FakeBoardMonitor())
         controller.flasher = Flasher(runner: openOCD)
         let locator = try locatorWithOpenOCD(in: folder)

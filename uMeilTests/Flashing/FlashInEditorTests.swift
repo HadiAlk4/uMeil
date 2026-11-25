@@ -17,9 +17,7 @@ struct FlashInEditorTests {
         in folder: TemporaryFolder,
         openOCD: FakeOpenOCD = FakeOpenOCD(log: FlashLog.success)
     ) throws -> Window {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
 
         let board = FakeBoardMonitor()
         let controller = MainWindowController(defaults: defaults, boardMonitor: board)
@@ -198,8 +196,7 @@ struct FlashInEditorTests {
     }
 
     @Test func flashIsOnlyOfferedWhenAFolderIsOpen() throws {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let defaults = TestDefaults()
         let controller = MainWindowController(defaults: defaults, boardMonitor: FakeBoardMonitor())
         let flash = menuItem(#selector(MainWindowController.flashProject(_:)))
         #expect(!controller.validateMenuItem(flash))
@@ -208,7 +205,6 @@ struct FlashInEditorTests {
         controller.openFolder(folder.url)
 
         #expect(controller.validateMenuItem(flash))
-        defaults.removePersistentDomain(forName: suite)
     }
 
     // MARK: - Toolbar

@@ -42,9 +42,7 @@ struct DebugIntegrationTests {
         opening file: URL,
         gdb: FakeDebugger
     ) async throws -> MainWindowController {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
         let controller = MainWindowController(defaults: defaults, boardMonitor: FakeBoardMonitor())
         controller.window?.setFrame(NSRect(x: 0, y: 0, width: 1000, height: 700), display: false)
         controller.openFolder(folder)

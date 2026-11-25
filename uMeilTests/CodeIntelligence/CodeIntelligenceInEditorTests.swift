@@ -139,9 +139,7 @@ struct CodeIntelligenceEditorUnitTests {
 @Suite(.enabled(if: ClangdTestEnvironment.canRunClangd))
 struct CodeIntelligenceInEditorTests {
     private func makeBlinkyWindow(in folder: TemporaryDirectory) throws -> MainWindowController {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
 
         let controller = MainWindowController(defaults: defaults)
         controller.window?.setFrame(NSRect(x: 0, y: 0, width: 900, height: 600), display: false)
@@ -272,9 +270,7 @@ struct CodeIntelligenceInEditorTests {
 @MainActor
 struct CodeIntelligenceToggleTests {
     private func makeDefaults() throws -> UserDefaults {
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = TestDefaults()
         return defaults
     }
 

@@ -162,9 +162,7 @@ struct InlineValuesTests {
             }
             return ["^done"]
         }
-        let suite = "uMeilTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = TestDefaults()
         let controller = MainWindowController(defaults: defaults, boardMonitor: FakeBoardMonitor())
         // Not `openFolder`: it ends any session in the background, which would end this one.
         #expect(controller.openFile(file))
