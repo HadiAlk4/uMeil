@@ -77,7 +77,7 @@ setting() { awk -v key="$1" '$1 == key && $2 == "=" { sub(/^[^=]*= /, ""); print
 
 VERSION=${1:-$(setting MARKETING_VERSION)}
 BUILD=$(git rev-list --count HEAD)
-[[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || fail "version '$VERSION' is not like 1.2.3"
+[[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?(-[0-9A-Za-z.]+)?$ ]] || fail "version '$VERSION' is not like 1.2.3 or 1.2.3.4"
 
 SIGNED=no
 NOTARIZED=no

@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY = "https://github.com/HadiAlk4/uMeil"
 MINIMUM_MACOS = "14.0"
 
-VERSION_RE = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?")
+VERSION_RE = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?(-[0-9A-Za-z.]+)?")
 UINT_RE = re.compile(r"[0-9]+")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 YES_NO_RE = re.compile(r"(yes|no)")
@@ -36,7 +36,7 @@ BASE64_RE = re.compile(r"[A-Za-z0-9+/]+={0,2}")
 
 def _validate_version(version):
     if not VERSION_RE.fullmatch(version):
-        raise SystemExit(f"{version} is not a version like 1.2.3")
+        raise SystemExit(f"{version} is not a version like 1.2.3 or 1.2.3.4")
 
 
 def _validate_sha256(sha256):

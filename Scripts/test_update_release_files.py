@@ -106,6 +106,13 @@ class UpdateReleaseFilesTests(unittest.TestCase):
         self.assertNotIn(":no_check", text)
         self.assertFalse(release_files.update_cask(self.cask, RELEASE))
 
+    def test_a_four_part_version_is_accepted(self):
+        release = dict(RELEASE, VERSION="0.2.0.1")
+        self.assertTrue(release_files.update_cask(self.cask, release))
+        self.assertIn('  version "0.2.0.1"\n', self.cask.read_text())
+        self.assertTrue(release_files.update_appcast(self.appcast, release, PUBLISHED))
+        self.assertIn("<sparkle:shortVersionString>0.2.0.1</sparkle:shortVersionString>", self.appcast.read_text())
+
     def test_update_cask_rejects_no_check_and_invalid_inputs(self):
         before = self.cask.read_text()
         for bad_release in (
@@ -117,6 +124,8 @@ class UpdateReleaseFilesTests(unittest.TestCase):
             dict(RELEASE, SHA256=""),
             dict(RELEASE, VERSION='0.2.0"\n  system "id'),
             dict(RELEASE, VERSION="v0.2.0"),
+            dict(RELEASE, VERSION="0.2.0.1.2"),
+            dict(RELEASE, VERSION="0.2.0."),
         ):
             with self.subTest(bad_release=bad_release):
                 with self.assertRaises(SystemExit):
