@@ -37,7 +37,10 @@ final class TestDefaults: UserDefaults, @unchecked Sendable {
         removeStaleSuites(olderThan: Date.now.addingTimeInterval(-staleAge))
     }()
 
-    static func removeStaleSuites(olderThan cutoff: Date, in folder: URL = URL.libraryDirectory.appending(path: "Preferences")) {
+    static func removeStaleSuites(
+        olderThan cutoff: Date,
+        in folder: URL = URL.libraryDirectory.appending(path: "Preferences")
+    ) {
         let files = (try? FileManager.default.contentsOfDirectory(
             at: folder,
             includingPropertiesForKeys: [.contentModificationDateKey]
