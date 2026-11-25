@@ -69,7 +69,7 @@ Scripts/make-release.sh 0.2.0
    git push origin v0.2.0
    ```
 
-   A tag with a suffix (`v0.2.0-beta.1`) is published as a pre-release.
+   A tag with a suffix (`v0.2.0-beta.1`) is published as a pre-release. A fourth number (`v0.2.0.1`) is allowed for a small fix to a release.
 4. The **Release** workflow builds the DMG with the build number set to the number of commits (Sparkle compares it), creates the GitHub release with `uMeil-0.2.0.dmg` and `uMeil.dmg`, then commits the new feed entry and cask checksum to `main` and republishes the website.
 
 A release that is not signed for Sparkle (no `SPARKLE_PRIVATE_KEY`) is published and added to the cask, but not to the update feed, since Sparkle would refuse it.
