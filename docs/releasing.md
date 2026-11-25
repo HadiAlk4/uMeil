@@ -17,7 +17,7 @@ A release is a DMG on [GitHub Releases](https://github.com/HadiAlk4/uMeil/releas
 
 Settings › Pages › Build and deployment › Source: **GitHub Actions**. Then run the **Website** workflow once (Actions › Website › Run workflow), or push a change under `site/`.
 
-The release workflow pushes the updated feed and cask straight to `main`. If `main` is protected, allow GitHub Actions to push to it.
+The release workflow never pushes to `main`: it opens a pull request with the updated feed and cask, and starts CI on it. Turn on Settings › Actions › General › Workflow permissions › **Allow GitHub Actions to create and approve pull requests** so it can.
 
 ### 2. Make the Sparkle signing key
 
@@ -70,7 +70,8 @@ Scripts/make-release.sh 0.2.0
    ```
 
    A tag with a suffix (`v0.2.0-beta.1`) is published as a pre-release. A fourth number (`v0.2.0.1`) is allowed for a small fix to a release.
-4. The **Release** workflow builds the DMG with the build number set to the number of commits (Sparkle compares it), creates the GitHub release with `uMeil-0.2.0.dmg` and `uMeil.dmg`, then commits the new feed entry and cask checksum to `main` and republishes the website.
+4. The **Release** workflow builds the DMG with the build number set to the number of commits (Sparkle compares it), creates the GitHub release with `uMeil-0.2.0.dmg` and `uMeil.dmg`, then opens a pull request, `release-files-0.2.0`, with the new feed entry and cask checksum, and runs CI on it.
+5. Merge that pull request. Until then the website, Sparkle and Homebrew still offer the previous release. Merging changes `site/`, which republishes the website.
 
 A release that is not signed for Sparkle (no `SPARKLE_PRIVATE_KEY`) is published and added to the cask, but not to the update feed, since Sparkle would refuse it.
 

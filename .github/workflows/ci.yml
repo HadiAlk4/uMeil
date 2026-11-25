@@ -3,6 +3,9 @@ name: CI
 on:
   push:
   pull_request:
+  # The Release workflow starts CI on the pull request it opens, since its
+  # own pushes start no workflows.
+  workflow_dispatch:
 
 permissions: { contents: read }
 

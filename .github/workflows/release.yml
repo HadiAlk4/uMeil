@@ -1,8 +1,9 @@
 name: Release
 
 # Pushing a tag such as v0.2.0 builds uMeil 0.2.0, publishes it on GitHub
-# Releases, and updates the website's update feed and the Homebrew cask on
-# main. See docs/releasing.md.
+# Releases, and opens a pull request that points the website's update feed
+# and the Homebrew cask at it. Nothing reaches main until that pull request
+# is merged. See docs/releasing.md.
 #
 # Every secret is optional. Without the Developer ID ones the DMG is ad-hoc
 # signed and not notarized; without SPARKLE_PRIVATE_KEY it is not offered
@@ -36,6 +37,7 @@ jobs:
     permissions:
       contents: write
       actions: write
+      pull-requests: write
     steps:
       - name: Validate release tag and read version
         id: version
@@ -137,23 +139,37 @@ jobs:
             --notes "$notes" \
             "${extra_args[@]+"${extra_args[@]}"}"
 
-      - name: Update the website's feed and the Homebrew cask
+      - name: Open a pull request for the website's feed and the Homebrew cask
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
+          # main only takes changes through a pull request, so the feed and
+          # cask go on a branch of their own and wait for the owner to merge
+          # them. Merging changes site/, which publishes the website.
+          branch="release-files-$RELEASE_VERSION"
           # dist/ is ignored by git, so it survives the switch to main.
           git fetch origin main
-          git checkout -B release-files origin/main
+          git checkout -B "$branch" origin/main
           python3 Scripts/update-release-files.py dist/release.env
           if git diff --quiet; then exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "Point the website and the Homebrew cask at uMeil $RELEASE_VERSION."
-          git push origin HEAD:main
-          # A push made with the workflow's token starts no other workflows,
-          # so start the website's by hand.
-          gh workflow run pages.yml --ref main
+          title="Point the website and the Homebrew cask at uMeil $RELEASE_VERSION"
+          git commit -am "$title."
+          git push --force origin "HEAD:refs/heads/$branch"
+          if [[ -z $(gh pr list --head "$branch" --state open --json number --jq '.[].number') ]]; then
+            gh pr create --base main --head "$branch" --title "$title" --body "$(cat <<EOF
+          Made by the Release workflow for [uMeil $RELEASE_VERSION]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME), from \`Scripts/update-release-files.py\`.
+
+          Merge it to offer the release to existing installs (\`site/appcast.xml\`) and to Homebrew (\`Casks/umeil.rb\`). Merging also republishes the website.
+          EOF
+          )"
+          fi
+          # Pushes and pull requests made with the workflow's token start no
+          # other workflows, so start CI by hand for the required checks.
+          gh workflow run ci.yml --ref "$branch"
+          echo "Opened a pull request from $branch; merge it to finish the release." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove the signing keychain
         if: always()
